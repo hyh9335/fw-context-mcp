@@ -246,6 +246,10 @@ class AiTool:
                          Mutually exclusive with ``mcp_registration``.
         mcp_config_key: JSON key in the ``mcp`` servers map for file-based
                         registration (e.g. ``"fw-context"``).
+        mcp_dsh: Register through DeepSeek Harness's Cordis patch
+                 (``$DSH_HOME/cordis.patch.yml`` or a profile's
+                 ``cordis.patch.yml``) using the official
+                 ``@deepseek-ai/dsh-mcp-client`` bridge.
         targets: Where to inject fw-context instructions.
     """
     id: str
@@ -256,6 +260,7 @@ class AiTool:
     mcp_registration: str | None = None
     mcp_config_file: str | None = None
     mcp_config_key: str | None = None
+    mcp_dsh: bool = False
     targets: list[InstructionTarget] = field(default_factory=list)
     agent_dirs_global: list[str] = field(default_factory=list)
     """Global agent directories for this tool. Supports ``~`` home expansion."""
@@ -430,8 +435,14 @@ TOOLS: dict[str, AiTool] = {
             ),
         ],
     ),
+    "dsh": AiTool(
+        id="dsh",
+        name="DeepSeek Harness (dsh)",
+        detection_binaries=["dsh"],
+        detection_dirs=["~/.dsh"],
+        mcp_dsh=True,
+    ),
 }
-
 
 # ── Cross-tool agent directories ─────────────────────────────────────────────
 

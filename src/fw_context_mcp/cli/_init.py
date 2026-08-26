@@ -497,7 +497,7 @@ def _inject_instructions(
     warnings: list[str] = []
 
     if not tool.targets:
-        if not tool.mcp_registration and not tool.mcp_config_file:
+        if not tool.mcp_registration and not tool.mcp_config_file and not tool.mcp_dsh:
             print("  [skip] No instruction targets defined")
         return ok, warnings
 
@@ -571,11 +571,23 @@ def _init_one_tool(
         return ok, warnings
 
     # ── MCP registration ──
-    if not args.instructions_only and mcp_bin and (tool.mcp_registration or tool.mcp_config_file):
+    if not args.instructions_only and mcp_bin and (
+        tool.mcp_registration or tool.mcp_config_file or tool.mcp_dsh
+    ):
         if args.dry_run:
-            _register_mcp(tool, mcp_bin, dry_run=True)
+            _register_mcp(
+                tool, mcp_bin, dry_run=True, project_root=project_root,
+                dsh_home=getattr(args, "dsh_home", None),
+                dsh_profile=getattr(args, "dsh_profile", None),
+            )
         else:
-            _register_mcp(tool, mcp_bin)
+            _register_mcp(
+                tool, mcp_bin, project_root=project_root,
+                dsh_home=getattr(args, "dsh_home", None),
+                dsh_profile=getattr(args, "dsh_profile", None),
+            )
+        if getattr(tool, "mcp_dsh", False):
+            ok = True
 
     # ── Instruction injection ──
     inj_ok, inj_warnings = _inject_instructions(tool, args, project_root)

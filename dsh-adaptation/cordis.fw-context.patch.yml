@@ -1,0 +1,61 @@
+﻿# ============================================================================
+# dsh (DeepSeek Harness) adapter for fw-context-mcp
+#
+# This is a Cordis patch that mounts fw-context-mcp as a native MCP server in
+# a DeepSeek Harness profile using the official bridge
+# `@deepseek-ai/dsh-mcp-client` (already shipped inside dsh).
+#
+# Apply it (no persistent side effects, overlay only):
+#     dsh --profile web --patch dsh-adaptation/cordis.fw-context.patch.yml
+#
+# Or install it persistently into one profile (recommended for daily use):
+#     copy this entry into  $DSH_HOME/profiles/<name>/cordis.patch.yml
+#     (or into $DSH_HOME/cordis.patch.yml to affect every profile)
+#
+# Tools appear in the model as:  mcp__fw_context__<tool>
+# e.g. mcp__fw_context__search_code, mcp__fw_context__find_callers, ...
+# ============================================================================
+# Note: a dsh patch is a top-level list of patch ops. Inserting a brand-new
+# plugin row uses the `insert:` op (same shape as the official bundles);
+# `{id: ...}` alone only *patches* an already-present row and would fail with
+# `entry "<id>" not found`.
+
+- insert:
+    - id: mcp-fw-context
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        # Stable local namespace; must match [A-Za-z0-9_-]{1,32} and be unique
+        # across all live mcp-client instances in this profile.
+        serverName: fw_context
+
+        # fw-context-mcp is a standard JSON-RPC 2.0-over-stdio MCP server, exactly
+        # what the stdio transport of dsh-mcp-client speaks.
+        transport: stdio
+        command: fw-context-mcp
+        args: []
+
+        # Extra env merged over dsh's scrubbed environment (optional).
+        # env:
+        #   FW_CONTEXT_HOME: 'D:\github\fw-context-mcp'
+
+        # Spawn working directory for the child server. fw-context-mcp resolves
+        # each tool's project from its `project_root` argument; when the model
+        # omits it, the server falls back to this directory. Set this to the
+        # directory of the indexed firmware project. It is passed to spawn
+        # verbatim; keep it explicit rather than relying on dsh's empty-string
+        # default (an empty cwd can fail to spawn on some platforms).
+        cwd: 'D:\github\fw-context-mcp'
+
+        # Per-tool-call timeout in ms. Code-intelligence queries can be slow on
+        # large firmware indexes, so raise it above the 60 s default.
+        toolCallTimeoutMs: 180000
+
+        # Keep the profile alive even if the server cannot start (e.g. no index
+        # built yet); the tool list is then empty until fw-context index --build.
+        failOnStartupError: false
+
+        reconnect:
+          enabled: true
+          initialDelayMs: 1000
+          maxDelayMs: 15000
+          maxAttempts: 5

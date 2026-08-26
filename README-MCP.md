@@ -81,9 +81,29 @@ Add to `~/.config/opencode/opencode.json`:
   }
 }
 ```
+
 If `fw-context-mcp` is not on your PATH, use the full path:
 `"command": ["/home/<user>/.local/bin/fw-context-mcp"]` (pip) or
 `"command": ["/home/<user>/.fw-context/.venv/bin/fw-context-mcp"]` (source).
+
+### DeepSeek Harness (dsh)
+
+dsh (DeepSeek Harness, `@deepseek-ai/dsh`) does not read `settings.yaml` for
+MCP servers; it connects through the official `@deepseek-ai/dsh-mcp-client`
+bridge via a Cordis patch. `fw-context init --tool dsh` writes that entry for
+you (see `dsh-adaptation/` for the hand-written patch and full docs):
+
+```bash
+fw-context init --tool dsh                # register for all dsh profiles
+fw-context init --tool dsh --dsh-profile web   # register into one profile
+# dsh-home override for testing/custom locations:
+fw-context init --tool dsh --dsh-home "$HOME/.dsh"
+```
+
+This writes (or updates again on re-run, idempotently) the `mcp-fw-context`
+row into `$DSH_HOME/cordis.patch.yml` (all profiles) or
+`$DSH_HOME/profiles/<name>/cordis.patch.yml`. After restarting dsh, the
+tools are available as `mcp__fw_context__<tool>`.
 
 ### Other MCP clients
 

@@ -50,14 +50,192 @@ def _resolve_mcp_bin() -> str | None:
     return None
 
 
-def _register_mcp(tool, mcp_bin: str, dry_run: bool = False) -> None:
+DSH_ENTRY_ID = "mcp-fw-context"
+DSH_SERVER_NAME = "fw_context"
+DSH_DEFAULT_TOOL_TIMEOUT_MS = 180000
+
+
+def _yaml_single_quote(value: str) -> str:
+    """Return *value* as a safe single-quoted YAML scalar."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _dsh_home_dir(dsh_home: str | None) -> Path:
+    """Resolve the dsh home directory: explicit arg, $DSH_HOME, or ~/.dsh."""
+    if dsh_home:
+        return Path(os.path.expanduser(dsh_home)).resolve()
+    env_home = os.environ.get("DSH_HOME")
+    if env_home:
+        return Path(env_home).resolve()
+    return (Path.home() / ".dsh").resolve()
+
+
+def _dsh_patch_path(dsh_home_dir: Path, profile: str | None) -> Path:
+    """Target cordis patch: a profile's patch, or the home-level patch."""
+    if profile:
+        return dsh_home_dir / "profiles" / profile / "cordis.patch.yml"
+    return dsh_home_dir / "cordis.patch.yml"
+
+
+def _dsh_insert_block(mcp_bin: str, project_root: Path | None) -> str:
+    """Build the ``- insert:`` block that mounts fw-context-mcp via dsh-mcp-client.
+
+    Mirrors dsh-adaptation/cordis.fw-context.patch.yml. The raw mcp name that
+    dsh-mcp-client sees on the wire stays ``search_code`` etc.; the public
+    name dsh shows the model is ``mcp__fw_context__<tool>``.
+    """
+    lines = [
+        "- insert:",
+        "    - id: " + DSH_ENTRY_ID,
+        "      name: '@deepseek-ai/dsh-mcp-client'",
+        "      config:",
+        "        serverName: " + DSH_SERVER_NAME,
+        "        transport: stdio",
+        "        command: " + _yaml_single_quote(mcp_bin),
+        "        args: []",
+    ]
+    if project_root is not None:
+        lines.append("        cwd: " + _yaml_single_quote(str(project_root)))
+    lines.extend([
+        "        toolCallTimeoutMs: " + str(DSH_DEFAULT_TOOL_TIMEOUT_MS),
+        "        failOnStartupError: false",
+        "        reconnect:",
+        "          enabled: true",
+        "          initialDelayMs: 1000",
+        "          maxDelayMs: 15000",
+        "          maxAttempts: 5",
+    ])
+    return "\n".join(lines)
+
+
+def _upsert_dsh_patch(patch_path: Path, mcp_bin: str, project_root: Path | None) -> tuple[str, bool]:
+    """Idempotently insert/refresh the fw-context row in a dsh cordis patch.
+
+    Returns ``(action, changed)`` where *action* is ``"added"``, ``"updated"``
+    or ``"present"``.  Only the ``mcp-fw-context`` block is touched; every
+    other row and any ``!!js`` expressions are left byte-for-byte intact.
+    """
+    new_block = _dsh_insert_block(mcp_bin, project_root)
+    if not patch_path.exists():
+        patch_path.parent.mkdir(parents=True, exist_ok=True)
+        patch_path.write_text(new_block + "\n", encoding="utf-8")
+        return "added", True
+
+    text = patch_path.read_text(encoding="utf-8")
+    nl = "\r\n" if "\r\n" in text else "\n"
+    new_block = new_block.replace("\n", nl)
+
+    match = re.search(
+        r"(?m)^([ \t]*- id:[ \t]*" + re.escape(DSH_ENTRY_ID) + r"[ \t]*\n)"
+        r"(?P<body>(?s:(?:(?![ \t]*- id:).)*))",
+        text,
+    )
+    if not match:
+        body = text.rstrip()
+        if body:
+            body += nl + nl
+        patch_path.write_text(body + new_block + nl, encoding="utf-8")
+        return "added", True
+
+    header = match.group(1)
+    body = match.group("body")
+    changed = False
+    new_command = _yaml_single_quote(mcp_bin)
+
+    cmd_new, n = re.compile(r"(?m)^([ \t]*command:[ \t]*)[^\n]*$").subn(
+        lambda m: m.group(1) + new_command, body, count=1)
+    if n and cmd_new != body:
+        changed = True
+        body = cmd_new
+
+    if project_root is not None:
+        new_cwd = _yaml_single_quote(str(project_root))
+        cwd_new, n = re.compile(r"(?m)^([ \t]*cwd:[ \t]*)[^\n]*$").subn(
+            lambda m: m.group(1) + new_cwd, body, count=1)
+        if n:
+            if cwd_new != body:
+                changed = True
+                body = cwd_new
+        else:
+            args_line = re.search(r"(?m)^([ \t]*)args: \[\]\r?\n", body)
+            if args_line:
+                indent = args_line.group(1)
+                insertion = indent + "cwd: " + new_cwd + nl
+                body = body[: args_line.end()] + insertion + body[args_line.end():]
+                changed = True
+
+    if changed:
+        patch_path.write_text(text[: match.start()] + header + body + text[match.end():], encoding="utf-8")
+        return "updated", True
+    return "present", False
+
+
+def _register_dsh_mcp(
+    tool,
+    mcp_bin: str,
+    *,
+    dry_run: bool = False,
+    project_root: Path | None = None,
+    dsh_home: str | None = None,
+    dsh_profile: str | None = None,
+) -> bool:
+    """Register fw-context-mcp with DeepSeek Harness via its Cordis MCP bridge.
+
+    Writes the official ``@deepseek-ai/dsh-mcp-client`` insert into the
+    home-level ``$DSH_HOME/cordis.patch.yml`` (applies to every profile) or,
+    when *dsh_profile* is given, into ``profiles/<profile>/cordis.patch.yml``.
+    Returns True when the registration is present (or would be, in dry-run);
+    False only when the requested profile does not exist.
+    """
+    dsh_home_dir = _dsh_home_dir(dsh_home)
+    patch_path = _dsh_patch_path(dsh_home_dir, dsh_profile)
+    if dsh_profile:
+        if not (dsh_home_dir / "profiles" / dsh_profile).is_dir():
+            print(
+                f"  [skip] dsh: profile '{dsh_profile}' not found under {dsh_home_dir} - "
+                "omit --dsh-profile to register for all profiles",
+                file=sys.stderr,
+            )
+            return False
+    if dry_run:
+        existing = patch_path.read_text(encoding="utf-8") if patch_path.exists() else ""
+        if re.search(r"(?m)^[ \t]*- id:[ \t]*" + re.escape(DSH_ENTRY_ID) + r"[ \t]*$", existing):
+            print(f"  [dry-run] dsh: would UPDATE fw-context in {patch_path}")
+        else:
+            print(f"  [dry-run] dsh: would ADD fw-context to {patch_path}")
+        return True
+    action, _changed = _upsert_dsh_patch(patch_path, mcp_bin, project_root)
+    if action == "added":
+        print(f"  [ok] dsh: fw-context registered ({patch_path})")
+    elif action == "updated":
+        print(f"  [ok] dsh: updated fw-context registration ({patch_path})")
+    else:
+        print(f"  [ok] dsh: fw-context already registered ({patch_path})")
+    return True
+
+
+def _register_mcp(
+    tool,
+    mcp_bin: str,
+    dry_run: bool = False,
+    *,
+    project_root: Path | None = None,
+    dsh_home: str | None = None,
+    dsh_profile: str | None = None,
+) -> None:
     """Register fw-context as an MCP server with *tool*'s configuration.
 
     *tool* is an ``AiTool`` instance; *mcp_bin* is the path or name of the
-    ``fw-context-mcp`` executable. Dispatches to CLI-based or file-based
-    registration depending on which fields are set on *tool*.
+    ``fw-context-mcp`` executable. Dispatches to dsh's Cordis patch, a
+    file-based client, or a CLI command depending on which fields are set
+    on *tool*.
     """
-    if tool.mcp_config_file:
+    if getattr(tool, "mcp_dsh", False):
+        _register_dsh_mcp(
+            tool, mcp_bin, dry_run=dry_run,
+            project_root=project_root, dsh_home=dsh_home, dsh_profile=dsh_profile,
+        )
+    elif tool.mcp_config_file:
         _register_mcp_file(tool, mcp_bin, dry_run=dry_run)
     elif tool.mcp_registration:
         if dry_run:

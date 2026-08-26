@@ -245,7 +245,7 @@ def main() -> None:
     from ._init import cmd_init  # noqa: I001
     p_init = sub.add_parser("init", help="Register fw-context with AI assistants and inject instructions")
     p_init.add_argument(
-        "--tool", metavar="ID", help="Set up a specific tool (claude-code, opencode, kilocode, codex, cursor)"
+        "--tool", metavar="ID", help="Set up a specific tool (claude-code, opencode, kilocode, codex, cursor, dsh)"
     )
     p_init.add_argument("--dry-run", action="store_true", help="Show what would be done without making changes")
     p_init.add_argument("--force", action="store_true", help="Overwrite even when collisions are detected")
@@ -270,9 +270,14 @@ def main() -> None:
     p_init.add_argument("--skip-build", action="store_true", help="Skip compile_commands.json generation")
     p_init.add_argument("--non-interactive", action="store_true", help="Disable interactive prompts (CI/pipe)")
     p_init.add_argument("--name", metavar="NAME", help="Project name in the global registry")
+    p_init.add_argument("--dsh-home", metavar="DIR",
+                        help="dsh home dir for MCP registration (default: $DSH_HOME or ~/.dsh)")
+    p_init.add_argument("--dsh-profile", metavar="NAME",
+                        help="Register into this dsh profile's cordis.patch.yml (default: home-level cordis.patch.yml = all profiles)")
     p_init.set_defaults(
         func=cmd_init, tool=None, dry_run=False, force=False, instructions_only=False, list_tools=False,
         quick=False, skip_doctor=False, skip_build=False, non_interactive=False,
+        dsh_home=None, dsh_profile=None,
     )
 
     # ── init-variants — manage [[build.variants]] for an initialized project ──
