@@ -222,26 +222,32 @@ def _register_mcp(
     project_root: Path | None = None,
     dsh_home: str | None = None,
     dsh_profile: str | None = None,
-) -> None:
+) -> bool:
     """Register fw-context as an MCP server with *tool*'s configuration.
 
     *tool* is an ``AiTool`` instance; *mcp_bin* is the path or name of the
     ``fw-context-mcp`` executable. Dispatches to dsh's Cordis patch, a
     file-based client, or a CLI command depending on which fields are set
     on *tool*.
+
+    Returns True if registration succeeded (or would in dry-run); False if
+    the registration was skipped (e.g. dsh profile not found).
     """
     if getattr(tool, "mcp_dsh", False):
-        _register_dsh_mcp(
+        return _register_dsh_mcp(
             tool, mcp_bin, dry_run=dry_run,
             project_root=project_root, dsh_home=dsh_home, dsh_profile=dsh_profile,
         )
-    elif tool.mcp_config_file:
+    if tool.mcp_config_file:
         _register_mcp_file(tool, mcp_bin, dry_run=dry_run)
-    elif tool.mcp_registration:
+        return True
+    if tool.mcp_registration:
         if dry_run:
             print(f"  [dry-run] {tool.name}: would register {mcp_bin}")
         else:
             _register_mcp_cli(tool, mcp_bin)
+        return True
+    return False
 
 
 def _register_mcp_cli(tool, mcp_bin: str) -> None:

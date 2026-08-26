@@ -575,19 +575,19 @@ def _init_one_tool(
         tool.mcp_registration or tool.mcp_config_file or tool.mcp_dsh
     ):
         if args.dry_run:
-            _register_mcp(
+            reg_ok = _register_mcp(
                 tool, mcp_bin, dry_run=True, project_root=project_root,
                 dsh_home=getattr(args, "dsh_home", None),
                 dsh_profile=getattr(args, "dsh_profile", None),
             )
         else:
-            _register_mcp(
+            reg_ok = _register_mcp(
                 tool, mcp_bin, project_root=project_root,
                 dsh_home=getattr(args, "dsh_home", None),
                 dsh_profile=getattr(args, "dsh_profile", None),
             )
         if getattr(tool, "mcp_dsh", False):
-            ok = True
+            ok = reg_ok
 
     # ── Instruction injection ──
     inj_ok, inj_warnings = _inject_instructions(tool, args, project_root)
