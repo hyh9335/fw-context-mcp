@@ -542,6 +542,18 @@ mcp = FastMCP(
         "file-reading tool.\n\n"
         "SELF-CORRECT: the moment you reach for a tool that is NOT fw-context\n"
         "for C/C++ code, stop and use the fw-context equivalent instead.\n\n"
+        "EVERY ANSWER IS IFDEF-FILTERED.  fw-context gives the code that\n"
+        "COMPILES for the active build.  A line of an inactive #if branch is\n"
+        "blank in the content of read_file, in the text that search_content\n"
+        "and search_bodies search, and in the body that get_source and\n"
+        "get_symbol_context give.  Line numbers never move.  Thus a dead\n"
+        "#ifdef block cannot reach you as live code.  Two limits:\n"
+        "• The filter needs an index.  When a file changed after the last\n"
+        "  index run, get_source gives the current text from the DISK, which\n"
+        "  holds every branch.  It sets source_origin: \"disk\" and a\n"
+        "  stale_warning — read both before you cite such a body.\n"
+        "• An empty result can mean the pattern is only in a dead branch.\n"
+        "  That is an answer, not a failure: the code does not compile.\n\n"
         "TOOL SELECTION (pick the right one):\n"
         '• Symbol by exact/prefix name _____ → lookup_symbol (e.g. "uart_", "main")\n'
         '• Symbols by concept/topic _________ → search_code (e.g. "interrupt handler")\n'

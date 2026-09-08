@@ -120,19 +120,53 @@ class TestEnrichBatchFlag:
 
         assert out[0]["body_unavailable"] is False
 
+    def test_the_stored_body_wins_over_the_disk(self, tmp_path: Path):
+        """The model must read the ifdef-filtered text, not the raw file.
+
+        ``symbols.source`` blanks the lines of an inactive ``#if`` branch.
+        The file on disk holds them, thus a body read from it would make the
+        model describe code that the build drops.  The same text also feeds
+        the hash that decides whether the model runs again — two different
+        texts there make every symbol with a dead branch look changed.
+        """
+        f = _source_file(tmp_path, lines=60)
+        filtered = "// line 5\n\n\n// line 8\n"
+        row = _row(file_path=str(f), line=5, end_line=8)
+        row["source"] = filtered
+
+        out = _enrich_batch(None, [row], CONFIG_HASH, project_root=tmp_path)
+
+        assert out[0]["body"] == filtered
+        assert "// line 6" not in out[0]["body"], (
+            "line 6 is blank in the stored body — reading the disk would "
+            "bring it back"
+        )
+        assert out[0]["body_unavailable"] is False
+
 
 # ── The analysis loop must skip such a symbol ────────────────────────────────
 
 
-def _add_symbol(conn, file_id: int, file_path: str, *, line: int, end_line: int) -> int:
-    """Insert one analyzable definition symbol and return its row id."""
+def _add_symbol(
+    conn, file_id: int, file_path: str, *, line: int, end_line: int, source: str = ""
+) -> int:
+    """Insert one analyzable definition symbol and return its row id.
+
+    *source* is empty by default because that is what the indexer stores for
+    the extent these tests use.  ``_store_symbol_rows`` calls ``_read_body``,
+    which gives an empty string when ``end_line`` is past the end of the
+    file — the very condition this module is about.  A stored body next to
+    an extent that cannot be read is a state the indexer never writes, and a
+    fixture that holds one tests nothing real: ``_enrich_batch`` prefers the
+    stored body, thus the symbol would never look body-less.
+    """
     insert_symbols_batch(
         conn,
         [
             (CONFIG_HASH, file_id, file_path, "img_parse_tlvs", "usr-img", "img_parse_tlvs",
              "the Mbed project::img_parse_tlvs", "function", line, 1, end_line, 1,
              "int img_parse_tlvs(const uint8_t*, size_t)",
-             "", None, 0, 0, "", 0, "", 1, 0.0, "// line 5\n", 0),
+             "", None, 0, 0, "", 0, "", 1, 0.0, source, 0),
         ],
     )
     return conn.execute("SELECT id FROM symbols WHERE usr = 'usr-img'").fetchone()["id"]

@@ -793,6 +793,11 @@ def search_bodies(
 ) -> list[dict]:
     """Find patterns in the TEXT OF A DEFINITION — the code inside its extent.
 
+    Searches **ifdef-filtered** text — only the code that compiles for the
+    current build.  A line of an inactive ``#if`` branch holds nothing, thus
+    a pattern that lives only in a dead branch gives no result here.  That
+    empty answer is the correct one: the code does not compile.
+
     Searches the stored text of every definition (``is_definition=1``), and
     a definition is not only a callable.  Measured on one project of 60,877
     symbols, the text covers:

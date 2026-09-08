@@ -357,8 +357,13 @@ CREATE TABLE IF NOT EXISTS files (
 -- (e.g., headers included by both).
 -- pagerank is pre-computed call-graph centrality — stored on the symbol
 -- so ranking queries do not need runtime graph traversal.
--- source contains the filtered function body text — stored eagerly so
--- search_bodies queries hit the FTS5 index, not files on disk.
+-- source contains the ifdef-filtered function body text — stored eagerly so
+-- search_bodies queries hit the FTS5 index, not files on disk.  "Filtered"
+-- means that a line of an inactive #if branch is a bare newline: the text
+-- holds only the code that compiles for this build_config, and every line
+-- that stays keeps its number.  The lines come from the record the
+-- preprocessor made of the branches it skipped (indexer/skipped_ranges.py).
+-- Rows written before fw-context-cc/3 hold the unfiltered text.
 CREATE TABLE IF NOT EXISTS symbols (
     id             INTEGER PRIMARY KEY,
     config_hash    TEXT    NOT NULL REFERENCES build_configs(config_hash),

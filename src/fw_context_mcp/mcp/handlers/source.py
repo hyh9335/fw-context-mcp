@@ -282,7 +282,11 @@ def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines
 
 
 # ── stale-aware body reading ──
-# A body comes from the disk, but its line number comes from the index.
+# A body and its line number both come from the index while the file on disk
+# still matches it, because only the indexed body is ifdef-filtered.  Once
+# the file changes, the disk holds the current text and the index holds the
+# filtered one, and the two cannot both be right.
+#
 # An edit that adds or removes lines above a symbol moves that symbol, and
 # the stored line number then points at unrelated code.  That code reads as
 # a valid function body, thus the caller cannot see the error.  The helpers
@@ -351,8 +355,10 @@ def _number_lines(text: str, start_line: int) -> str:
     gets numbered text from the disk and bare text from the index, and it
     cannot tell the two apart from the shape alone.
 
-    The numbers are the ones the index holds, thus they can differ from the
-    file on disk.  The warning that goes with an "index" body says so.
+    The numbers are the ones the index holds.  For an unchanged file they are
+    the numbers of the file, because the index read that same file.  For a
+    file that changed after the index run they can differ, and the warning
+    that goes with that body says so.
     """
     return "\n".join(
         f"{start_line + offset:4d}  {line}"
@@ -407,27 +413,41 @@ def _read_verified_body(
         text comes from the file, ``"index"`` when it comes from
         ``symbols.source``, and ``""`` when there is no body.  *warning* is
         None when the file did not change after the index run.
+
+    WHY the index comes first: only ``symbols.source`` is ifdef-filtered.
+    The disk holds every branch, thus a body read from it shows the code of
+    an inactive ``#if`` as live code.  The two texts are the same for a file
+    with no conditional, and for one with a conditional the index is the
+    text that answers the question the tool promises to answer.
     """
     line_no = row["line"]
     end_line = row["end_line"] or 0
 
     if not _file_differs(file_path, *stored_state):
         # The usual path: the file did not change after the index run, thus
-        # the stored line number is correct.  Costs one read of the file to
-        # hash it — the body read below opens it again, and one extra read
-        # of one file buys an answer a stat() cannot give, because git
-        # rewrites the stamp of a file it did not change.
+        # the stored body is current AND filtered.  Costs one read of the
+        # file to hash it, and one extra read of one file buys an answer a
+        # stat() cannot give, because git rewrites the stamp of a file it
+        # did not change.
+        indexed_body = row["source"] or ""
+        if indexed_body:
+            return _number_lines(indexed_body, line_no), "index", None
+        # No stored body — a declaration, or an extent of one line.  Only
+        # the disk can answer, and such a symbol has no branch to filter.
         return _read_symbol_body(file_path, line_no, end_line=end_line), "disk", None
 
     if _body_matches_symbol(file_path, row):
         # The file changed, but the symbol did not move.  The disk gives the
-        # current body, which is better than the indexed copy.
+        # current body, which is better than a copy of the earlier text.
+        # Nothing can filter it: which branch compiles now is a question for
+        # the preprocessor, and only an index run asks it.
         return (
             _read_symbol_body(file_path, line_no, end_line=end_line),
             "disk",
             f"{file_path} changed after the last index run. The body below is "
-            f"current. The metadata (callers, callees, line numbers of other "
-            f"symbols) can be out of date.",
+            f"current, and it holds EVERY #ifdef branch — the index could not "
+            f"filter the inactive ones. The metadata (callers, callees, line "
+            f"numbers of other symbols) can be out of date.",
         )
 
     indexed_body = row["source"] or ""
@@ -692,6 +712,14 @@ def get_source(
     extents so you get exactly the function body. Generic file readers
     don't know where a function actually ends — libclang tracks exact
     {start, end} from the AST.
+
+    The body is **ifdef-filtered**: a line of an inactive ``#if`` branch
+    comes back blank, thus the text holds only the code that compiles for
+    this build.  The line numbers do not move.  ``source_origin`` says where
+    the text came from — ``"index"`` is the filtered copy, ``"disk"`` is the
+    file itself and holds EVERY branch.  A body reaches you from the disk
+    only when the file changed after the last index run, and
+    ``stale_warning`` says so.
 
     For enums, includes a ``constants`` array listing all member constants
     with their values. For macros, returns kind="macro" with ``value``
@@ -1162,6 +1190,11 @@ def get_symbol_context(
     graph naturally spans project and vendor boundaries in both directions
     (project → vendor API, vendor callback → project handler).
 
+    The body is **ifdef-filtered**, the same as in ``get_source``: a line of
+    an inactive ``#if`` branch comes back blank and the line numbers do not
+    move.  ``source_origin`` says whether the text is the filtered copy
+    (``"index"``) or the file itself (``"disk"``, every branch present).
+
     Read-only. No side effects.
 
     Args:
@@ -1510,9 +1543,15 @@ def read_file(
                 f"below comes from the index, not from the disk."
             )
     else:
-        # Legacy index fallback: older indexes (pre-ifdef-filtering) have an
-        # empty content column.  Read from raw disk instead and emit a
-        # warning so the user knows this is NOT build-accurate content.
+        # No stored content.  Two causes, and the warning covers both:
+        #   1. A legacy index, written before the content column was filled.
+        #   2. A file that the parse saw with no active line at all — the
+        #      content pass skips it, thus no text was ever stored.  A header
+        #      with no include guard whose whole body is one dead #ifdef is
+        #      such a file: the #define of a guard would have been an active
+        #      line, and without one nothing is.
+        # Read from raw disk instead and warn, because this content is NOT
+        # build-accurate — it holds every #ifdef branch.
         disk_lines = read_file_lines(abs_path(root, resolved))
         if disk_lines is None:
             return {"error": f"Could not read file: {abs_path(root, resolved)}"}

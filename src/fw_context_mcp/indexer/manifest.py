@@ -1022,10 +1022,23 @@ def compute_config_hash(
         dialect |= external
 
     canonical: dict = {
-        # Bumped from /1, which keyed the hash on the per-TU {file, arguments}
-        # list.  Every existing index therefore gets one final reindex, which
-        # is intended: the old hashes describe a different question.
-        "_format": "fw-context-cc/2",
+        # /1 keyed the hash on the per-TU {file, arguments} list.  /2 removed
+        # that list.  /3 marks the change of the STORED ROWS, not of the
+        # question this function asks: from /3 on, ``files.content`` and
+        # ``symbols.source`` hold only the lines that the preprocessor took.
+        # Before it, an inactive #ifdef branch stayed in both, and a dead
+        # block inside a function body was invisible as dead.
+        #
+        # WHY the format version belongs in THIS hash: a new config_hash
+        # leaves no row for the build, thus a plain `fw-context index` writes
+        # every file and every body again.  A bump of the schema version
+        # cannot do the same job — the migration keeps the rows, and the
+        # content pass skips a file that already holds text, thus the stale
+        # text survives until `index --force`.
+        #
+        # Every existing index therefore gets one final reindex, which is
+        # intended.
+        "_format": "fw-context-cc/3",
         "project_root": str(project_root),
         # WHY only these two: config_hash answers "could the same source text
         # compile to something different now?"  Macros flip #ifdef, and the

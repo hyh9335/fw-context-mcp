@@ -1,9 +1,13 @@
 """Regression tests for stale-aware body reading in the source handler.
 
-The index holds the line number of a symbol, but ``get_source`` reads the
-body from the disk.  An edit that adds lines above the symbol moves it, and
-the stored line number then points at unrelated code.  That code reads as a
-valid function body, thus the caller cannot see the error.
+``get_source`` takes the body and its line number from the index while the
+file on disk still matches it, because only the indexed body is
+ifdef-filtered.  Once the file changes, the disk holds the current text and
+the index holds the filtered one, and the two cannot both be right.
+
+An edit that adds lines above a symbol moves it, and the stored line number
+then points at unrelated code.  That code reads as a valid function body,
+thus the caller cannot see the error.
 
 These tests make sure that the handler detects this condition and never
 gives the body of one symbol under the name of another.
@@ -121,9 +125,31 @@ class TestBodyMatchesSymbol:
 
 
 class TestReadVerifiedBody:
-    def test_unchanged_file_reads_the_disk(self, source_file: Path):
+    def test_unchanged_file_reads_the_index(self, source_file: Path):
+        """The stored body wins while the file matches it.
+
+        Only ``symbols.source`` is ifdef-filtered.  The disk holds every
+        branch, thus a body read from it would show the code of an inactive
+        ``#if`` as live code.  For a file that did not change, the two texts
+        describe the same symbol and the index is the one that answers the
+        question the tool promises to answer.
+        """
         text, origin, warning = _read_verified_body(
             _make_row(), str(source_file), (_indexed_mtime(source_file), "")
+        )
+        assert origin == "index"
+        assert warning is None, "an unchanged file needs no warning"
+        assert "uart_start();" in text
+
+    def test_unchanged_file_without_a_stored_body_reads_the_disk(
+        self, source_file: Path
+    ):
+        """A declaration stores no body, and only the disk can answer.
+
+        Such a symbol has no extent to hold a branch, thus nothing is lost.
+        """
+        text, origin, warning = _read_verified_body(
+            _make_row(source=""), str(source_file), (_indexed_mtime(source_file), "")
         )
         assert origin == "disk"
         assert warning is None
@@ -179,9 +205,12 @@ class TestReadVerifiedBody:
 
         _read_symbol_body prefixes every line with its number.  The indexed
         body is stored bare, thus it needs the same prefix on the way out.
+
+        The disk body comes from a row with no stored text — that is the one
+        path left that reads the file while the file still matches the index.
         """
         disk_text, disk_origin, _ = _read_verified_body(
-            _make_row(), str(source_file), (_indexed_mtime(source_file), "")
+            _make_row(source=""), str(source_file), (_indexed_mtime(source_file), "")
         )
         indexed_mtime = os.path.getmtime(source_file)
         _shift_file(source_file)

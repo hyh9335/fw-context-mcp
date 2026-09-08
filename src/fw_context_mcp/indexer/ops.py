@@ -50,6 +50,7 @@ try:
 except ImportError:
     TranslationUnitLoadError = RuntimeError  # clang not available — use fallback
 from collections import OrderedDict
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -83,6 +84,7 @@ from fw_context_mcp.utils import (
 from .db._chunking import chunked
 from .db._files import FileIdLookup
 from .manifest import _is_generated_header
+from .skipped_ranges import collect_skipped_lines
 
 log = logging.getLogger(__name__)
 
@@ -130,15 +132,34 @@ def _clear_body_cache() -> None:
     _body_cache.clear()
 
 
-def _read_body(lines: list[str], start_line: int, end_line: int) -> str:
+def _read_body(
+    lines: list[str], start_line: int, end_line: int, skipped: AbstractSet[int]
+) -> str:
     """Extract symbol body from pre-read file lines using libclang extents.
 
     *start_line* and *end_line* are 1-based.
     Returns the joined body text or an empty string when the range is invalid.
+
+    *skipped* holds the lines of *the file these lines come from* that the
+    preprocessor did not take (see ``skipped_ranges.py``).  An extent is one
+    continuous range of lines, thus a dead ``#ifdef`` block inside a body is
+    inside the extent of that body.  Such a line becomes a bare newline: the
+    body then holds only the code that compiles, and every line that stays
+    keeps its number.
+
+    The parameter has no default on purpose.  A body that reaches the index
+    unfiltered shows dead code as live code, and an audit can then approve
+    code that the compiler never sees.  A required parameter makes the type
+    checker name each call site instead.
     """
-    if end_line > start_line and end_line <= len(lines):
+    if not (end_line > start_line and end_line <= len(lines)):
+        return ""
+    if not skipped:
         return "".join(lines[start_line - 1 : end_line])
-    return ""
+    return "".join(
+        "\n" if number in skipped else lines[number - 1]
+        for number in range(start_line, end_line + 1)
+    )
 
 
 def _compute_content_hash(
@@ -148,14 +169,20 @@ def _compute_content_hash(
     signature: str,
     qualified_name: str,
     docstring: str,
+    skipped: AbstractSet[int],
 ) -> str:
     """Stable hash of a symbol's body + identity for change detection.
 
     Uses the actual body text (read from disk via libclang extents) so that
     even a refactor preserving line count is detected.  Whitespace is stripped
     so formatting-only changes are ignored.
+
+    *skipped* must be the same set that ``_read_body`` gets for the stored
+    body.  When the two disagree, the hash covers text that the index does
+    not hold, and a change inside a dead branch then reads as a changed
+    symbol.
     """
-    body = _read_body(lines, start_line, end_line)
+    body = _read_body(lines, start_line, end_line, skipped)
     return compute_content_hash(body, qualified_name, signature, docstring)
 
 
@@ -189,10 +216,16 @@ def _build_filtered_file_content(
     skip_files: frozenset[str] | None = None,
     refresh_paths: set[str] | None = None,
 ) -> tuple[int, list[dict]]:
-    """Tokenize TU, extract active lines per file, store ifdef-filtered content.
+    """Find the active lines of each file of a TU, store ifdef-filtered content.
 
     Parses *unit* (a ``CompilationUnit`` data class) with libclang, then
-    tokenizes to find which source lines are active (not ``#ifdef``-dead).
+    collects the lines that carry code and subtracts the lines that the
+    preprocessor skipped.  Two steps build the first set — the tokens of the
+    TU and the extent of every cursor — and neither can tell an inactive
+    ``#if`` branch from live code.  ``collect_skipped_lines`` gives the
+    record the preprocessor made of the branches it did not take, and that
+    record decides.  See ``skipped_ranges.py``.
+
     Processes files whose ``content`` column is still empty, plus the files
     named in *refresh_paths* — the set this parse owns, whose text just
     changed.  Everything else keeps its stored content: re-filtering a file
@@ -360,6 +393,13 @@ def _build_filtered_file_content(
 
     _collect_all_active_lines(tu.cursor)
 
+    # Neither source above can tell an inactive #if branch from live code.
+    # The tokens come from a raw lexer, which does no preprocessing, and an
+    # extent is one continuous range of lines, thus it carries a dead block
+    # inside a function body along with the body.  The preprocessor kept a
+    # record of what it skipped; subtract it below, per file.
+    skipped = collect_skipped_lines(tu)
+
     # Paths this loop wrote.  The blank-out pass below must not touch them
     # again: this loop already put the current text there.
     written: set[str] = set()
@@ -382,6 +422,11 @@ def _build_filtered_file_content(
 
         db_path = _normalize_file_path(abs_path, project_root)
         resolved = Path(abs_path).resolve()
+
+        # Drop the lines of every inactive #if branch.  The key of `active`
+        # is the spelling libclang used at that point, which is not stable
+        # for one file, thus the two sides meet on the resolved path.
+        active_lines = active_lines - skipped.get(resolved, frozenset())
 
         # Already processed — and not owned by this parse, so its stored
         # content still matches the disk.
@@ -593,12 +638,18 @@ def _store_symbol_rows(
     project_root: Path,
     vendor_patterns: list[str],
     project_patterns: list[str],
+    skipped: dict[Path, set[int]],
     build_dir_patterns: list[str] | None = None,
 ) -> tuple[int, dict[int, int]]:
     """Build and batch-insert symbol rows for one TU.
 
     Returns ``(syms_added, file_proj)`` where *file_proj* maps
     ``file_id → max(is_project)`` across all files touched by this TU.
+
+    *skipped* maps the resolved path of a file to the lines that the
+    preprocessor did not take, from ``collect_skipped_lines``.  The stored
+    body of a symbol drops those lines.  An empty map stores every body
+    complete, which is what a TU with no inactive branch needs.
 
     The caller uses *file_proj* to update ``files.is_project`` —
     a file that hosts both project and vendor symbols is treated as
@@ -694,7 +745,13 @@ def _store_symbol_rows(
         if s.is_definition and s.end_line > s.line:
             file_lines = _cached_read_lines(s.file)
             if file_lines is not None:
-                body = _read_body(file_lines, s.line, s.end_line)
+                # resolved_sym is reused from the is_project block above:
+                # the skipped map is keyed by resolved path, and one
+                # Path.resolve() for each symbol is enough.
+                body = _read_body(
+                    file_lines, s.line, s.end_line,
+                    skipped.get(resolved_sym, frozenset()),
+                )
         fid = file_id_cache[normalized_sym_file]
         # Track the highest is_project value per file — files hosting any
         # project symbol get is_project=1 even if they also contain
@@ -752,6 +809,7 @@ def _detect_moved_symbols(
     old_usrs: set[str],
     file_id_cache: dict[str, int],
     project_root: Path,
+    skipped: dict[Path, set[int]],
 ) -> None:
     """Detect symbols that moved between files without content changes.
 
@@ -808,13 +866,19 @@ def _detect_moved_symbols(
         lines = _cached_read_lines(s.file)
         if lines is None:
             continue
-        old_lines = _cached_read_lines(abs_path(project_root, old_row["file_path"]))
+        old_abs_path = abs_path(project_root, old_row["file_path"])
+        old_lines = _cached_read_lines(old_abs_path)
         if old_lines is None:
             continue
         # Compare content hashes — same body + signature = same symbol.
         # If hashes differ, the symbol was genuinely modified (not just
         # moved), so we keep the new insert (old row will be cleaned up
         # by _delete_old_for_tu on its original TU).
+        #
+        # Each body drops the dead lines of ITS OWN file: the two bodies
+        # come from two files, and the hash must cover the same text that
+        # the index stores for each.  A file outside this TU has no entry,
+        # and both sides then compare the full text of that file.
         old_ch = _compute_content_hash(
             old_lines,
             old_row["line"],
@@ -822,9 +886,11 @@ def _detect_moved_symbols(
             old_row["signature"],
             old_row["qualified_name"],
             old_row["docstring"],
+            skipped.get(Path(old_abs_path).resolve(), frozenset()),
         )
         new_ch = _compute_content_hash(
             lines, s.line, s.end_line, s.signature, s.qualified_name, s.docstring,
+            skipped.get(Path(s.file).resolve(), frozenset()),
         )
         if old_ch != new_ch:
             continue
@@ -1167,6 +1233,17 @@ def store_symbols_for_unit(
             log.warning("skip TU %s: %s", unit.file.name, exc)
             return 0, 0, []
 
+    # ── Lines the preprocessor skipped, for every file of this TU ──
+    # The stored body of a symbol must hold only the code that compiles.
+    # One C call for each TU serves every body below.
+    #
+    # A caller that gives an ExtractionResult without a TU (return_tu=False)
+    # leaves this map empty, and the bodies then keep their inactive #ifdef
+    # blocks.  Nothing in the package does that on the index path — both
+    # branches above ask for the TU — but the fallback stays silent rather
+    # than stop the run.
+    skipped = collect_skipped_lines(tu) if tu is not None else {}
+
     # ── Resolve known files for this TU ──
     # When the caller provides *existing_files* (bulk indexing path), use it
     # directly — avoids a redundant full-scan of the files table inside the
@@ -1237,7 +1314,7 @@ def store_symbols_for_unit(
     if syms:
         syms_added, file_proj = _store_symbol_rows(
             conn, config_hash, syms, file_id_cache, project_root,
-            vendor_patterns, project_patterns, build_dir_patterns,
+            vendor_patterns, project_patterns, skipped, build_dir_patterns,
         )
         # Update files.is_project for all files touched by this TU.
         # Using ``is_project < ip`` ensures a file that was previously
@@ -1249,7 +1326,9 @@ def store_symbols_for_unit(
                 "UPDATE files SET is_project = ? WHERE id = ? AND is_project < ?",
                 (ip, fid, ip),
             )
-        _detect_moved_symbols(conn, config_hash, syms, old_usrs, file_id_cache, project_root)
+        _detect_moved_symbols(
+            conn, config_hash, syms, old_usrs, file_id_cache, project_root, skipped,
+        )
 
     # Every path written to or matched against the database goes through the
     # one normaliser.  There used to be a second, local one here that omitted

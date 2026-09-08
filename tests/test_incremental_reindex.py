@@ -328,23 +328,23 @@ class TestContentHashHelpers:
         from fw_context_mcp.indexer.ops import _read_body
 
         lines = ["a\n", "b\n", "c\n", "d\n", "e\n"]
-        body = _read_body(lines, 2, 4)
+        body = _read_body(lines, 2, 4, frozenset())
         assert body == "b\nc\nd\n"
 
     def test_read_body_invalid_range(self):
         from fw_context_mcp.indexer.ops import _read_body
 
         lines = ["a\n", "b\n"]
-        assert _read_body(lines, 5, 6) == ""
-        assert _read_body(lines, 2, 1) == ""
-        assert _read_body(lines, 1, 10) == ""
+        assert _read_body(lines, 5, 6, frozenset()) == ""
+        assert _read_body(lines, 2, 1, frozenset()) == ""
+        assert _read_body(lines, 1, 10, frozenset()) == ""
 
     def test_compute_content_hash_deterministic(self):
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo() {\n", "    return 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "", frozenset())
         assert h1 == h2
         assert len(h1) == 64  # full SHA256 hex
 
@@ -353,16 +353,16 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "    return 99;\n", "}\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "", frozenset())
         assert h1 != h2
 
     def test_compute_content_hash_differs_on_signature_change(self):
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo(int x) {\n", "    return x;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo(int x)", "foo", "")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo(float x)", "foo", "")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo(int x)", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo(float x)", "foo", "", frozenset())
         assert h1 != h2
 
     def test_compute_content_hash_ignores_trailing_whitespace(self):
@@ -370,8 +370,8 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "    return 42;\n", "}\n", "\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 4, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 4, "void foo()", "foo", "", frozenset())
         # Extra trailing empty line stripped by body.strip()
         assert h1 == h2
 
@@ -381,8 +381,8 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "\treturn 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "", frozenset())
         # Internal whitespace differences are preserved
         assert h1 != h2
 
@@ -390,8 +390,8 @@ class TestContentHashHelpers:
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo() {\n", "    return 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does foo")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does bar")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does foo", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does bar", frozenset())
         assert h1 != h2
 
 

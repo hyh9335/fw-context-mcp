@@ -76,9 +76,17 @@ def _fetch_referencers(conn, symbol_usr: str, config_hash: str) -> list[str]:
 def _enrich_batch(conn, batch_rows, config_hash: str, *, project_root: Path | None = None) -> list[dict]:
     """Augment symbol rows with ``body``, ``callees`` and ``body_unavailable``.
 
-    Reads function/method bodies from disk and fetches callee names from
+    Takes the body from the ``source`` column and fetches callee names from
     the reference index.  A callee lookup that gives nothing is normal and
     stays an empty list.
+
+    WHY the column and not the disk: ``source`` is ifdef-filtered, thus it
+    holds only the code that compiles.  A body read from the disk holds every
+    branch, and the model would then describe code that the build drops.  The
+    column is also what the hash comparison in ``_build_llm_analysis`` uses,
+    and two different texts there make every symbol with a dead branch look
+    changed on each run.  The disk stays as the fallback for a row that has
+    no stored body — a symbol indexed before the column existed.
 
     ``body_unavailable`` is True when the kind of the symbol must have a
     body, but the read gave nothing.  The two causes are a source file that
@@ -112,21 +120,26 @@ def _enrich_batch(conn, batch_rows, config_hash: str, *, project_root: Path | No
             and abs_file_path
             and end_line > start_line
         ):
-            if not os.path.exists(abs_file_path):
-                body_unavailable = True
-                log.warning(
-                    "[%s] body not available for %s — file missing: %s",
-                    kind, d.get("qualified_name", "?"), abs_file_path,
-                )
-            else:
-                body = _read_body(abs_file_path, start_line, end_line)
-                if not body and start_line > 0:
+            # The stored body is ifdef-filtered — prefer it, see the
+            # docstring.  A row from before the column existed holds nothing
+            # here, and the disk then answers.
+            body = d.get("source") or ""
+            if not body:
+                if not os.path.exists(abs_file_path):
                     body_unavailable = True
                     log.warning(
-                        "[%s] empty body for %s at %s:%d-%d — "
-                        "path resolution or extent mismatch",
-                        kind, d.get("qualified_name", "?"), abs_file_path, start_line, end_line,
+                        "[%s] body not available for %s — file missing: %s",
+                        kind, d.get("qualified_name", "?"), abs_file_path,
                     )
+                else:
+                    body = _read_body(abs_file_path, start_line, end_line)
+                    if not body and start_line > 0:
+                        body_unavailable = True
+                        log.warning(
+                            "[%s] empty body for %s at %s:%d-%d — "
+                            "path resolution or extent mismatch",
+                            kind, d.get("qualified_name", "?"), abs_file_path, start_line, end_line,
+                        )
 
         # Fetch callees / referencers from the reference index
         if usr:
@@ -308,8 +321,11 @@ def _build_llm_analysis(
         try:
             # ── Step 0: project DB hash check — skip unchanged symbols
             #    without disk I/O or callee fetch.  Uses the ``source``
-            #    column stored during indexing (same body text as
-            #    _enrich_batch would read from disk).
+            #    column stored during indexing, which is the same text that
+            #    _enrich_batch gives as the body.  The two MUST agree: the
+            #    hash below decides whether the model runs again, and a
+            #    body from the disk would differ for every symbol that
+            #    holds an inactive #ifdef branch.
             existing_hash = row.get("existing_hash")
             if existing_hash:
                 source_body = row["source"] or ""
