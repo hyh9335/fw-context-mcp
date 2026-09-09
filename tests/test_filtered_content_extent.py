@@ -403,6 +403,143 @@ class TestInactiveBranchesAreFiltered:
         assert len(content.splitlines()) == len(header.splitlines())
 
 
+class TestAHeaderReachedTwiceKeepsItsLiveCode:
+    """A second inclusion must not turn the live body of a header into dead code.
+
+    ``clang_getAllSkippedRanges`` reports the ranges of the WHOLE translation
+    unit, and one file can enter a TU more than once.  When the include guard
+    of a header is not the controlling macro of that header, clang cannot
+    apply its multiple-include optimization, thus it really preprocesses the
+    file again — and the second pass skips the whole guarded block, because
+    the guard macro is defined by then.
+
+    A map that unions the ranges of both inclusions therefore reports the
+    live body of the header as skipped, and the content pass blanks it out.
+    The answer must be the INTERSECTION: a line is dead only when every
+    inclusion skipped it.
+
+    A guard stops being the controlling macro on any of these, and both
+    appear in real SDK headers:
+
+    * another directive follows the ``#endif`` of the guard;
+    * an ``#include`` comes before the guard.
+    """
+
+    def test_include_before_the_guard_keeps_the_body(self, tmp_path: Path) -> None:
+        """The common shape: a header that includes something before guarding."""
+        root = tmp_path / "proj"
+        two = (
+            '#include "dep.h"\n'                       # 1  kills the optimization
+            "#ifndef TWO_H\n"                          # 2
+            "#define TWO_H\n"                          # 3
+            "static inline int two_helper(void)\n"     # 4
+            "{\n"                                      # 5
+            "    return 42;\n"                         # 6
+            "}\n"                                      # 7
+            "#endif\n"                                 # 8
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/dep.h": "#define DEP_MARK 1\n",
+                "src/two.h": two,
+                "src/a.h": '#include "two.h"\n',
+                "src/b.h": '#include "two.h"\n',
+                "src/main.c": (
+                    '#include "a.h"\n'
+                    '#include "b.h"\n'
+                    "int main(void) { return two_helper(); }\n"
+                ),
+            },
+            main="src/main.c",
+        )
+
+        assert "two_helper" in stored["src/two.h"], (
+            "the header entered the TU twice, and the second inclusion skipped "
+            "its guarded block — but the first one compiled the body, thus the "
+            "body is live code and must survive"
+        )
+        assert "return 42" in stored["src/two.h"]
+
+    def test_directive_after_the_guard_keeps_the_body(self, tmp_path: Path) -> None:
+        """The other shape: a trailing conditional after the guard's ``#endif``."""
+        root = tmp_path / "proj"
+        two = (
+            "#ifndef TWO_H\n"                          # 1
+            "#define TWO_H\n"                          # 2
+            "static inline int two_helper(void)\n"     # 3
+            "{\n"                                      # 4
+            "    return 42;\n"                         # 5
+            "}\n"                                      # 6
+            "#endif\n"                                 # 7
+            "#ifdef TWO_EXTRA\n"                       # 8  kills the optimization
+            "int two_extra(void);\n"                   # 9
+            "#endif\n"                                 # 10
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/two.h": two,
+                "src/a.h": '#include "two.h"\n',
+                "src/b.h": '#include "two.h"\n',
+                "src/main.c": (
+                    '#include "a.h"\n'
+                    '#include "b.h"\n'
+                    "int main(void) { return two_helper(); }\n"
+                ),
+            },
+            main="src/main.c",
+        )
+
+        assert "two_helper" in stored["src/two.h"]
+        assert "return 42" in stored["src/two.h"]
+        assert "two_extra" not in stored["src/two.h"], (
+            "TWO_EXTRA is defined in no inclusion, thus every inclusion "
+            "skipped this branch and it stays dead"
+        )
+
+    def test_a_branch_dead_in_every_inclusion_stays_filtered(self, tmp_path: Path) -> None:
+        """The intersection must not become a way of keeping dead code.
+
+        Both inclusions skip this branch, thus it is dead under either rule.
+        Without this test a fix could simply drop the filtering for any file
+        that appears twice, and every dead branch of a shared header would
+        come back.
+        """
+        root = tmp_path / "proj"
+        two = (
+            '#include "dep.h"\n'                       # 1
+            "#ifndef TWO_H\n"                          # 2
+            "#define TWO_H\n"                          # 3
+            "static inline int live_one(void) { return 1; }\n"   # 4
+            "#ifdef NEVER_SET\n"                       # 5
+            "int dead_in_header(void);\n"              # 6
+            "#endif\n"                                 # 7
+            "#endif\n"                                 # 8
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/dep.h": "#define DEP_MARK 1\n",
+                "src/two.h": two,
+                "src/a.h": '#include "two.h"\n',
+                "src/b.h": '#include "two.h"\n',
+                "src/main.c": (
+                    '#include "a.h"\n'
+                    '#include "b.h"\n'
+                    "int main(void) { return live_one(); }\n"
+                ),
+            },
+            main="src/main.c",
+        )
+
+        assert "live_one" in stored["src/two.h"]
+        assert "dead_in_header" not in stored["src/two.h"]
+
+
 def _index_bodies(root: Path, db_path: Path, source: str) -> dict[str, str]:
     """Index one TU and return the stored body of each definition.
 

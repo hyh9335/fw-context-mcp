@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+from collections import Counter
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,34 @@ def _bind() -> tuple[Any, Any] | None:
     return get_all, dispose
 
 
+def _count_reads(tu: Any) -> dict[Path, int]:
+    """Count how many times the preprocessor read each file of *tu*.
+
+    One file can enter one translation unit more than one time.  That count
+    is what ``collect_skipped_lines`` divides by, because a line is dead
+    only when every read of its file skipped it.
+
+    ``tu.get_includes()`` gives one entry for each ``#include`` directive
+    that the preprocessor acted on.  A directive that the multiple-include
+    optimization removed is in no entry, and that is what makes this count
+    the correct divisor: clang applies the optimization when an include
+    guard controls the whole file, and it then does not read the file a
+    second time.  Measured with libclang 18: a header of that shape gives
+    one entry for two directives, and a header of any other shape gives
+    two entries.
+
+    The main file of the unit is in no entry.  A caller must read an absent
+    file as one read.
+    """
+    reads: Counter[Path] = Counter()
+    for inclusion in tu.get_includes():
+        included = inclusion.include
+        if included is None:
+            continue
+        reads[Path(included.name).resolve()] += 1
+    return dict(reads)
+
+
 def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
     """Give the lines that the preprocessor skipped, for each file of *tu*.
 
@@ -90,8 +119,13 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
             Both parse sites of the indexer pass the option.
 
     Returns:
-        A map from the resolved path of a file to the set of its skipped
-        lines.  A file with no skipped line is not in the map.
+        A map from the resolved path of a file to the set of its dead
+        lines.  A file with no dead line is not in the map.
+
+        A line is dead only when EVERY read of its file skipped it.  One
+        file can enter one unit more than one time, and a read that comes
+        after the first one skips the whole block of an include guard.  The
+        first read compiled that block, thus the block is live code.
 
         The path is resolved because libclang spells one file more than one
         way — ``./inc/api.h`` at the point of the ``#include`` and an
@@ -118,7 +152,10 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
     if not pointer:
         return {}
 
-    skipped: dict[Path, set[int]] = {}
+    # How many times each line of each file was skipped.  A plain union over
+    # the ranges is wrong, because the ranges cover the WHOLE unit and one
+    # file can be read more than one time.  See the count test below.
+    hits: dict[Path, Counter[int]] = {}
     try:
         source_range_list = pointer.contents
         for index in range(source_range_list.count):
@@ -128,11 +165,35 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
             if start.file is None:
                 continue
             key = Path(start.file.name).resolve()
-            skipped.setdefault(key, set()).update(range(start.line, end.line + 1))
+            hits.setdefault(key, Counter()).update(range(start.line, end.line + 1))
     finally:
         # The C API owns this memory until the caller gives it back.  An
         # index run parses thousands of translation units, thus a leak here
         # grows without a limit.
         dispose(pointer)
+
+    # Keep a line only when EVERY read of its file skipped it.
+    #
+    # WHY the count and not a union: an include guard stops clang from
+    # applying its multiple-include optimization when the guard does not
+    # control the whole file — another directive follows the `#endif`, or an
+    # `#include` comes before the guard, and the second shape is common in a
+    # vendor SDK.  clang then really reads the file again, and that second
+    # read skips the full guarded block, because the guard macro is defined
+    # by then.  A union of the two reads reports the live body of the header
+    # as dead, and the content pass blanks out code that compiled.
+    #
+    # The test is `>=` and not `==` because two ranges of ONE read can cover
+    # one line: a dead block inside a dead block gives a range for each, and
+    # such a line is dead under either count.
+    reads = _count_reads(tu)
+    skipped: dict[Path, set[int]] = {}
+    for path, counter in hits.items():
+        # A file that get_includes() does not name is the main file of the
+        # unit, and the preprocessor read it one time.
+        needed = reads.get(path, 1)
+        dead = {line for line, count in counter.items() if count >= needed}
+        if dead:
+            skipped[path] = dead
 
     return skipped
