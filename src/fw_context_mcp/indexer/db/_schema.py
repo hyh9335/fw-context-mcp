@@ -53,6 +53,7 @@ log = logging.getLogger(__name__)
 __all__ = [
     "CURRENT_ROW_FORMAT",
     "CURRENT_SCHEMA_VERSION",
+    "ROW_FORMAT_PAIRED_WITH",
     "_ensure_column",
     "drop_fts_triggers",
 ]
@@ -68,6 +69,21 @@ __all__ = [
 #      preprocessor took.  Before it, both held every #ifdef branch, thus
 #      dead code reached every tool as live code.
 CURRENT_ROW_FORMAT = "fw-context-rows/1"
+
+# The config-hash format that was current when CURRENT_ROW_FORMAT last moved.
+#
+# WHY this constant exists: a bump of CURRENT_ROW_FORMAT alone does not
+# rewrite one row.  The staleness check asks for a reindex, but that run
+# mints no new build config, and the content pass skips every file that
+# already holds text.  `_step_finalize_manifest` then stamps the NEW format
+# over rows that still hold the OLD text, and the check goes quiet for good
+# over an index that answers with dead code.
+#
+# A new config hash is what really rewrites the rows: it leaves no row for
+# the build, thus a plain `fw-context index` writes every file and every
+# body again.  The two must therefore move together, and
+# `test_row_format_invalidation.py` fails when only one of them does.
+ROW_FORMAT_PAIRED_WITH = "fw-context-cc/3"
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, type_def: str) -> None:

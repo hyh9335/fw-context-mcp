@@ -153,3 +153,36 @@ class TestTheCheckReportsAMismatch:
             assert any("row format" in r for r in reasons), reasons
         finally:
             conn.close()
+
+
+class TestTheTwoVersionsMoveTogether:
+    """A bump of the row format alone rewrites no row.
+
+    The staleness check asks every index for a reindex when the stored
+    format differs.  That run mints no new build config, because the config
+    hash did not move, and the content pass skips every file that already
+    holds text.  `_step_finalize_manifest` then stamps the NEW format over
+    rows that still hold the OLD text, and the check goes quiet for good
+    over an index that answers with dead code.
+
+    A new config hash is what really rewrites the rows: no row exists for
+    the build, thus a plain `fw-context index` writes every file and every
+    body again.  Nothing at the stamp site can see the difference, thus this
+    test is the guard.
+    """
+
+    def test_a_row_format_bump_needs_a_config_hash_bump(self) -> None:
+        import inspect
+
+        from fw_context_mcp.indexer.db._schema import ROW_FORMAT_PAIRED_WITH
+        from fw_context_mcp.indexer.manifest import compute_config_hash
+
+        source = inspect.getsource(compute_config_hash)
+        assert f'"_format": "{ROW_FORMAT_PAIRED_WITH}"' in source, (
+            "CURRENT_ROW_FORMAT moved without the config hash. A reindex "
+            "that mints no new build config keeps the old text and stamps "
+            "the new format over it, thus the staleness check goes quiet "
+            "over an index that answers with dead code. Bump `_format` in "
+            "compute_config_hash, then set ROW_FORMAT_PAIRED_WITH to the "
+            "new value."
+        )

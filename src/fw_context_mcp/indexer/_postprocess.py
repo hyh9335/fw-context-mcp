@@ -1305,6 +1305,13 @@ def _step_finalize_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
             # meaning this version writes.  `runner.run` must not stamp it:
             # that write happens before any unit is read, and a run that
             # failed would leave the new format over the old rows.
+            #
+            # WARNING: this stamps at the end of EVERY run, and a run that
+            # rewrote no row reaches it too.  Nothing here can tell the two
+            # apart, thus a bump of CURRENT_ROW_FORMAT alone would be stamped
+            # over the old text and the staleness check would go quiet for
+            # good.  `ROW_FORMAT_PAIRED_WITH` carries that rule, and a test
+            # holds the two versions together.
             row_format=CURRENT_ROW_FORMAT,
         )
 
