@@ -1459,7 +1459,14 @@ def read_file(
         content (str — the ifdef-filtered text, bare unless
         ``line_numbers`` was set),
         warning (str, optional — when reading from raw disk instead of
-        indexed content)}.
+        indexed content, or when no line of the file is active),
+        all_lines_inactive (True, optional)}.
+
+        ``all_lines_inactive`` marks a file that the active build compiles
+        no line of: every line is inside an inactive ``#if`` branch, thus
+        ``content`` holds the correct number of lines and no text.  Without
+        this field that answer reads as an empty file, and the two mean
+        opposite things.
 
         A range adds ``start_line`` and ``end_line`` — the first and last
         line the ``content`` really holds, after the end was clamped to the
@@ -1533,6 +1540,19 @@ def read_file(
         # Normal path: ifdef-filtered content is available from the index.
         # This is the preferred code path — inactive #ifdef branches are
         # already stripped, line numbers are preserved as blank lines.
+        if not content.strip():
+            # Every line of the file is inside an inactive branch.  The text
+            # keeps the length of the file, thus it is truthy and reaches
+            # this branch as a normal answer — but content of the correct
+            # length that holds no text reads exactly like an empty file.
+            # The two mean opposite things: an empty file has no code, and
+            # this file has code that the active build does not compile.
+            result["all_lines_inactive"] = True
+            result["warning"] = (
+                f"The active build compiles no line of {row['path']}. Every line "
+                f"is inside an inactive #if branch, thus the content below is "
+                f"blank and the file is NOT empty on disk."
+            )
         if _file_differs(result["file"], row["mtime"] or 0.0, row["source_hash"] or ""):
             # The content comes from the index, thus a changed file makes it
             # a copy of an older state.  The disk path below does not need

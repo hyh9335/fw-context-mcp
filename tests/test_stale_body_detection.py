@@ -475,3 +475,70 @@ def _indexed_project(tmp_path: Path) -> tuple[Path, Path]:
     finally:
         conn.close()
     return root, src
+
+
+class TestAFullyFilteredFileIsAnnounced:
+    """A file whose every line is dead must say so, not read as empty.
+
+    The content pass keeps the line count of a file, thus a file whose every
+    active line is inside an inactive branch is stored as blank lines.  That
+    text is truthy, so it takes the authoritative index path of
+    ``read_file`` — and the caller then receives content of the correct
+    length that holds no text, with nothing to say why.
+
+    A caller cannot tell that answer apart from an empty file, and the two
+    mean opposite things: one file has no code, the other has code that the
+    active build does not compile.
+    """
+
+    def _blank_the_stored_text(self, tmp_path: Path, text: str) -> None:
+        from fw_context_mcp.indexer.db import open_db, transaction
+
+        conn = open_db(tmp_path / "proj-001" / "index.db")
+        try:
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE files SET content=? WHERE config_hash='ch' AND path='src/main.c'",
+                    (text,),
+                )
+        finally:
+            conn.close()
+
+    def test_a_file_of_only_blank_lines_is_reported(self, tmp_path: Path) -> None:
+        from fw_context_mcp.mcp.handlers.source import read_file
+
+        root, _src = _indexed_project(tmp_path)
+        self._blank_the_stored_text(tmp_path, "\n")
+
+        result = read_file(file_path="src/main.c", project_root=str(root))
+
+        assert "error" not in result, result
+        assert result.get("all_lines_inactive") is True, (
+            "every line of the stored text is blank, thus the caller must "
+            "learn that the active build compiles no line of this file"
+        )
+        assert result.get("warning"), "the condition needs words, not only a flag"
+
+    def test_a_file_with_live_code_is_not_reported(self, tmp_path: Path) -> None:
+        """The flag must mark the real condition, not every file."""
+        from fw_context_mcp.mcp.handlers.source import read_file
+
+        root, _src = _indexed_project(tmp_path)
+
+        result = read_file(file_path="src/main.c", project_root=str(root))
+
+        assert "error" not in result, result
+        assert "all_lines_inactive" not in result
+        assert "warning" not in result
+
+    def test_a_file_with_one_live_line_is_not_reported(self, tmp_path: Path) -> None:
+        """One surviving line is enough to make the file a normal answer."""
+        from fw_context_mcp.mcp.handlers.source import read_file
+
+        root, _src = _indexed_project(tmp_path)
+        self._blank_the_stored_text(tmp_path, "\n\nint live(void);\n\n")
+
+        result = read_file(file_path="src/main.c", project_root=str(root))
+
+        assert "error" not in result, result
+        assert "all_lines_inactive" not in result
