@@ -143,6 +143,51 @@ class TestEnrichBatchFlag:
         )
         assert out[0]["body_unavailable"] is False
 
+    def test_a_stored_body_of_only_blank_lines_is_unavailable(self, tmp_path: Path):
+        """A body filtered down to nothing must never reach the model.
+
+        Every line of the symbol is inside an inactive branch, thus the
+        stored body holds newlines and no text.  Such a string is truthy,
+        so it used to pass as a real body.
+
+        That is unsafe for the caches, not only wasteful: the hash strips
+        the body before it hashes, thus the hash of this body is the hash
+        of an EMPTY body.  The answer of the model would go into the
+        content-addressable caches under that hash, and every later symbol
+        with the same name, signature and docstring would read it back.
+        """
+        f = _source_file(tmp_path, lines=60)
+        row = _row(file_path=str(f), line=5, end_line=8)
+        row["source"] = "\n\n\n\n"
+
+        out = _enrich_batch(None, [row], CONFIG_HASH, project_root=tmp_path)
+
+        assert out[0]["body_unavailable"] is True, (
+            "the stored body holds no text, thus the model has nothing to "
+            "read and the sentinel path must take over"
+        )
+        assert "// line 5" not in out[0]["body"], (
+            "the disk holds every branch — falling back to it would give the "
+            "model the dead code that the filter removed"
+        )
+
+    def test_a_row_from_before_the_source_column_still_reads_the_disk(
+        self, tmp_path: Path
+    ):
+        """An empty column is a legacy row, and the disk must answer for it.
+
+        The blank-body check must not catch this row: nothing was ever
+        stored here, thus the disk is the only source, and it is correct.
+        """
+        f = _source_file(tmp_path, lines=60)
+        row = _row(file_path=str(f), line=5, end_line=8)
+        row["source"] = ""
+
+        out = _enrich_batch(None, [row], CONFIG_HASH, project_root=tmp_path)
+
+        assert out[0]["body"].startswith("// line 5")
+        assert out[0]["body_unavailable"] is False
+
 
 # ── The analysis loop must skip such a symbol ────────────────────────────────
 
