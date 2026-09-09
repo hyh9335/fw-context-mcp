@@ -1449,6 +1449,11 @@ def read_file(
     the original file — inactive branches appear as blank lines, and the
     text spans the whole file, thus ``lines`` is the length of the file.
 
+    A blank line is an answer, and not a defect: it says that the line is
+    in a branch the build does not take.  When EVERY line of the file is
+    blank, the dict carries ``all_lines_inactive`` and a ``warning`` — such
+    a file holds code, and the active build compiles none of it.
+
     ``content`` is bare text by default and carries NO line-number prefix —
     unlike the ``source`` of ``get_source``, which numbers every line.
     Never count the lines here to find a number.  Take it from a field

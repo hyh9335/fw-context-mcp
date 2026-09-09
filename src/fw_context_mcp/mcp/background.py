@@ -354,10 +354,11 @@ def _fast_staleness_check(root: Path) -> tuple[bool, list[str]]:
             return False, []
         config_hash = cfg["config_hash"]
 
-        # 1-3. Structural checks (shared with daemon._staleness_check)
+        # 1-4. Structural checks (shared with daemon._staleness_check):
+        #      compile_commands.json, schema version, row format, refs.
         reasons.extend(check_structural_staleness(conn, config_hash, dict(cfg), root))
 
-        # 4. Unanalyzed symbols?
+        # 5. Unanalyzed symbols?
         # Uses CONFIG analyze_vendor (not stored) because this check
         # predicts what the background reindex will do — and the
         # background reindex uses config, not stored flags.  Using

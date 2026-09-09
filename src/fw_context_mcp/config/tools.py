@@ -69,7 +69,8 @@ inactive `#if` branch is blank in the `content` of `read_file`, in the text
 that `search_content` and `search_bodies` search, and in the body that
 `get_source` and `get_symbol_context` give. Line numbers never move.
 
-This is why a dead `#ifdef` block cannot reach you as live code. Two limits:
+This is why a dead `#ifdef` block cannot reach you as live code. Three
+limits:
 
 - The filter needs an index. When a file changed after the last index run,
   `get_source` gives the current text from the DISK, which holds every
@@ -77,6 +78,9 @@ This is why a dead `#ifdef` block cannot reach you as live code. Two limits:
   before you cite such a body.
 - An empty result can mean "the pattern is only in a dead branch". That is
   an answer, not a failure — the code does not compile.
+- A file can come back with every line blank. `read_file` marks it with
+  `all_lines_inactive` and a `warning`. Such a file holds code, and the
+  active build compiles none of it — it is NOT an empty file.
 
 Never conclude that code is live because you saw it in a file. Cite
 fw-context, and check `source_origin` when the answer carries one.
