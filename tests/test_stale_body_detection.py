@@ -542,3 +542,45 @@ class TestAFullyFilteredFileIsAnnounced:
 
         assert "error" not in result, result
         assert "all_lines_inactive" not in result
+
+
+class TestTheLineCapReachesTheIndexBody:
+    """``index.max_symbol_body_lines`` must bound both body origins.
+
+    The disk path clamps its read with that setting.  The index path, which
+    an unchanged file always takes, numbered the whole stored body and
+    bounded nothing.  The configured cap therefore had no effect on the
+    common case: a caller that raised it saw no change, and a caller that
+    lowered it still received the whole body of a generated dispatch table.
+
+    Only a blind cut at 8000 characters was left, and it sets no flag and
+    cuts in the middle of a line.
+    """
+
+    def test_a_long_stored_body_is_capped(self, monkeypatch) -> None:
+        from fw_context_mcp.mcp.handlers import source as mod
+
+        monkeypatch.setattr(mod, "_get_max_body_lines", lambda: 10)
+        body = "".join(f"line {n}\n" for n in range(1, 101))
+
+        numbered = mod._number_lines(body, 1)
+
+        assert len(numbered.splitlines()) == 10, (
+            "the stored body holds 100 lines and the cap is 10, thus the "
+            "index path must clamp it the way the disk path does"
+        )
+        assert "line 1" in numbered
+        assert "line 100" not in numbered
+
+    def test_a_short_body_is_untouched(self, monkeypatch) -> None:
+        """The cap must bound the long body only."""
+        from fw_context_mcp.mcp.handlers import source as mod
+
+        monkeypatch.setattr(mod, "_get_max_body_lines", lambda: 10)
+        body = "a\nb\nc\n"
+
+        numbered = mod._number_lines(body, 5)
+
+        assert len(numbered.splitlines()) == 3
+        assert numbered.splitlines()[0].endswith("a")
+        assert numbered.splitlines()[0].strip().startswith("5")

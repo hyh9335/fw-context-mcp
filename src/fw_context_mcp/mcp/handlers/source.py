@@ -359,11 +359,41 @@ def _number_lines(text: str, start_line: int) -> str:
     the numbers of the file, because the index read that same file.  For a
     file that changed after the index run they can differ, and the warning
     that goes with that body says so.
+
+    The text is clamped to ``index.max_symbol_body_lines``, which is the cap
+    that ``_read_symbol_body`` applies to the disk.  Both origins must obey
+    it: an unchanged file always takes this path, thus a cap that this
+    function ignores has no effect on the common case.  The caller marks a
+    clamped body with ``_source_truncated``.
     """
+    lines = text.splitlines()[: _get_max_body_lines()]
     return "\n".join(
         f"{start_line + offset:4d}  {line}"
-        for offset, line in enumerate(text.splitlines())
+        for offset, line in enumerate(lines)
     )
+
+
+def _store_capped_source(result: dict, source: str, stored: str) -> None:
+    """Put *source* in *result*, and mark the body when a cap cut it.
+
+    Two caps can cut a body.  ``index.max_symbol_body_lines`` bounds the
+    number of lines, and ``_SOURCE_TRUNCATE_CHARS`` bounds what travels to
+    the caller.  *stored* is the body that the index holds, and its length
+    is what tells whether the line cap cut anything.
+
+    WHY the mark: the character cut lands in the middle of a line, thus a
+    caller that does not learn about it reads a body with an unbalanced
+    brace as the whole function.  The name carries a leading underscore
+    because it reports where the answer came from, and not the answer.
+    """
+    truncated = len(source) > _SOURCE_TRUNCATE_CHARS
+    if truncated:
+        source = source[:_SOURCE_TRUNCATE_CHARS]
+    if stored and len(stored.splitlines()) > _get_max_body_lines():
+        truncated = True
+    result["source"] = source
+    if truncated:
+        result["_source_truncated"] = True
 
 
 def _body_matches_symbol(file_path: str, row) -> bool:
@@ -768,6 +798,12 @@ def get_source(
         move, ``"index"`` when it did and the body comes from the index
         instead.  A moved symbol never gives the code of another symbol.
 
+        ``_source_truncated`` (True) marks a body that a cap cut:
+        ``index.max_symbol_body_lines`` bounds the number of lines, and a
+        second cap bounds the characters.  The character cut lands in the
+        middle of a line, thus a body with this mark can end in an
+        unbalanced brace.  Read the rest with ``read_file`` and a range.
+
         On failure the dict holds only ``error`` with the reason.
     """
     try:
@@ -858,7 +894,7 @@ def get_source(
         result["stale_warning"] = stale_warning
         result["stale"] = True
     if source:
-        result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        _store_capped_source(result, source, row["source"] or "")
         result["source_origin"] = origin
     elif not stale_warning:
         result["warning"] = f"Could not read source from {file_path}"
@@ -1341,7 +1377,7 @@ def get_symbol_context(
         result["overrides"] = overrides_info["overrides"]
         result["overridden_by"] = overrides_info["overridden_by"]
     if source:
-        result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        _store_capped_source(result, source, row["source"] or "")
         result["source_origin"] = source_origin
     if stale_warning:
         # The callers and callees come from the index, thus a changed file
