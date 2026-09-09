@@ -44,8 +44,20 @@ def _make_project_root(tmp_path: Path, project_id: str | None = None) -> Path:
 
 
 def _create_index_db(db_path: Path, project_id: str, root: Path) -> None:
-    """Create a minimal index DB with one project and one build config."""
-    from fw_context_mcp.indexer.db import open_db, transaction, upsert_build_config, upsert_project
+    """Create a minimal index DB with one project and one build config.
+
+    Stamps ``CURRENT_ROW_FORMAT`` because this stands in for a COMPLETED
+    index run.  ``_run_postprocess`` writes that stamp at the end of a real
+    run, and without it every build here reports ``reindex_needed`` over an
+    index that these tests mean to be current.
+    """
+    from fw_context_mcp.indexer.db import (
+        CURRENT_ROW_FORMAT,
+        open_db,
+        transaction,
+        upsert_build_config,
+        upsert_project,
+    )
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # Create a dummy compile_commands.json so _is_stale returns (False, None)
@@ -55,7 +67,10 @@ def _create_index_db(db_path: Path, project_id: str, root: Path) -> None:
     try:
         with transaction(conn):
             upsert_project(conn, project_id, "test-proj", str(root))
-            upsert_build_config(conn, "hash-test", project_id, str(cc_path))
+            upsert_build_config(
+                conn, "hash-test", project_id, str(cc_path),
+                row_format=CURRENT_ROW_FORMAT,
+            )
     finally:
         conn.close()
 

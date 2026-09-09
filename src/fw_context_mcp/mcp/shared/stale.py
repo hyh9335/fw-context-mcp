@@ -99,7 +99,7 @@ def check_structural_staleness(
     cfg: dict,
     root: Path,
 ) -> list[str]:
-    """Check structural staleness — compile_commands.json, schema, refs.
+    """Check structural staleness — compile_commands.json, schema, row format, refs.
 
     Returns a list of human-readable reasons the index needs a reindex.
     These are the checks that both the background reindex trigger and the
@@ -109,7 +109,11 @@ def check_structural_staleness(
     All imports are lazy to avoid circular dependencies at module level.
     """
     from ...config import load as load_config
-    from ...indexer.db import CURRENT_SCHEMA_VERSION, get_db_schema_version
+    from ...indexer.db import (
+        CURRENT_ROW_FORMAT,
+        CURRENT_SCHEMA_VERSION,
+        get_db_schema_version,
+    )
     from .context import _is_stale
 
     reasons: list[str] = []
@@ -124,7 +128,21 @@ def check_structural_staleness(
     if schema_ver < CURRENT_SCHEMA_VERSION:
         reasons.append(f"schema {schema_ver} < {CURRENT_SCHEMA_VERSION}")
 
-    # 3. Missing refs (and indirect call sites when refs are missing)?
+    # 3. Does the stored text still mean what this version reads it to mean?
+    # The columns can keep every name while their content changes — the text
+    # of files.content and symbols.source became ifdef-filtered, and the
+    # schema version above could not see it, thus an index went on answering
+    # with dead code.  One column read, no recomputation.
+    # .get() and not [...]: a caller builds *cfg* with SELECT *, thus the
+    # key is there for any database that open_db() migrated.  An absent key
+    # reads as "no format", which asks for the reindex — the safe direction.
+    stored_format = str(cfg.get("row_format") or "")
+    if stored_format != CURRENT_ROW_FORMAT:
+        reasons.append(
+            f"row format {stored_format or '(none)'} != {CURRENT_ROW_FORMAT}"
+        )
+
+    # 4. Missing refs (and indirect call sites when refs are missing)?
     proj_cfg = load_config(root)
     if proj_cfg.index.index_refs:
         ref_count = conn.execute(

@@ -240,6 +240,7 @@ def upsert_build_config(
     variant: str = "",
     image: str = "",
     board: str = "",
+    row_format: str | None = None,
 ) -> None:
     """Insert or update a build configuration record.
 
@@ -271,6 +272,19 @@ def upsert_build_config(
             real value on the last one, when the content matches it.
         variant: Build variant name (``''`` for single-project builds).
         image: Sysbuild image name (``''`` for non-sysbuild builds).
+        row_format: Which meaning the stored text of this build carries —
+            pass ``CURRENT_ROW_FORMAT``.  ``None`` keeps whatever the row
+            already holds, and it is the default.
+
+            WHY None is the default: only the step that WROTE the text may
+            say what the text means.  ``_run_postprocess`` is that step, and
+            it runs after the last translation unit.  Two callers must not
+            stamp: ``runner.run`` writes this row before it reads a single
+            unit, thus a run that fails would leave the new format over the
+            old rows; ``cmd_analyze`` only updates ``analyze_vendor`` on an
+            index that another version built.  A missed stamp costs one
+            reindex that was not needed — a wrong stamp costs silence over
+            an index that answers with dead code.
         board: Concrete board string per-(variant, image) — captures per-image
             board overrides (e.g. FLPR ``cpuflpr`` vs ``cpuapp``).
 
@@ -288,13 +302,25 @@ def upsert_build_config(
         ).fetchone()
         description = str(row["description"]) if row is not None else ""
 
+    if row_format is None:
+        # Read it for the reason the description above gives: the column is
+        # NOT NULL, thus "keep the old one" cannot travel through SQL.  An
+        # absent row gives '', which reports the build as an older format
+        # until the postprocess step stamps it — the safe direction.
+        fmt_row = conn.execute(
+            "SELECT row_format FROM build_configs WHERE config_hash = ?",
+            (config_hash,),
+        ).fetchone()
+        row_format = str(fmt_row["row_format"]) if fmt_row is not None else ""
+
     # Columns guaranteed by open_db() → _ensure_migrated_columns()
     conn.execute(
         """INSERT INTO build_configs(config_hash, project_id, compile_commands_path,
                                      embedding_dim, manifest_verification,
                                      description, first_indexed_at,
-                                     analyze_vendor, variant, image, board)
-           VALUES (?,?,?,?,?,?, datetime('now'), ?, ?, ?, ?)
+                                     analyze_vendor, variant, image, board,
+                                     row_format)
+           VALUES (?,?,?,?,?,?, datetime('now'), ?, ?, ?, ?, ?)
            ON CONFLICT(config_hash) DO UPDATE SET
                created_at = datetime('now'),
                description = excluded.description,
@@ -308,8 +334,9 @@ def upsert_build_config(
                analyze_vendor = excluded.analyze_vendor,
                variant = excluded.variant,
                image = excluded.image,
-               board = excluded.board""",
-        (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board),
+               board = excluded.board,
+               row_format = excluded.row_format""",
+        (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board, row_format),
     )
 
 

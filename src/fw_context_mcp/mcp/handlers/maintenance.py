@@ -41,6 +41,7 @@ from ...indexer.autobuild import state as autobuild_state
 from ...indexer.compile_commands import command_line_defines
 from ...indexer.compile_commands import parse as parse_cc
 from ...indexer.db import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     DatabaseCorruptionError,
     WriteLockTimeout,
@@ -354,21 +355,28 @@ def get_active_build(
     * ``"ready"`` — up to date. Continue.
     * ``"reindexing"`` — background reindex running; queries stay accurate.
       Continue. ``reindex_progress`` holds its last log line.
-    * ``"reindex_needed"`` — schema mismatch, changed compile_commands.json,
-      or a source file that compile_commands.json does not cover. Queries
-      still work on existing data. Read ``reindex_reasons``: a missing
-      source file needs ``fw-context index --build``, the other two need
-      only ``fw-context index``.
+    * ``"reindex_needed"`` — schema mismatch, an old row format, changed
+      compile_commands.json, or a source file that compile_commands.json
+      does not cover. Queries still work on existing data. Read
+      ``reindex_reasons``: a missing source file needs
+      ``fw-context index --build``, the others need only
+      ``fw-context index``.
     * ``"no_index"`` — initialized, never indexed. Run ``fw-context index``.
     * ``"not_initialized"`` — run ``fw-context init``.
     * ``"error"`` — DB corruption or access error. Use other tools.
 
-    Three conditions set ``reindex_needed``: an outdated schema, a changed
-    compile_commands.json, and a source file that is on disk but absent from
-    compile_commands.json.  The third one needs a build, because only the
-    build system writes that file — a plain reindex has no translation unit
-    for the file and skips it without a word.  Modified source files are
-    something else: they are handled per-query, and never set it.
+    Four conditions set ``reindex_needed``: an outdated schema, an outdated
+    ROW FORMAT, a changed compile_commands.json, and a source file that is
+    on disk but absent from compile_commands.json.  The last one needs a
+    build, because only the build system writes that file — a plain reindex
+    has no translation unit for the file and skips it without a word.
+    Modified source files are something else: they are handled per-query,
+    and never set it.
+
+    ``row_format_mismatch`` means that the same columns hold text with an
+    older meaning.  Take it seriously: an index written before
+    ``fw-context-rows/1`` keeps every inactive ``#ifdef`` branch, thus a
+    body or a file from it can show code that the compiler never sees.
 
     ``indexed_at`` and ``first_indexed_at`` are UTC; file mtimes are local
     time.  Never compare the two directly — in UTC+2 a correctly indexed
@@ -628,6 +636,13 @@ def get_active_build(
 
         cc_changed, stale_reason = _is_stale(cfg, cfg["compile_commands_path"])
         schema_old = db_schema_ver < CURRENT_SCHEMA_VERSION
+        # Does the stored text still mean what this version reads it to mean?
+        # The schema version above cannot answer that: it hashes the column
+        # SET, thus it moves only when a column appears or goes, while the
+        # content of a column can change under an unchanged name.  See
+        # CURRENT_ROW_FORMAT.
+        stored_row_format = str(cfg.get("row_format") or "")
+        row_format_old = stored_row_format != CURRENT_ROW_FORMAT
 
         # A source file that the build system never saw has no translation
         # unit, thus a plain reindex cannot pick it up: it is absent from
@@ -666,7 +681,9 @@ def get_active_build(
             cfg["description"] if "description" in cfg.keys() else "", root
         )
         branch_moved = bool(indexed_branch)
-        needs_reindex = cc_changed or schema_old or blocked_sources or branch_moved
+        needs_reindex = (
+            cc_changed or schema_old or row_format_old or blocked_sources or branch_moved
+        )
 
         # Build reindex_reasons — only when reindex is actually needed
         reindex_reasons: list[str] = []
@@ -696,6 +713,16 @@ def get_active_build(
             )
         if schema_old:
             reindex_reasons.append(f"schema_mismatch: {db_schema_ver} < {CURRENT_SCHEMA_VERSION}")
+        if row_format_old:
+            # Names the effect, not only the value: the caller has to know
+            # that the answers it gets now can hold code that never
+            # compiles, which is not obvious from a version string.
+            reindex_reasons.append(
+                f"row_format_mismatch: {stored_row_format or '(none)'} != "
+                f"{CURRENT_ROW_FORMAT} — the stored text of this index keeps "
+                f"inactive #ifdef branches, thus a body or a file can show "
+                f"code that does not compile. Run `fw-context index`"
+            )
         if cc_changed:
             reindex_reasons.append(stale_reason or "compile_commands_changed")
         if new_sources:

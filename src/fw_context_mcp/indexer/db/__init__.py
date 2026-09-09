@@ -24,6 +24,7 @@ testable in isolation and reducing merge conflicts in team workflows.
 from __future__ import annotations
 
 __all__ = [
+    "CURRENT_ROW_FORMAT",
     "CURRENT_SCHEMA_VERSION",
     "DatabaseCorruptionError",
     "FileHashRecord",
@@ -225,6 +226,7 @@ from ._refs import (
     insert_refs_batch,
 )
 from ._schema import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     _ensure_column,
     drop_fts_triggers,

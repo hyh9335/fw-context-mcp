@@ -51,10 +51,23 @@ import sqlite3
 log = logging.getLogger(__name__)
 
 __all__ = [
+    "CURRENT_ROW_FORMAT",
     "CURRENT_SCHEMA_VERSION",
     "_ensure_column",
     "drop_fts_triggers",
 ]
+
+# Which MEANING the stored text of a build carries.  Bump it when the same
+# columns start to hold different text, and the staleness check then asks
+# every index for one reindex.
+#
+# CURRENT_SCHEMA_VERSION cannot serve this purpose: it is a hash of the
+# column set, thus it moves only when a column appears or goes.
+#
+# /1 — files.content and symbols.source hold only the lines that the
+#      preprocessor took.  Before it, both held every #ifdef branch, thus
+#      dead code reached every tool as live code.
+CURRENT_ROW_FORMAT = "fw-context-rows/1"
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, type_def: str) -> None:
@@ -269,6 +282,12 @@ _MIGRATION_ADD_COLUMNS = [
     # says `ENTRY("__start")`, and neither fact is a property of any one
     # translation unit.  Empty when no script of the build names one.
     "ALTER TABLE build_configs ADD COLUMN entry_point TEXT NOT NULL DEFAULT ''",
+    # Records CURRENT_ROW_FORMAT — which meaning the stored text carries.
+    # See the comment on the column in _SCHEMA.  This column needs no
+    # _schema_bump_ marker of its own: it is a real column, thus it moves
+    # CURRENT_SCHEMA_VERSION by itself, and every existing index therefore
+    # asks for the one reindex that fills it.
+    "ALTER TABLE build_configs ADD COLUMN row_format TEXT NOT NULL DEFAULT ''",
     # Schema version bump — DO NOT REMOVE. When adding new migration steps after this
     # column, also add a NEW ALTER TABLE … ADD COLUMN _schema_bump_… line. The hash
     # of _MIGRATION_ADD_COLUMNS drives CURRENT_SCHEMA_VERSION.
@@ -317,7 +336,17 @@ CREATE TABLE IF NOT EXISTS build_configs (
     analyze_vendor          INTEGER NOT NULL DEFAULT 0,
     -- The `ENTRY()` of the linker script of this build, or '' when no
     -- script names one.  A property of the build, not of a file.
-    entry_point             TEXT NOT NULL DEFAULT ''
+    entry_point             TEXT NOT NULL DEFAULT '',
+    -- Which MEANING the stored text of this build carries, as
+    -- CURRENT_ROW_FORMAT wrote it.  CURRENT_SCHEMA_VERSION cannot answer
+    -- that question: it is a hash of the COLUMN SET, thus it moves only
+    -- when a column appears or goes, and the meaning of a column can
+    -- change while every name stays.  That happened once already — the
+    -- text of files.content and symbols.source became ifdef-filtered —
+    -- and no check noticed, thus every index went on serving dead code as
+    -- live code until something else forced a reindex.  An empty string
+    -- means a build indexed before this column existed.
+    row_format              TEXT NOT NULL DEFAULT ''
 );
 
 -- ── files: source files tracked during indexing ─────────────────────────

@@ -72,6 +72,7 @@ from ._embedding import _build_embeddings
 from ._llm_analysis import _build_llm_analysis
 from ._manifest_updater import _refresh_header_mtimes_from_manifest, _update_manifest_after_index
 from .db import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     delete_build_data,
     rebuild_files_fts,
@@ -1299,6 +1300,12 @@ def _step_finalize_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
             variant=ctx.get("variant", ""),
             image=ctx.get("image", ""),
             board=ctx.get("board", ""),
+            # The only place that stamps the row format.  This runs after the
+            # last translation unit, thus the stored text now carries the
+            # meaning this version writes.  `runner.run` must not stamp it:
+            # that write happens before any unit is read, and a run that
+            # failed would leave the new format over the old rows.
+            row_format=CURRENT_ROW_FORMAT,
         )
 
 
