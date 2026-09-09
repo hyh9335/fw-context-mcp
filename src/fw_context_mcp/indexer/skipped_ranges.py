@@ -103,11 +103,19 @@ def _count_reads(tu: Any) -> dict[Path, int]:
     file as one read.
     """
     reads: Counter[Path] = Counter()
+    # One resolve for each spelling, for the reason `collect_skipped_lines`
+    # gives: a header reached many times names the same file every time.
+    resolved: dict[str, Path] = {}
     for inclusion in tu.get_includes():
         included = inclusion.include
         if included is None:
             continue
-        reads[Path(included.name).resolve()] += 1
+        name = included.name
+        path = resolved.get(name)
+        if path is None:
+            path = Path(name).resolve()
+            resolved[name] = path
+        reads[path] += 1
     return dict(reads)
 
 
@@ -170,6 +178,18 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
     # the ranges is wrong, because the ranges cover the WHOLE unit and one
     # file can be read more than one time.  See the count test below.
     hits: dict[Path, Counter[int]] = {}
+    # One resolve for each spelling, and not one for each range.  A header
+    # of a vendor SDK holds many `#if` regions that all name the same file,
+    # and `Path.resolve()` walks the file system for every call.
+    resolved: dict[str, Path] = {}
+
+    def _resolve(name: str) -> Path:
+        path = resolved.get(name)
+        if path is None:
+            path = Path(name).resolve()
+            resolved[name] = path
+        return path
+
     try:
         source_range_list = pointer.contents
         for index in range(source_range_list.count):
@@ -178,8 +198,8 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
             end = source_range.end
             if start.file is None or end.file is None:
                 continue
-            key = Path(start.file.name).resolve()
-            if Path(end.file.name).resolve() != key:
+            key = _resolve(start.file.name)
+            if _resolve(end.file.name) != key:
                 # The two ends lie in different files, thus `end.line`
                 # counts the lines of a file that is not `key`.  An
                 # unterminated `#if` at the end of a header makes clang

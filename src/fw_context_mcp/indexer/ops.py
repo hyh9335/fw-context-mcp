@@ -215,6 +215,7 @@ def _build_filtered_file_content(
     conn, unit, config_hash: str, project_root: Path, *, build_dir_patterns: list[str] | None = None, existing_tu=None,
     skip_files: frozenset[str] | None = None,
     refresh_paths: set[str] | None = None,
+    skipped: dict[Path, set[int]] | None = None,
 ) -> tuple[int, list[dict]]:
     """Find the active lines of each file of a TU, store ifdef-filtered content.
 
@@ -398,7 +399,11 @@ def _build_filtered_file_content(
     # extent is one continuous range of lines, thus it carries a dead block
     # inside a function body along with the body.  The preprocessor kept a
     # record of what it skipped; subtract it below, per file.
-    skipped = collect_skipped_lines(tu)
+    #
+    # A caller that already has the map for THIS TU passes it: the walk over
+    # every range and the resolve of every path are the same work twice.
+    if skipped is None:
+        skipped = collect_skipped_lines(tu)
 
     # Paths this loop wrote.  The blank-out pass below must not touch them
     # again: this loop already put the current text there.
@@ -1457,6 +1462,10 @@ def store_symbols_for_unit(
     _, headers = _build_filtered_file_content(
         conn, unit, config_hash, project_root, build_dir_patterns=build_dir_patterns, existing_tu=tu,
         skip_files=skip_files, refresh_paths=owned_paths,
+        # Only when the TU below is the one this map came from.  With no
+        # `tu` the callee parses its own, and the empty map that `skipped`
+        # holds in that case would turn the filter off for every file of it.
+        skipped=skipped if tu is not None else None,
     )
     _t_content = time.monotonic() - _t_content
 

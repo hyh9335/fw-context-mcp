@@ -125,3 +125,28 @@ class TestTheModuleDegrades:
 
         with pytest.raises(KeyboardInterrupt):
             collect_skipped_lines(object())
+
+
+class TestTheMapIsComputedOncePerUnit:
+    """``store_symbols_for_unit`` already has the map that the content pass needs."""
+
+    def test_a_given_map_is_used_as_it_is(self, monkeypatch, tmp_path: Path) -> None:
+        """The parameter must replace the call, not only add to it."""
+        from fw_context_mcp.indexer import ops
+
+        calls: list = []
+        monkeypatch.setattr(
+            ops, "collect_skipped_lines", lambda tu: calls.append(tu) or {}
+        )
+        # A parse of a real unit is out of scope here: the call must not
+        # happen at all, thus the function raises before it needs one.
+        with pytest.raises(AttributeError):
+            ops._build_filtered_file_content(
+                None, SimpleNamespace(file=tmp_path / "main.c"), "ch", tmp_path,
+                existing_tu=object(), skipped={Path("/x"): {1}},
+            )
+
+        assert calls == [], (
+            "the caller handed over the map of this unit, thus collecting it "
+            "again walks every range and resolves every path twice"
+        )
