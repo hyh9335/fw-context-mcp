@@ -20,8 +20,11 @@ The python bindings of libclang do not give this function, thus the module
 binds it with ``ctypes``.  ``clang_getAllSkippedRanges`` is in libclang from
 version 5.0, and the project needs libclang 18.1.1 or later, thus the
 function is always available.  The code degrades to an empty answer all the
-same, because a build of libclang that lacks the symbol must not stop an
-index run.
+same, because a build of libclang that cannot answer must not stop an index
+run.  Three failures give that empty answer: the symbol is absent, the call
+raises, and the structure of the answer does not match the layout.  An index
+run of a large project takes hours, thus an unfiltered body is a far smaller
+loss than a run that stops.
 """
 
 from __future__ import annotations
@@ -148,7 +151,18 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
         return {}
     get_all, dispose = bound
 
-    pointer = get_all(tu)
+    try:
+        pointer = get_all(tu)
+    except (ctypes.ArgumentError, AttributeError, TypeError):
+        # A deliberate boundary: this is a hand-made binding to a C library.
+        # The call raises when *tu* is not the type that `argtypes` declares,
+        # and a build of libclang whose structure layout diverges raises when
+        # the code reads the answer below.  The module promises that such a
+        # libclang costs an index run nothing, and a run of a large project
+        # takes hours — an unfiltered body is a far smaller loss than a run
+        # that stops.
+        log.debug("clang_getAllSkippedRanges did not answer", exc_info=True)
+        return {}
     if not pointer:
         return {}
 
@@ -162,10 +176,31 @@ def collect_skipped_lines(tu: Any) -> dict[Path, set[int]]:
             source_range = source_range_list.ranges[index]
             start = source_range.start
             end = source_range.end
-            if start.file is None:
+            if start.file is None or end.file is None:
                 continue
             key = Path(start.file.name).resolve()
+            if Path(end.file.name).resolve() != key:
+                # The two ends lie in different files, thus `end.line`
+                # counts the lines of a file that is not `key`.  An
+                # unterminated `#if` at the end of a header makes clang
+                # report such a range: it starts in the header and ends in
+                # the file that included it.  Every line between the two
+                # numbers would be blanked in the header, live declarations
+                # included, and no diagnostic would show it — the indexer
+                # does not stop on an unterminated `#if`.
+                log.debug(
+                    "skipped range spans two files (%s to %s) — dropped",
+                    start.file.name, end.file.name,
+                )
+                continue
             hits.setdefault(key, Counter()).update(range(start.line, end.line + 1))
+    except (ctypes.ArgumentError, AttributeError, TypeError, ValueError):
+        # Same boundary as the call above: reading the structure is where a
+        # divergent layout shows itself.  Whatever was collected is dropped,
+        # because a partial map blanks lines without the count that decides
+        # which of them are dead.
+        log.debug("could not read the skipped ranges of libclang", exc_info=True)
+        return {}
     finally:
         # The C API owns this memory until the caller gives it back.  An
         # index run parses thousands of translation units, thus a leak here
