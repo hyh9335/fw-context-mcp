@@ -844,7 +844,7 @@ def _detect_moved_symbols(
         # cleanup would add overhead without benefit.
         old_row = conn.execute(
             """SELECT s.id, s.file_id, s.qualified_name, s.signature, s.line, s.end_line,
-                      s.docstring, f.path as file_path,
+                      s.docstring, s.source, f.path as file_path,
                       a.summary, a.inputs, a.outputs, a.model, a.analyzed_at
                FROM symbols s
                LEFT JOIN llm_analysis a ON a.symbol_id = s.id
@@ -866,28 +866,43 @@ def _detect_moved_symbols(
         lines = _cached_read_lines(s.file)
         if lines is None:
             continue
-        old_abs_path = abs_path(project_root, old_row["file_path"])
-        old_lines = _cached_read_lines(old_abs_path)
-        if old_lines is None:
-            continue
         # Compare content hashes — same body + signature = same symbol.
         # If hashes differ, the symbol was genuinely modified (not just
         # moved), so we keep the new insert (old row will be cleaned up
         # by _delete_old_for_tu on its original TU).
         #
-        # Each body drops the dead lines of ITS OWN file: the two bodies
-        # come from two files, and the hash must cover the same text that
-        # the index stores for each.  A file outside this TU has no entry,
-        # and both sides then compare the full text of that file.
-        old_ch = _compute_content_hash(
-            old_lines,
-            old_row["line"],
-            old_row["end_line"],
-            old_row["signature"],
-            old_row["qualified_name"],
-            old_row["docstring"],
-            skipped.get(Path(old_abs_path).resolve(), frozenset()),
-        )
+        # Both sides must be filtered, or neither.  The old row lives in
+        # another file, and `skipped` covers THIS unit alone, thus that file
+        # has no entry in it.  Reading the old body from the disk therefore
+        # hashed every branch, while the new side hashed the filtered text.
+        # No symbol that holds an inactive branch could ever match, and its
+        # analysis was thrown away on a move that changed nothing.
+        #
+        # `symbols.source` already holds the filtered body of the old row —
+        # the same text that `_read_body` wrote for it.  Use it, and read
+        # the disk only for a row from before that column was filled.
+        old_stored = old_row["source"] or ""
+        if old_stored:
+            old_ch = compute_content_hash(
+                old_stored,
+                old_row["qualified_name"],
+                old_row["signature"],
+                old_row["docstring"],
+            )
+        else:
+            old_abs_path = abs_path(project_root, old_row["file_path"])
+            old_lines = _cached_read_lines(old_abs_path)
+            if old_lines is None:
+                continue
+            old_ch = _compute_content_hash(
+                old_lines,
+                old_row["line"],
+                old_row["end_line"],
+                old_row["signature"],
+                old_row["qualified_name"],
+                old_row["docstring"],
+                skipped.get(Path(old_abs_path).resolve(), frozenset()),
+            )
         new_ch = _compute_content_hash(
             lines, s.line, s.end_line, s.signature, s.qualified_name, s.docstring,
             skipped.get(Path(s.file).resolve(), frozenset()),
