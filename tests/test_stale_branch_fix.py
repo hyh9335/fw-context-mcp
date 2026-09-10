@@ -83,10 +83,10 @@ class TestPurgeFileRecords:
             [
                 (ch, f1, "src/a.c", "func a", usr1, "func_a", "func_a",
                  "function", 1, 1, 5, 1, "void func_a(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "func b", usr2, "func_b", "func_b",
                  "function", 1, 1, 5, 1, "void func_b(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
             ],
         )
 
@@ -104,9 +104,9 @@ class TestPurgeFileRecords:
             conn,
             [
                 (ch, f1, "src/a.c", "class a", class_usr1, "A", "A",
-                 "class", 1, 1, 5, 1, "", "", None, 0, 0, "", 0, "", 0, 0.0, ""),
+                 "class", 1, 1, 5, 1, "", "", None, 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "class b", class_usr2, "B", "B",
-                 "class", 1, 1, 5, 1, "", "", None, 0, 0, "", 0, "", 0, 0.0, ""),
+                 "class", 1, 1, 5, 1, "", "", None, 0, 0, "", 0, "", 0, 0.0, "", 0),
             ],
         )
         insert_inheritance_batch(conn, [(ch, class_usr2, class_usr1, "public", 0)])
@@ -117,7 +117,7 @@ class TestPurgeFileRecords:
         # Insert refs
         insert_refs_batch(
             conn,
-            [(ch, usr2, "src/a.c", 3, usr1, "call")],
+            [(ch, usr2, "src/a.c", 3, usr1, "call", None)],
         )
 
         # Insert indirect call site
@@ -194,10 +194,10 @@ class TestPurgeFileRecords:
             [
                 (ch, f1, "src/a.c", "func a", usr1, "func_a", "func_a",
                  "function", 1, 1, 5, 1, "void func_a(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "func b", usr2, "func_b", "func_b",
                  "function", 1, 1, 5, 1, "void func_b(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
             ],
         )
         conn.commit()
@@ -235,23 +235,23 @@ class TestDeleteDanglingIncomingRefs:
             [
                 (ch, f_surv, "src/surviving.c", "handler", usr_surv, "handler", "handler",
                  "function", 1, 1, 5, 1, "void handler(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f_dead, "src/dead.c", "dead1", usr_dead1, "dead1", "dead1",
                  "function", 1, 1, 5, 1, "void dead1(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f_dead, "src/dead.c", "dead2", usr_dead2, "dead2", "dead2",
                  "function", 1, 1, 5, 1, "void dead2(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 # Unrelated symbol to confirm it survives
                 (ch, f_surv, "src/surviving.c", "unrelated", "c:@F@unrelated", "unrelated", "unrelated",
                  "function", 10, 1, 15, 1, "void unrelated(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
             ],
         )
 
         # Insert edges from surviving file → dead symbols
-        insert_refs_batch(conn, [(ch, usr_dead1, "src/surviving.c", 1, usr_surv, "call")])
-        insert_refs_batch(conn, [(ch, "c:@F@unrelated", "src/surviving.c", 11, usr_surv, "call")])
+        insert_refs_batch(conn, [(ch, usr_dead1, "src/surviving.c", 1, usr_surv, "call", None)])
+        insert_refs_batch(conn, [(ch, "c:@F@unrelated", "src/surviving.c", 11, usr_surv, "call", None)])
         insert_indirect_call_sites_batch(
             conn, [(ch, "src/surviving.c", 2, usr_surv, "fp()", usr_dead2, "dead2", "void(*)()")]
         )
@@ -300,10 +300,10 @@ class TestDeleteOverridesForFile:
             [
                 (ch, f1, "src/a.c", "method a", usr_a, "method_a", "Base::method_a",
                  "method", 1, 1, 3, 1, "void method_a(void)", "", None,
-                 1, 0, "c:@S@Base", 0, "", 0, 0.0, ""),
+                 1, 0, "c:@S@Base", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "method b", usr_b, "method_b", "Derived::method_b",
                  "method", 1, 1, 3, 1, "void method_a(void)", "", None,
-                 1, 0, "c:@S@Derived", 0, "", 0, 0.0, ""),
+                 1, 0, "c:@S@Derived", 0, "", 0, 0.0, "", 0),
             ],
         )
         insert_overrides_batch(conn, [(ch, usr_b, usr_a)])
@@ -330,10 +330,10 @@ class TestDeleteOverridesForFile:
             [
                 (ch, f1, "src/a.c", "meth a", usr_a, "meth_a", "A::meth_a",
                  "method", 1, 1, 3, 1, "void meth_a(void)", "", None,
-                 1, 0, "c:@S@A", 0, "", 0, 0.0, ""),
+                 1, 0, "c:@S@A", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "meth b", usr_b, "meth_b", "B::meth_b",
                  "method", 1, 1, 3, 1, "void meth_a(void)", "", None,
-                 1, 0, "c:@S@B", 0, "", 0, 0.0, ""),
+                 1, 0, "c:@S@B", 0, "", 0, 0.0, "", 0),
             ],
         )
         insert_overrides_batch(conn, [(ch, usr_b, usr_a)])  # derived=usr_b (in f2), base=usr_a (in f1)
@@ -367,10 +367,10 @@ class TestPurgeMissingFilesBatch:
             [
                 (ch, f1, "src/a.c", "func a", usr1, "func_a", "func_a",
                  "function", 1, 1, 5, 1, "void func_a(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
                 (ch, f2, "src/b.c", "func b", usr2, "func_b", "func_b",
                  "function", 1, 1, 5, 1, "void func_b(void)", "", None,
-                 0, 0, "", 0, "", 0, 0.0, ""),
+                 0, 0, "", 0, "", 0, 0.0, "", 0),
             ],
         )
         conn.commit()
@@ -391,10 +391,10 @@ class TestPurgeMissingFilesBatch:
 class TestStalenessCheck:
     """WP5 test 5 — staleness checks treat missing files as stale."""
 
-    def test_check_file_stale_missing_file(self):
-        from fw_context_mcp.mcp.shared.stale import _check_file_stale
+    def test_file_differs_missing_file(self):
+        from fw_context_mcp.mcp.shared.stale import _file_differs
 
-        result = _check_file_stale("/nonexistent/path_12345.c", 100.0)
+        result = _file_differs("/nonexistent/path_12345.c", 100.0)
         assert result is True, "Missing file must be reported as stale"
 
     def test_count_modified_files_counts_missing(self, tmp_path: Path):

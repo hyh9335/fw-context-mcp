@@ -28,7 +28,7 @@ after the full symbol table is available:
    files, and macros
 3. **Orphan cleanup** — remove dangling rows in related tables
 4. **Project alignment** — mark which files belong to the project
-   vs. the vendor SDK
+   vs. The vendor SDK
 5. **Manifest update** — write ``manifest.json`` for incremental
    reindex tracking
 6. **Macro expansion** — resolve ``#define`` values via libclang
@@ -72,6 +72,7 @@ from ._embedding import _build_embeddings
 from ._llm_analysis import _build_llm_analysis
 from ._manifest_updater import _refresh_header_mtimes_from_manifest, _update_manifest_after_index
 from .db import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     delete_build_data,
     rebuild_files_fts,
@@ -809,13 +810,18 @@ def _step_purge_files_outside_build(conn: sqlite3.Connection, ctx: dict) -> None
     if covered is None:
         log.debug("coverage purge skipped: manifest carries no header lists")
         return
+    # Assembly units are part of the build and of neither source above:
+    # libclang never parsed them, so they are absent from *units*, and the
+    # manifest lists only what libclang saw.  They were written and then
+    # deleted again in the same run until this line existed.
+    covered |= set(ctx.get("asm_paths") or ())
 
     # Vendor and SDK files are candidates too, not just project sources: a
     # framework upgrade replaces headers, and the ones it dropped must go with
     # it.  That only works because the manifest now records every file an
     # #include reached, extensionless C++ standard headers and .tcc template
     # bodies included.  While it carried an extension whitelist this step
-    # deleted 29 real files and 1810 symbols on HA_Boiler.
+    # deleted 29 real files and 1810 symbols on the ESP32 project.
     rows = conn.execute(
         "SELECT id, path FROM files WHERE config_hash = ? AND path != ''",
         (config_hash,),
@@ -1205,7 +1211,7 @@ def _step_verify_integrity(conn: sqlite3.Connection, ctx: dict) -> None:
 
     WHAT THIS DOES NOT CATCH: both checks test whether the index agrees with
     ITSELF, not whether it agrees with the source.  An index can be perfectly
-    self-consistent and still be missing data.  Measured: on HA_Boiler, a
+    self-consistent and still be missing data.  Measured: on the ESP32 project, a
     coverage purge that deleted 145 files and 6698 symbols — the entire C++
     standard library — passed both checks, because the deletes were clean and
     fired the FTS triggers.  Completeness against the sources is a different
@@ -1241,7 +1247,7 @@ def _step_verify_integrity(conn: sqlite3.Connection, ctx: dict) -> None:
     # A multi-build project defers that rebuild: the CLI passes
     # defer_fts=True for every (variant, image) run and rebuilds once at the
     # end, so checking here would compare the content tables against an index
-    # that nothing has updated yet.  Measured on zbox-ecb-fw-v5 (two
+    # that nothing has updated yet.  Measured on the Zephyr project (two
     # variants): every build failed verification and therefore never reached
     # finalize_manifest, leaving both stamped "indexing" — hidden from
     # readers.  The caller that owns the deferral runs this check after its
@@ -1294,6 +1300,12 @@ def _step_finalize_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
             variant=ctx.get("variant", ""),
             image=ctx.get("image", ""),
             board=ctx.get("board", ""),
+            # The only place that stamps the row format.  This runs after the
+            # last translation unit, thus the stored text now carries the
+            # meaning this version writes.  `runner.run` must not stamp it:
+            # that write happens before any unit is read, and a run that
+            # failed would leave the new format over the old rows.
+            row_format=CURRENT_ROW_FORMAT,
         )
 
 
@@ -1327,7 +1339,7 @@ def _cleanup_old_for_pair(
     # Both on-disk artifacts of a retired build go with its rows.  The
     # manifest used to be left behind: nothing reads an abandoned build's
     # manifest since the reuse tier was removed, so it was pure accumulation —
-    # one file per dialect change, 52 MB of it on zbox-ecb-fw, for the life of
+    # one file per dialect change, 52 MB of it on the Mbed project, for the life of
     # the project.  It also made load(db_dir) ambiguous, since that form picks
     # the most recently modified manifest in the directory.
     from .manifest import _manifest_path
@@ -1465,7 +1477,7 @@ def _step_reconcile_generated(conn: sqlite3.Connection, ctx: dict) -> None:
     Its docstring used to say the case could not arise, because a change to
     build_dir_patterns mints a new config_hash.  Measured, that is false:
     narrowing PlatformIO from ``.pio/`` to ``.pio/build/`` left the
-    config_hash of HA_Boiler and of FM byte for byte identical, because the
+    config_hash of the ESP32 project and of the STM32 project byte for byte identical, because the
     path pass drops in-project paths anyway.  57 rows would have kept a flag
     the manifest no longer gives them, and the structural check that compares
     the two would fail on every existing index until a --force.
@@ -1545,6 +1557,7 @@ def _run_postprocess(
     project_id: str,
     git_description: str,
     *,
+    asm_paths: set[str] | None = None,
     index_refs: bool,
     index_embeddings: bool,
     index_macros_expanded: bool,
@@ -1584,6 +1597,7 @@ def _run_postprocess(
         "project_root": project_root,
         "db_dir": db_dir,
         "units": units,
+        "asm_paths": asm_paths or set(),
         "tu_headers": tu_headers,
         "manifest": manifest,
         "compile_commands": compile_commands,

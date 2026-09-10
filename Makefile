@@ -14,7 +14,25 @@
 SRC       := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 VENV      ?= $(HOME)/.fw-context/.venv
 PYTHON    ?= python3
-UV        := $(shell command -v uv 2>/dev/null)
+# Is uv USABLE — not "is there a file named uv on PATH".
+#
+# pyenv and asdf put a shim on PATH for every tool ever installed under ANY
+# interpreter they manage, so `command -v uv` finds one whether or not the
+# ACTIVE interpreter has uv.  Measured here: `command -v uv` gave
+# ~/.pyenv/shims/uv, and running it printed "pyenv: uv: command not found"
+# and exited 127.  The detection saw a file, took the uv branch, and
+# `make install` died at pip-install — with a message about pyenv that named
+# neither uv nor this Makefile.
+#
+# So ask the binary to run.  A shim that dispatches correctly passes; a shim
+# that cannot does not.  This is the same rule utils.resolve_real_binary
+# applies to compiledb, for the same reason.
+UV := $(shell uv --version >/dev/null 2>&1 && command -v uv)
+
+# Every target below installs into $(VENV) and NEVER through a bare `pip`.
+# A bare `pip` is a shim too — it resolves to ~/.pyenv/shims/pip here, which
+# installs into whichever interpreter pyenv has active.  $(VENV)/bin/python
+# -m pip cannot be redirected that way.
 
 # ---- install ----
 install: venv pip-install link-add clean-path
@@ -24,14 +42,16 @@ install: venv pip-install link-add clean-path
 	@echo ""
 
 # ---- update ----
+# Pull, then run the ONE installer.  This target used to carry its own copy
+# of the install command and the copy had drifted three ways: it called a
+# bare `pip`, it passed `--reinstall`, which is a flag of uv and not of pip,
+# and neither branch passed `-e`.  So a successful `make update` replaced the
+# editable install with a copy and put back the trap that e62efc5 removed —
+# a test could then pass against code that no longer existed.
 update:
 	@echo "Updating fw-context..."
 	@cd $(SRC) && git pull
-ifeq ($(UV),)
-	pip install --reinstall $(SRC)
-else
-	$(UV) pip install --reinstall --python $(VENV)/bin/python $(SRC)
-endif
+	@$(MAKE) --no-print-directory pip-install
 	@echo "fw-context updated."
 
 # ---- uninstall ----
@@ -45,15 +65,30 @@ uninstall:
 # ---- venv ----
 venv:
 ifeq ($(UV),)
-	@echo "uv not found. Install it first:"
-	@echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
-	@exit 1
-endif
+	@test -d $(VENV) || $(PYTHON) -m venv $(VENV)
+else
 	@test -d $(VENV) || $(UV) venv $(VENV) --python $(PYTHON) --seed
+endif
 
 # ---- pip install into venv ----
+# Editable (-e), and that is not a convenience.  The test and lint targets
+# below run out of $(VENV), so a copied install made them measure whatever
+# the last `make install` had put there — a source change that was not
+# reinstalled was invisible, and a test could pass against code that no
+# longer existed.  Editable removes the step and the trap with it.
+#
+# CI already installs with `pip install -e ".[dev]"` (.github/workflows/
+# test.yml), thus this also stops local runs and CI from disagreeing.
+#
+# The price: `fw-context` on the PATH follows the working tree.  A process
+# that already runs keeps the modules it imported, so an edit reaches it on
+# the next start, not mid-session.
 pip-install: venv
-	$(UV) pip install --python $(VENV)/bin/python $(SRC)
+ifeq ($(UV),)
+	$(VENV)/bin/python -m pip install -e $(SRC)
+else
+	$(UV) pip install --python $(VENV)/bin/python -e $(SRC)
+endif
 
 # ---- symlink binaries into ~/.local/bin ----
 link-add:
@@ -79,8 +114,17 @@ clean-path:
 
 
 # ---- dev setup (install all deps including pytest, ruff, mypy, bandit) ----
+# Adds the dev tools to the SAME venv every other target uses.  It ran
+# `uv sync --extra dev` before, and uv sync manages the PROJECT environment
+# — <repo>/.venv — while test, lint and lint-security run out of $(VENV).
+# So `make dev` equipped one venv and `make test` used another, which is
+# what produced the second venv in the first place.
 dev: venv
-	@cd $(SRC) && $(UV) sync --extra dev
+ifeq ($(UV),)
+	$(VENV)/bin/python -m pip install -e "$(SRC)[dev]"
+else
+	$(UV) pip install --python $(VENV)/bin/python -e "$(SRC)[dev]"
+endif
 	@echo ""
 	@echo "Dev environment ready. Run: make test, make lint, make lint-security"
 

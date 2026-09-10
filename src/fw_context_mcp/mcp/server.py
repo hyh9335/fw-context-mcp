@@ -50,6 +50,7 @@ client-side connection timeouts.
 **Call graph tools** (require ``--refs`` index): ``find_callers``,
 ``find_references``, ``find_call_path``, ``find_all_callers_recursive``,
 ``find_callees_recursive``, ``find_hotspots``, ``find_dead_code``,
+``get_vector_table``,
 ``find_wrapper_callers``, ``find_indirect_call_sites``,
 ``find_indirect_targets``, ``trace_data_flow``.
 
@@ -72,13 +73,17 @@ import functools
 import inspect
 import logging
 import os
+import re
 import sqlite3
 import sys
+import textwrap
 import time
 from pathlib import Path
+from typing import Annotated
 
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from ..utils import resolve_project_root
 from .background import _ensure_daemon_running
@@ -251,6 +256,277 @@ def _wrap_tool(fn):
             _SERVER_LOCK.release()
     return _wrapper
 
+
+# ── Project selector ──────────────────────────────────────────────────
+
+#: Text of the ``project`` parameter.  One constant feeds both the JSON
+#: schema and the docstring, because a tool that describes the parameter
+#: differently from its neighbour teaches the model a different rule for
+#: that tool.
+_PROJECT_PARAM_DESCRIPTION = (
+    "Project name or project_id — call list_projects to get them. Use it to "
+    "ask about a project that is not the project of the current directory. It "
+    "is an alternative to project_root, which takes a root path. Give one of "
+    "the two, not both."
+)
+
+#: Added to the description of ``project_root``, which now also resolves a
+#: name and a project_id.  The sentence must stay short and must point at
+#: ``project``: two fields that accept the same three things teach the
+#: model nothing about which one to write.
+_PROJECT_ROOT_DESCRIPTION_SUFFIX = (
+    " This field also accepts a project name or a project_id, but project is "
+    "the clear field for those."
+)
+
+#: Used when a docstring has no ``project_root:`` entry to insert after.
+#: Every handler has one today, thus this is the guard for a handler that
+#: someone adds later without an Args: section.
+_PROJECT_DOC_FALLBACK = (
+    "\nProject selection:\n"
+    + textwrap.fill(
+        f"project: {_PROJECT_PARAM_DESCRIPTION}",
+        width=76,
+        initial_indent="    ",
+        subsequent_indent="        ",
+    )
+    + "\n"
+)
+
+
+def _document_project_parameter(doc: str) -> str:
+    """Write the ``project`` entry into the ``Args:`` section of *doc*.
+
+    FastMCP sends the docstring as the description of the tool.  A
+    parameter that the ``Args:`` section does not name reaches the model
+    as a bare word in the JSON schema, and the model reads the list of
+    parameters in ``Args:``.  The entry therefore goes next to
+    ``project_root``, and not at the end of the docstring.
+
+    The indentation comes from the ``project_root:`` line that the entry
+    follows.  It is not a constant: some handlers hold a docstring that
+    starts at column 0, and others hold one that keeps the indentation of
+    the source.
+
+    Args:
+        doc: Docstring of the handler.
+
+    Returns:
+        The docstring with one more entry in its ``Args:`` section.  When
+        the docstring has no ``project_root:`` line, the result holds a
+        separate ``Project selection:`` block at the end instead.
+    """
+    lines = doc.splitlines()
+    start = None
+    indent = ""
+    for index, line in enumerate(lines):
+        found = re.match(r"([ \t]*)project_root:", line)
+        if found:
+            start, indent = index, found.group(1)
+            break
+    if start is None:
+        return doc.rstrip() + "\n" + _PROJECT_DOC_FALLBACK
+
+    # Step over the continuation lines of the project_root entry.  A line
+    # that is empty, or that is not deeper than the entry, starts
+    # something else.
+    end = start + 1
+    while end < len(lines):
+        line = lines[end]
+        if not line.strip() or len(line) - len(line.lstrip()) <= len(indent):
+            break
+        end += 1
+
+    entry = textwrap.fill(
+        f"project: {_PROJECT_PARAM_DESCRIPTION}",
+        width=79,
+        initial_indent=indent,
+        subsequent_indent=indent + "    ",
+    ).splitlines()
+    # splitlines() drops a final newline; put it back so the docstring
+    # keeps the shape that it had.
+    tail = "\n" if doc.endswith("\n") else ""
+    return "\n".join([*lines[:end], *entry, *lines[end:]]) + tail
+
+
+def _merge_project_selector(tool_name: str, kwargs: dict) -> dict:
+    """Move a ``project`` value into ``project_root``.
+
+    ``resolve_project_root`` accepts a project name, a ``project_id``, or
+    a path, thus one handler parameter carries all three and no handler
+    signature changes.
+
+    Args:
+        tool_name: Name of the tool, for the error message.
+        kwargs: Keyword arguments of the call.  Changed in place.
+
+    Returns:
+        The same dict, with ``project`` removed and its value written to
+        ``project_root``.
+
+    Raises:
+        ValueError: The call gives ``project`` and ``project_root``, and
+            the two values are different.  fw-context does not choose one
+            of them, because the answer of the losing project looks
+            correct but comes from other source code.
+    """
+    project = kwargs.pop("project", None)
+    if isinstance(project, str):
+        project = project.strip()
+    if not project:
+        return kwargs
+    project_root = kwargs.get("project_root")
+    if project_root and str(project_root).strip() != project:
+        raise ValueError(
+            f"{tool_name}: project={project!r} and project_root={project_root!r} "
+            "select different projects. Give one of the two, not both."
+        )
+    kwargs["project_root"] = project
+    return kwargs
+
+
+def _describe_project_root(param: inspect.Parameter) -> inspect.Parameter:
+    """Say in the schema that ``project_root`` also takes a name or an id.
+
+    ``resolve_project_root`` resolves a project name and a project_id as
+    well as a path.  A description that names only the path is not true
+    any more, and a model cannot read behaviour that no text states.
+
+    The sentence is appended to the description that the handler wrote,
+    and does not replace it: the handlers say different useful things
+    there — ``list_projects`` for example explains that the parameter
+    picks one of several indexed projects.
+
+    Args:
+        param: One parameter of the signature of a handler.
+
+    Returns:
+        The parameter with a longer description, or *param* unchanged
+        when it is not ``project_root`` or carries no description.
+    """
+    if param.name != "project_root":
+        return param
+    metadata = getattr(param.annotation, "__metadata__", ())
+    description = next(
+        (text for text in (getattr(m, "description", None) for m in metadata) if text),
+        None,
+    )
+    if description is None:
+        return param
+    base = getattr(param.annotation, "__origin__", param.annotation)
+    # A second Field goes at the END of the Annotated metadata, and it
+    # holds the description only.  Pydantic merges the Field objects of
+    # an Annotated in order and the last value wins, thus every other
+    # setting of the original Field stays.  A change in place would not
+    # do: pydantic reads FieldInfo._attributes_set, and not the live
+    # attribute, thus a written description would never reach the schema.
+    return param.replace(
+        annotation=Annotated[
+            (
+                base,
+                *metadata,
+                Field(description=description + _PROJECT_ROOT_DESCRIPTION_SUFFIX),
+            )
+        ]
+    )
+
+
+def _with_project_selector(fn):
+    """Add a ``project`` parameter that selects a project by name or id.
+
+    Each tool answers about ONE project.  Before this parameter existed,
+    the only selector was ``project_root`` — an absolute path.  A model
+    that wrote ``project="<name>"`` got no error, because pydantic
+    ignores an unknown argument: the tool then answered about the project
+    of the current directory, and that answer looked correct but came
+    from other source code.
+
+    The parameter is added here, and not in each of the ~30 handler
+    signatures, for two reasons.  One handler that keeps the old
+    signature causes exactly the failure above again, and the description
+    of the parameter must read the same in every tool.
+
+    HOW the parameter reaches the JSON schema: FastMCP builds the schema
+    from ``inspect.signature(fn, eval_str=True)``, and ``inspect`` stops
+    its walk along ``__wrapped__`` at the first object that has a
+    ``__signature__`` attribute.  This wrapper sets ``__signature__``,
+    thus the schema comes from here.  Context injection still works,
+    because FastMCP finds the ``ctx`` parameter with
+    ``typing.get_type_hints()``, which reads ``__annotations__``, and
+    ``functools.wraps`` copies those from *fn* unchanged.
+
+    Args:
+        fn: A tool handler, or the ``_wrap_tool`` wrapper around one.
+
+    Returns:
+        A wrapper that accepts ``project``, or *fn* unchanged when it has
+        no ``project_root`` parameter — ``get_project_info`` and
+        ``check_ollama`` take no project.
+    """
+    # eval_str=True: the handler modules use PEP 563 string annotations,
+    # and a stored __signature__ is given to pydantic as it is — inspect
+    # does not evaluate it a second time.
+    base_sig = inspect.signature(fn, eval_str=True)
+    if "project_root" not in base_sig.parameters:
+        return fn
+
+    project_param = inspect.Parameter(
+        "project",
+        inspect.Parameter.KEYWORD_ONLY,
+        default=None,
+        annotation=Annotated[str | None, Field(description=_PROJECT_PARAM_DESCRIPTION)],
+    )
+    # A KEYWORD_ONLY parameter must come before **kwargs and after every
+    # other parameter kind.
+    head = [p for p in base_sig.parameters.values() if p.kind is not inspect.Parameter.VAR_KEYWORD]
+    tail = [p for p in base_sig.parameters.values() if p.kind is inspect.Parameter.VAR_KEYWORD]
+    head = [_describe_project_root(p) for p in head]
+    new_sig = base_sig.replace(parameters=[*head, project_param, *tail])
+
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def _selector(*a, **kw):
+            return await fn(*a, **_merge_project_selector(fn.__name__, kw))
+    else:
+        @functools.wraps(fn)
+        def _selector(*a, **kw):
+            return fn(*a, **_merge_project_selector(fn.__name__, kw))
+
+    # inspect.signature() reads __signature__ and stops there, thus this
+    # assignment is what puts `project` into the JSON schema of the tool.
+    _selector.__signature__ = new_sig
+    _selector.__doc__ = _document_project_parameter(fn.__doc__ or "")
+    return _selector
+
+
+def _forbid_unknown_tool_arguments() -> None:
+    """Make FastMCP reject an argument that the tool does not declare.
+
+    Pydantic ignores an unknown field by default.  A call that wrote
+    ``project="<name>"`` before that parameter existed thus lost the
+    argument without a message, and the tool answered about the project
+    of the current directory — a wrong answer that looks correct.  A
+    misspelled parameter must fail, and the failure must name it.
+
+    Every argument model that FastMCP builds is a subclass of
+    ``ArgModelBase``, and pydantic merges the ``model_config`` of the
+    parent when it creates the subclass.  This function therefore must
+    run BEFORE the first ``mcp.tool()`` registration.
+
+    A future release of ``mcp`` can change the name or the shape of that
+    class.  The server must still start in that case, thus the failure is
+    a warning in the log and not an exception.
+    """
+    try:
+        from mcp.server.fastmcp.utilities.func_metadata import ArgModelBase
+
+        ArgModelBase.model_config["extra"] = "forbid"
+    except (ImportError, AttributeError, TypeError) as e:
+        log.warning(
+            "Unknown tool arguments stay silent: cannot set extra=forbid on "
+            "the FastMCP argument model (%s)", e
+        )
+
 # The FastMCP instructions string is embedded here (not loaded from a file)
 # because it must be available at import time — FastMCP reads it during
 # construction.  Loading from a data file would add an I/O dependency to
@@ -266,35 +542,95 @@ mcp = FastMCP(
         "file-reading tool.\n\n"
         "SELF-CORRECT: the moment you reach for a tool that is NOT fw-context\n"
         "for C/C++ code, stop and use the fw-context equivalent instead.\n\n"
+        "EVERY ANSWER IS IFDEF-FILTERED.  fw-context gives the code that\n"
+        "COMPILES for the active build.  A line of an inactive #if branch is\n"
+        "blank in the content of read_file, in the text that search_content\n"
+        "and search_bodies search, and in the body that get_source and\n"
+        "get_symbol_context give.  Line numbers never move.  Thus a dead\n"
+        "#ifdef block cannot reach you as live code.  Two limits:\n"
+        "• The filter needs an index.  When a file changed after the last\n"
+        "  index run, get_source gives the current text from the DISK, which\n"
+        "  holds every branch.  It sets source_origin: \"disk\" and a\n"
+        "  stale_warning — read both before you cite such a body.\n"
+        "• An empty result can mean the pattern is only in a dead branch.\n"
+        "  That is an answer, not a failure: the code does not compile.\n\n"
         "TOOL SELECTION (pick the right one):\n"
         '• Symbol by exact/prefix name _____ → lookup_symbol (e.g. "uart_", "main")\n'
         '• Symbols by concept/topic _________ → search_code (e.g. "interrupt handler")\n'
-        '• Patterns in function BODIES ______ → search_bodies (e.g. "attach", "rise")\n'
-        '• Patterns in full FILE content _____ → search_content (e.g. "extern C", "InterruptIn")\n'
-        "• Read a complete file ______________ → read_file\n"
+        '• WHICH DEFINITION holds the code ___ → search_bodies (e.g. "attach", "SELF_TEST")\n'
+        '• WHICH FILES a topic touches ______ → search_content (e.g. "extern C", "SELF_TEST")\n'
+        "• Read a file, or a window of it ____ → read_file (line_numbers, start_line, end_line)\n"
         "• Read function body + callers/callees → get_symbol_context (preferred) / get_source\n"
         "• Function pointer assignments/calls _ → find_indirect_call_sites / find_indirect_targets\n"
         "• Natural-language question ________ → smart_search (slow, thorough)\n\n"
         "IMPORTANT: search_code searches symbol NAMES (what the code IS).\n"
-        "search_bodies searches function BODIES (what the code DOES — inside {}).\n"
-        "search_content searches FULL FILE content — file-scope declarations,\n"
-        "type definitions in headers, preprocessor directives, namespace blocks.\n"
-        'For patterns like extern "C", InterruptIn declarations, #define —\n'
-        "use search_content, NOT search_bodies.\n\n"
-        "FTS5 QUERY TIPS:\n"
-        '• Multi-word queries are OR-joined: "attach callback" becomes attach* OR callback*\n'
-        "  (matches functions containing EITHER word, not both).\n"
-        '• Prefer SINGLE-WORD queries for broad matching: "attach" not "attach callback".\n'
-        "• For exact phrases use double quotes: '\"interrupt handler\"'.\n"
-        '• Underscores are word separators: "modem_init" → modem AND init.\n'
-        '  Write "modem init" instead.\n\n'
-        "EMPTY RESULT STRATEGY — if a fw-context tool returns nothing:\n"
+        "search_bodies searches the TEXT OF EVERY DEFINITION — not only\n"
+        "functions.  It reaches function and method bodies, AND the body of a\n"
+        "class, struct, union, enum or namespace, AND a global with a multi-line\n"
+        "initializer.  An enum constant, a bit field, a member declaration such\n"
+        "as `InterruptIn _pin;` are all inside search_bodies.\n"
+        "A match on a type answers with the type: a query for one enum constant\n"
+        "returns the enum, and `match_lines` gives the line of the constant.\n"
+        "Only the TEXT matches: a hit in the name, the signature or the\n"
+        "`llm_analysis` of a symbol is not a hit here — that is search_code.\n"
+        "Text that belongs to NO definition is out of reach — #define,\n"
+        '#include, #ifdef, extern "C", and a file-scope comment.  Use\n'
+        "search_content for those.\n\n"
+        "search_content is the COMPLEMENT of search_bodies, not its fallback.\n"
+        "search_bodies answers which definition and takes the query literally;\n"
+        "search_content answers which files and widens the query.  Measured:\n"
+        "`SELF_TEST` gave 6 files there and 5 definitions here, the extra file\n"
+        "holding the comment `Self tester`.  For a feature footprint, run both.\n\n"
+        "CITE FROM THE RIGHT FIELD:\n"
+        "• search_bodies / search_content → `match_lines` holds the lines of the\n"
+        "  matches.  In search_bodies, `line` is where the DEFINITION starts,\n"
+        "  which in a long function is hundreds of lines away from the match.\n"
+        "  Never cite `line` for a statement.\n"
+        "• get_source / get_file_map → `line` and `end_line` are the extent of\n"
+        "  the symbol.  Cite `file:line-end_line`.  Do not count lines yourself.\n"
+        "• read_file → pass line_numbers=True, or read a window with start_line\n"
+        "  and end_line.  Its bare `content` must never be counted.\n"
+        "• A field with NO leading underscore is an answer to cite.  An\n"
+        "  `_`-prefixed one (`_match_snippet`, `_fallback`) says where it\n"
+        "  came from.\n"
+        "Do not leave fw-context for a text search to find a line number.\n\n"
+        "READ THE RESULT YOU ALREADY HAVE — measured on one session, 4 of 12\n"
+        "calls asked again for what the payload already carried.\n"
+        "1. Before calling anything for a `path:line`, re-read the last result:\n"
+        "   `match_lines` and `file` are usually already there.\n"
+        "2. Never repeat one query with a filter added.  Write `kind` in the\n"
+        "   first call, or read `kind` on each result.\n"
+        '3. Never invent a symbol name because "it should be called that".\n'
+        "   Take the name from a result.  A guess costs a whole call.\n"
+        "4. A caller is find_callers, never a comment that reads like one.\n\n"
+        "UNTRUSTED FIELD — `llm_analysis` ({summary, inputs, outputs}) is written\n"
+        "by a model, not by the code.  It is a hint that points you at a symbol.\n"
+        "NEVER quote it as fact: one measured summary called an identifier\n"
+        '"possibly related to sensor status", which was a guess from its name.\n'
+        "Quote `source`, `signature`, or `docstring` instead.\n\n"
+        "HOW EACH TOOL READS YOUR QUERY:\n"
+        "• search_code, search_content — every bare term gets a trailing `*` and\n"
+        '  the terms are OR-joined: "modem init" → modem* OR init*, thus a symbol\n'
+        "  with EITHER word matches.  Prefer single words.\n"
+        "• search_bodies — the query goes to FTS5 as you wrote it.  A space is an\n"
+        "  AND of two exact tokens and NO wildcard is added: `SELF_TEST` misses\n"
+        "  `Self tester`, `SELF_TEST*` finds it.  Add the `*` yourself.\n"
+        "• Punctuation is not searchable anywhere — FTS5 cannot parse `.attach(`,\n"
+        "  thus it is repaired into a phrase and what runs is the word `attach`.\n"
+        '  search_bodies marks such an answer (`_fallback: "sanitized"` +\n'
+        "  `_query_used`); the hits whose body really holds the pattern are the\n"
+        "  ones with `match_lines`.\n"
+        '• Underscores are word separators: "modem_init" asks for the two tokens\n'
+        '  next to each other and misses modem_parser_oob_init.  Write "modem init".\n'
+        "• For exact phrases use double quotes: '\"interrupt handler\"'.\n\n"
+        "EMPTY RESULT STRATEGY — an empty list means NO SUCH CODE.  A query FTS5\n"
+        "cannot parse comes back as a `warning` + `hint`, never as `[]`.\n"
         "1. Try a simpler/single-word query in the SAME tool first.\n"
-        "2. Switch to a DIFFERENT fw-context tool (search_bodies → search_code, etc.).\n"
+        "2. In search_bodies, add the `*` — that tool adds none.\n"
         "3. Use lookup_symbol for known symbol names.\n"
-        "4. If search_bodies returns empty, switch to search_content — it covers\n"
-        '   file scope (type declarations, #define, extern "C") that search_bodies\n'
-        "   cannot reach.\n"
+        "4. If search_bodies returns empty, switch to search_content — it widens\n"
+        '   the query and covers the preprocessor (#define, #ifdef) and extern "C",\n'
+        "   which belong to no definition and thus reach no symbol body.\n"
         "5. find_callers empty → callers exist through member-field accesses\n"
         "   (obj.method()) or base-class pointers. Fall back to\n"
         '   search_bodies("function_name") which text-searches function bodies\n'
@@ -304,6 +640,30 @@ mcp = FastMCP(
         "7. Only AFTER exhausting fw-context — use other available tools.\n\n"
         "project_only=True (on search_code, search_bodies, search_content, and\n"
         "callgraph tools) excludes vendor SDK code — use when asking about YOUR code.\n\n"
+        "MULTI-PROJECT — a question about a DIFFERENT project:\n"
+        "Each tool answers about ONE project. Without project or project_root\n"
+        "this is the project of the current directory — NOT the project that\n"
+        "the operator asked about.\n"
+        "1. Call list_projects. It gives the name, the project_id, and the\n"
+        "   root_path of each indexed project.\n"
+        '2. Give project="<name>" (or project_root="<root_path>") to EVERY\n'
+        "   call that follows, get_active_build included.\n"
+        "Do not invent other parameter names. An unknown argument causes an\n"
+        "error that names it.\n\n"
+        "PARAMETER NAMES — every tool rejects an unknown argument, thus a guess\n"
+        "costs a whole call.  The full schema of each tool is in the tool list.\n"
+        "Read it there.  Three names cover almost every tool:\n"
+        "• `name` — the symbol.  NOT `symbol`, NOT `symbol_name`.\n"
+        "  (lookup_symbol, get_source, get_symbol_context, find_callers,\n"
+        "  find_references, explain_symbol, and the call-graph tools)\n"
+        "• `file_path` — the file.  (read_file, get_file_map, reindex_file)\n"
+        "• `query` — the search terms.  (search_code, search_bodies,\n"
+        "  search_content, smart_search, semantic_search)\n"
+        "No tool takes a filler argument.  Send no argument you did not read in\n"
+        "the schema — `get_active_build` accepts only `project_root` and `fast`.\n"
+        "When a call fails on an argument, DROP the bad argument and REPEAT the\n"
+        "call.  Do not continue without the answer, and above all do not skip\n"
+        "`get_active_build`: it says whether the index can be trusted at all.\n\n"
         "ANTI-PATTERNS — do NOT:\n"
         "• Use external search tools for C/C++ symbols → use lookup_symbol or search_code\n"
         "• Use external search tools for code patterns → use search_bodies (function\n"
@@ -392,6 +752,7 @@ mcp = FastMCP(
         "Call graph: find_callers, find_references, find_call_path,\n"
         "find_all_callers_recursive, find_callees_recursive, find_hotspots,\n"
         "find_dead_code, find_wrapper_callers, trace_data_flow,\n"
+        "get_vector_table,\n"
         "find_indirect_call_sites, find_indirect_targets.\n"
         "Inheritance: get_inheritance_chain, get_class_members,\n"
         "get_template_instances, get_method_overrides.\n"
@@ -431,7 +792,9 @@ mcp = FastMCP(
         "commit, verify this change.\n"
         "If the project has a LOCAL fw-review skill, that overrides\n"
         "the global default — the user has intentionally customized it.\n\n"
-        "Start every session with get_active_build().\n"
+        "Start every session with get_active_build(), and repeat it when the\n"
+        "first attempt fails on an argument.  An answer built on an index of\n"
+        "unknown health is worth nothing.\n"
         "For non-C/C++ files, general-purpose tools are preferred.\n\n"
         "LLM SETUP — after get_active_build returns status='ready', call\n"
         "check_ollama to verify the LLM backend:\n"
@@ -502,7 +865,6 @@ mcp = FastMCP(
 
 # ── File-watch daemon ───────────────────────────────────────────────────────
 
-_SOURCE_EXTS_WATCH = {".c", ".cpp", ".h", ".hpp"}
 
 
 # ── Tools (non-search) ──────────────────────────────────────────────────────
@@ -538,56 +900,65 @@ _SOURCE_EXTS_WATCH = {".c", ".cpp", ".h", ".hpp"}
 # ARE wrapped — they may run for seconds to minutes (BFS traversal,
 # Ollama HTTP calls, libclang re-parsing) and need progress notifications
 # and the 5 s busy-rejection guard.
+#
+# _with_project_selector adds the `project` parameter to every tool that
+# takes a project_root.  It must stay the OUTERMOST wrapper: it is the one
+# that FastMCP inspects, and it reads the signature of what it wraps.
+#
+# _forbid_unknown_tool_arguments must run BEFORE the first registration —
+# it changes the base model from which FastMCP builds each argument model.
+_forbid_unknown_tool_arguments()
 
 # maintenance.py
-mcp.tool()(maintenance.check_dependencies)
-mcp.tool()(maintenance.check_ollama)
-mcp.tool()(maintenance.configure_llm)
-mcp.tool()(maintenance.get_active_build)
-mcp.tool()(maintenance.get_environment_status)
-mcp.tool()(maintenance.get_project_info)
-mcp.tool()(maintenance.list_projects)
-mcp.tool()(maintenance.list_variants)
-mcp.tool()(maintenance.reindex_file)
-mcp.tool()(maintenance.reindex_file_impl)
-mcp.tool()(maintenance.reset_index)
+mcp.tool()(_with_project_selector(maintenance.check_dependencies))
+mcp.tool()(_with_project_selector(maintenance.check_ollama))
+mcp.tool()(_with_project_selector(maintenance.configure_llm))
+mcp.tool()(_with_project_selector(maintenance.get_active_build))
+mcp.tool()(_with_project_selector(maintenance.get_environment_status))
+mcp.tool()(_with_project_selector(maintenance.get_project_info))
+mcp.tool()(_with_project_selector(maintenance.list_projects))
+mcp.tool()(_with_project_selector(maintenance.list_variants))
+mcp.tool()(_with_project_selector(maintenance.reindex_file))
+mcp.tool()(_with_project_selector(maintenance.reindex_file_impl))
+mcp.tool()(_with_project_selector(maintenance.reset_index))
 
 # search.py
-mcp.tool()(_wrap_tool(search.lookup_symbol))
-mcp.tool()(_wrap_tool(search.search_code))
-mcp.tool()(_wrap_tool(search.search_bodies))
-mcp.tool()(_wrap_tool(search.search_content))
-mcp.tool()(_wrap_tool(search.semantic_search))
-mcp.tool()(_wrap_tool(search.smart_search))
+mcp.tool()(_with_project_selector(_wrap_tool(search.lookup_symbol)))
+mcp.tool()(_with_project_selector(_wrap_tool(search.search_code)))
+mcp.tool()(_with_project_selector(_wrap_tool(search.search_bodies)))
+mcp.tool()(_with_project_selector(_wrap_tool(search.search_content)))
+mcp.tool()(_with_project_selector(_wrap_tool(search.semantic_search)))
+mcp.tool()(_with_project_selector(_wrap_tool(search.smart_search)))
 
 # callgraph.py
-mcp.tool()(_wrap_tool(callgraph.find_all_callers_recursive))
-mcp.tool()(_wrap_tool(callgraph.find_call_path))
-mcp.tool()(_wrap_tool(callgraph.find_callees_recursive))
-mcp.tool()(_wrap_tool(callgraph.find_callers))
-mcp.tool()(_wrap_tool(callgraph.find_dead_code))
-mcp.tool()(_wrap_tool(callgraph.find_hotspots))
-mcp.tool()(_wrap_tool(callgraph.find_indirect_call_sites))
-mcp.tool()(_wrap_tool(callgraph.find_indirect_targets))
-mcp.tool()(_wrap_tool(callgraph.find_references))
-mcp.tool()(_wrap_tool(callgraph.find_wrapper_callers))
-mcp.tool()(_wrap_tool(callgraph.trace_data_flow))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_all_callers_recursive)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_call_path)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.get_vector_table)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_callees_recursive)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_callers)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_dead_code)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_hotspots)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_indirect_call_sites)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_indirect_targets)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_references)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.find_wrapper_callers)))
+mcp.tool()(_with_project_selector(_wrap_tool(callgraph.trace_data_flow)))
 
 # source.py
-mcp.tool()(_wrap_tool(source.explain_symbol))
-mcp.tool()(_wrap_tool(source.get_file_map))
-mcp.tool()(_wrap_tool(source.get_source))
-mcp.tool()(_wrap_tool(source.get_symbol_context))
-mcp.tool()(_wrap_tool(source.read_file))
+mcp.tool()(_with_project_selector(_wrap_tool(source.explain_symbol)))
+mcp.tool()(_with_project_selector(_wrap_tool(source.get_file_map)))
+mcp.tool()(_with_project_selector(_wrap_tool(source.get_source)))
+mcp.tool()(_with_project_selector(_wrap_tool(source.get_symbol_context)))
+mcp.tool()(_with_project_selector(_wrap_tool(source.read_file)))
 
 # inheritance.py
-mcp.tool()(_wrap_tool(inheritance.get_class_members))
-mcp.tool()(_wrap_tool(inheritance.get_inheritance_chain))
-mcp.tool()(_wrap_tool(inheritance.get_method_overrides))
-mcp.tool()(_wrap_tool(inheritance.get_template_instances))
+mcp.tool()(_with_project_selector(_wrap_tool(inheritance.get_class_members)))
+mcp.tool()(_with_project_selector(_wrap_tool(inheritance.get_inheritance_chain)))
+mcp.tool()(_with_project_selector(_wrap_tool(inheritance.get_method_overrides)))
+mcp.tool()(_with_project_selector(_wrap_tool(inheritance.get_template_instances)))
 
 # variables.py
-mcp.tool()(_wrap_tool(variables.find_variables))
+mcp.tool()(_with_project_selector(_wrap_tool(variables.find_variables)))
 
 # ── MCP Resources ──────────────────────────────────────────────────────────
 
@@ -715,11 +1086,14 @@ def main() -> None:
          tools raise ``ProjectNotInitializedError`` (fail-fast).
        - If project is initialized but no index exists: server starts
          normally — ``get_active_build()`` returns ``no_index`` so the
-         agent can ask the operator and run index via bash.
+         agent can ask the operator and run index via bash.  The ping
+         thread starts, thus the watcher daemon starts as soon as the
+         operator creates the index.
     2. When ready, pre-marks the database as integrity-checked.
     3. Ensures the persistent watcher daemon is running for the project
        (spawns it if this is the first MCP server).
-    4. Starts a ping thread that keeps the daemon alive.
+    4. Starts a ping thread that keeps the daemon alive, and that
+       spawns the daemon again when a ping gets no answer.
 
     **Why progressive startup?**  The server must NOT exit when the
     project is not initialized or has no index.  The whole point of
@@ -779,6 +1153,17 @@ def main() -> None:
     db_path = cfg.index.db_dir / project_id / "index.db"
     if not db_path.exists():
         log.info("No index found at %s — get_active_build() will report no_index", db_path)
+        # The ping thread starts even when no index exists.  The thread
+        # calls _ensure_daemon_running every PING_INTERVAL seconds, thus
+        # the watcher starts when the operator runs `fw-context index`.
+        # WHY this is necessary: this function is the only place that
+        # spawns the daemon at server startup.  A server that starts
+        # BEFORE the first index gets no watcher, and no background
+        # reindex runs for the full life of that server.
+        try:
+            _start_ping_thread(root)
+        except (RuntimeError, OSError):
+            log.exception("Ping thread startup failed — no automatic reindex until the server restarts")
         mcp.run()
         return
 
@@ -809,10 +1194,20 @@ def _start_ping_thread(root: Path) -> None:
     daemon thread is simpler — it runs independently and dies with the
     process.
 
-    **Why ping?**  The watcher daemon is a separate process spawned by
-    the first MCP server.  If it dies (OOM, segfault, manual kill),
-    file watching stops silently — the ping thread detects this and
-    signals ``_ensure_daemon_running`` to respawn it.
+    **Why ping?**  The watcher daemon is a separate process that the
+    first MCP server spawns.  If the daemon stops (OOM, segfault,
+    manual kill), file watching stops without a message.  A failed ping
+    is the only signal that an MCP server gets, thus the loop calls
+    ``_ensure_daemon_running`` to start the daemon again.
+
+    **Two failure modes, one recovery.**  A ping fails when the daemon
+    stopped, and also when no daemon was ever spawned.  The second case
+    occurs when the server starts before the project has an index.
+    ``_ensure_daemon_running`` corrects the two cases.  Its only
+    precondition is an ``index.db`` file that exists.  It spawns a
+    daemon only when no daemon holds ``watcher.lock``.  Concurrent MCP
+    servers are thus safe — the flock serialises them, and exactly one
+    daemon starts.
     """
     import threading
     import time
@@ -823,12 +1218,17 @@ def _start_ping_thread(root: Path) -> None:
         while True:
             time.sleep(PING_INTERVAL)
             try:
-                alive = ping_daemon(root)
-                if not alive:
-                    # Revival handled by _ensure_daemon_running in background.py
-                    log.debug("Daemon ping failed — daemon may have exited")
-            except OSError:
-                log.debug("Daemon ping error", exc_info=True)
+                if ping_daemon(root):
+                    continue
+                log.debug("Daemon ping failed — the ping thread spawns a new watcher daemon")
+                _ensure_daemon_running(root)
+            except (RuntimeError, OSError):
+                # RuntimeError — the project is not initialized, or it
+                # has no index yet.  _db_path() raises it through
+                # _check_server_ready().  The two states are temporary,
+                # because the operator can still run init or index.  The
+                # loop must stay alive and try again on the next tick.
+                log.debug("Could not start the watcher daemon", exc_info=True)
 
     # daemon=True: killed on process exit — no explicit stop mechanism needed
     t = threading.Thread(target=_ping_loop, daemon=True, name="fw-context-ping")

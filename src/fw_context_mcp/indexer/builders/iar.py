@@ -134,7 +134,27 @@ class IARBuildSystem:
             "  pip install keil2clangd"
         )
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — the backend converts an .ewp and compiles nothing."""
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return nothing: IAR uses a linker configuration file.
+
+        ilink takes an `.icf` file, whose grammar is not the grammar of GNU
+        ld.  `indexer.linker_script` would read it wrong, and a wrong
+        memory map is worse than none.  This backend detects only.
+        """
+        return []
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""

@@ -277,7 +277,7 @@ fw-context init-variants list                          # list declared variants
 fw-context init-variants add --name <name> --board <board>
 fw-context init-variants add --name <name> --board <board> --description "text"
 fw-context init-variants add --name <name> --build-dir build/<name>
-fw-context init-variants add --name <name> --env ZBOX_ENV=DEV
+fw-context init-variants add --name <name> --env BOARD_ENV=DEV
 fw-context init-variants remove <name>
 ```
 
@@ -540,6 +540,23 @@ value that fw-context detects automatically from the current working
 directory. Every input block below shows this parameter, but you typically
 omit it, because the automatic detection handles the common case.
 
+**A question about a different project.** Every tool answers about one
+project. To ask about a project that is not the project of the current
+directory, give the `project` parameter — the `name` or the `project_id`
+that `list_projects` shows. It is an alternative to `project_root`, which
+takes the root path. Give one of the two, not both. The `project`
+parameter must go on each call, `get_active_build` included, because
+fw-context keeps no session state.
+
+```
+list_projects   →  {"name": "boot-loader", "project_id": "<32 hex chars>", "root_path": "/…/boot-loader"}
+lookup_symbol   →  {"name": "main", "project": "boot-loader"}
+```
+
+A parameter name that no tool declares causes an error that names it.
+Earlier releases dropped such an argument without a message, and the tool
+then answered about the project of the current directory.
+
 **Multi-variant projects.** For a project with `[[build.variants]]`, every
 query tool also accepts `variant` and `image` parameters. When you omit
 `variant`, fw-context uses `[build] default_variant`, or returns an error
@@ -560,8 +577,9 @@ Output: [{"name": "uart_init", "qualified_name": "drv::uart_init", "kind": "func
           "file": "/path/src/uart.c", "line": 42, "is_definition": true,
           "signature": "void uart_init(int baudrate)", "docstring": "Initialize UART",
           "is_template": false, "is_virtual": false, "is_pure_virtual": false,
-          "summary": "Initialize the UART peripheral…", "inputs": "baudrate…",
-          "outputs": "…", "enum_value": null, "_fallback": "fts5+kind"}, …]
+          "llm_analysis": {"summary": "Initialize the UART peripheral…",
+                           "inputs": "baudrate…", "outputs": "…"},
+          "enum_value": null, "_fallback": "fts5+kind"}, …]
 ```
 
 Enum constants include `enum_value` (the integer value) when non-None.
@@ -570,8 +588,21 @@ Results include `is_template`, `is_virtual`, `is_pure_virtual` flags
 `template_usr` references the template definition. When the symbol is
 a member (method/field/nested type), `parent_usr` references the parent class.
 When fw-context generates LLM analysis (with `fw-context index --analyze`),
-results include `summary`, `inputs`, and `outputs` fields, with
+a result carries `llm_analysis` — `{summary, inputs, outputs}`, with
 plain-English descriptions.
+
+A model wrote that text, and the code did not. It is nested for that
+reason: a flat key would sit beside `signature` and `docstring`, which
+come from the source, with nothing to separate a description from a
+guess. Use `llm_analysis` to find a symbol. Quote `signature`,
+`docstring`, or the `source` of `get_source`.
+`get_active_build().analysis.model` names the model — one for each index.
+
+**Precision:** FTS5 indexes the qualified name, thus a local variable
+matches through the name of its parent. A query for `sensor` also
+returns `V`, `ret`, and `tmp_value` when they live inside
+`read_sensor_value`. Pass `kind` to exclude them, or read `kind` on
+each result before you act on it.
 
 **Progressive relaxation:** when the initial FTS5 search returns nothing, the
 tool automatically broadens the search in up to six steps:
@@ -599,21 +630,52 @@ succeeded: `"fts5"`, `"name_tokens_like"`, `"docstring_like"`,
 **FTS5 syntax:**
 - `uart*` — prefix wildcard
 - `"spi transfer"` — exact phrase match
-- `modem init` — both terms (AND for `search_code`). fw-context treats an
-  underscore as a word separator, so `modem_init` means `modem AND init`
-- **For `search_bodies` and `search_content`:** fw-context OR-joins bare
-  multi-word queries, with each term prefix-wildcarded. Prefer single-word
-  queries
+- fw-context treats an underscore as a word separator, so `modem_init`
+  asks for the two tokens next to each other and misses
+  `modem_parser_oob_init`
+- **`search_code` and `search_content`** give every bare term a trailing
+  `*` and OR-join them: `modem init` becomes `modem* OR init*`. Prefer
+  single-word queries
+- **`search_bodies`** sends the query as written: a space is an AND of two
+  exact tokens, and no wildcard is added
+- Punctuation is not searchable in any of them. FTS5 cannot parse
+  `.attach(` as a term, so the query is repaired into the phrase
+  `".attach("` — and the tokenizer drops punctuation inside a phrase too,
+  so what runs is the word `attach`. In `search_bodies` such a result
+  carries `_fallback: "sanitized"` and `_query_used`; a query FTS5 accepts
+  (`NEAR(a b)`, `^term`, a column filter) always runs untouched
 
 **Kind filter:** `function`, `method`, `constructor`, `destructor`, `class`, `struct`, `union`, `enum`, `enum_constant`, `typedef`, `variable`, `field`, `namespace`
 
 #### `search_bodies`
 
-Find patterns in C/C++ function **bodies** — the implementation code inside `{ }`.
+Find patterns in the **text of a definition** — the code inside its extent.
 
-Searches **only** the text between `{` and `}` of function and method
-definitions. Does **not** search file-scope constructs, such as
-`extern "C"`, `#include`, `#define`, or type declarations in headers.
+Searches the stored text of every definition, and a definition is not only
+a callable. Measured on one project of 60,877 symbols, the text covers:
+
+- Callables — `function`, `method`, `constructor`, `destructor`.
+- Types — `class`, `struct`, `union`, `enum`, `namespace`. An enum
+  constant, a bit field, and a member declaration such as
+  `InterruptIn _pin;` are inside the body of the type that holds them.
+- Definitions of data — `varglobal`, `varlocal`, `typedef`. A table with
+  a multi-line initializer is found by its content.
+
+A match on a type reports the type as the result. A query for one enum
+constant thus answers with the enum, and `match_lines` gives the line of
+the constant itself.
+
+**Only the text matches.** The query is bound to the stored body: a hit
+in the name, the signature, the docstring or the `llm_analysis` of a
+symbol is not a hit here. Measured on one project, `sensor` used to give
+36 results of which 22 matched only through a summary that a model wrote
+— untrusted text that cannot be cited, and a `_match_snippet` with no
+match in it. Use `search_code` to reach a name or a concept. A column
+filter you write yourself (`summary : sensor`) overrides the binding.
+
+Text that belongs to **no** definition is out of reach: `#define`,
+`#include`, `#ifdef`, `extern "C"`, and a comment or declaration at file
+scope. Use `search_content` for those.
 
 ```
 Input:  {"query": "attach", "project_root?": "/path/to/project", "kind?": "function", "limit?": 20, "project_only?": true}
@@ -621,22 +683,49 @@ Output: [{"name": "setup", "qualified_name": "setup", "kind": "function",
           "file": "/path/src/main.cpp", "line": 55, "is_definition": true,
           "signature": "void setup()",
           "_match_snippet": "…_timeout.<b>attach</b>(callback(&led_blink, 1000))…",
-          "source": "… (function body, truncated at 2000 chars)"}]
+          "match_lines": [58],
+          "source": "… (the text of the definition)",
+          "_source_truncated": true}]
 ```
 
+`line` is the first line of the definition, which in a long function is
+far from the match. Cite from `match_lines`, never from `line`. The name
+carries no leading underscore for a reason: a field the caller must cite
+is an answer, while an `_`-prefixed field (`_match_snippet`, `_fallback`,
+`_source_truncated`) says where the answer came from.
+
+`_source_truncated` says that `source` is cut. A callable keeps 2000
+characters, any other kind 500 — the body of a type is mostly members
+that the match has nothing to do with, and `_match_snippet` already
+carries the match in context. `get_source` gives the whole text.
+
 - **When to use `search_bodies` vs. `search_code` vs. `search_content`:**
-  - `search_bodies` — patterns in function **bodies** (what the code does):
-    `.attach(`, `NVIC_SetVector(`, `.rise(`, `.fall(`, `callback(&`
-  - `search_content` — patterns anywhere in **files**:
-    `extern "C"`, `InterruptIn`, `#define`, type declarations
+  - `search_bodies` — which **definition** holds the pattern (what the
+    code does or declares): `attach`, `SELF_TEST`, `InterruptIn`
+  - `search_content` — which **files** a topic touches, and the
+    preprocessor and file scope: `extern "C"`, `#define`, `#include`
   - `search_code` — find symbols by **name**:
     `modem init`, `interrupt handler`
 
-**FTS5 query tips for `search_bodies`:** fw-context OR-joins bare
-multi-word queries, with each term prefix-wildcarded: `"attach callback"`
-becomes `attach* OR callback*`. Prefer single-word queries for broad
-matching. For example, `"attach"` finds all `.attach(...)` patterns
-across the codebase.
+  `search_content` is the complement of `search_bodies`, not its
+  fallback: it covers the same definitions plus the text between them,
+  and it widens the query. Measured on one project, `SELF_TEST` gave 6
+  files there and 5 definitions here — the extra file held the comment
+  `Self tester`, which the literal query cannot reach. For the footprint
+  of one feature, run both.
+
+**FTS5 query tips for `search_bodies`:** the query goes to FTS5 as
+written. A space is an AND of two exact tokens and no wildcard is added,
+so `SELF_TEST` misses `Self tester` while `SELF_TEST*` finds it. A single
+word is the broadest form: `"attach"` reaches every `.attach(...)`
+pattern in the codebase.
+
+A query the engine refuses is repaired and re-run once, and the results
+then carry `_fallback: "sanitized"` with `_query_used`. Only what FTS5
+rejects is touched, so `NEAR(a b)`, `^term` and a column filter keep
+their exact meaning. When the repair cannot help either — an unbalanced
+quote, a bare operator — the answer is a `warning` with a `hint`, never
+an empty list.
 
 Results include `_match_snippet` — a highlighted excerpt showing each
 match in context with `<b>…</b>` tags. Project code sorts before vendor
@@ -644,8 +733,8 @@ code. Set `project_only=True` to filter to application code only.
 
 #### `search_content`
 
-Find patterns in **full file content** — file-scope + function bodies, not
-limited to function bodies.
+Find patterns in **full file content** — the whole file, and not only the
+text that belongs to a definition.
 
 Searches **ifdef-filtered** file text: only the code that actually
 compiles for the current build configuration. fw-context replaces an
@@ -655,21 +744,31 @@ numbers.
 ```
 Input:  {"query": "InterruptIn", "project_root?": "/path/to/project", "limit?": 20, "project_only?": false}
 Output: [{"file": "/path/src/main.cpp", "language": "cpp",
-          "mtime": "2026-06-05T09:35:18", "_match_snippet": "…InterruptIn…"}]
+          "mtime": "2026-06-05T09:35:18", "_match_snippet": "…InterruptIn…",
+          "match_lines": [29, 105]}]
 ```
 
-Covers file-scope constructs that `search_bodies` cannot see: `extern "C"`,
-type declarations in headers, `#include`, `#define`, global variables, and
-namespace blocks. Results are file-level, with one entry for each matching
-file. Use `search_bodies` for per-function detail.
+Covers the text that belongs to no definition, which is what
+`search_bodies` cannot see: `#define`, `#include`, `#ifdef`, `extern "C"`,
+and a comment at file scope. Results are file-level, with one entry for
+each matching file. Use `search_bodies` when you want the symbol that
+holds the match.
+
+`match_lines` gives the lines of the file that hold a query term, up to
+20 of them — the line numbers of the file itself, because an inactive
+`#ifdef` branch is a blank line and the count never shifts. The field is
+absent when FTS5 matched a variant of the token that the term is not a
+substring of: `SELF_TEST` matches a file that writes `Self tester`, and
+no line there holds `self_test`. Read `_match_snippet` in that case.
 
 When `files_fts` is missing, in a legacy index, this tool falls back to a
 LIKE search on `files.content`. The results include `_fallback: "like"`,
-and no snippet highlighting. Run `fw-context index` to upgrade.
+and no snippet highlighting. Run `fw-context index` to upgrade. A query
+that FTS5 refuses to parse takes the same path and adds a `warning` with
+a `hint` at the head of the list.
 
-**FTS5 query tips for `search_content`:** fw-context OR-joins bare
-multi-word queries, with a prefix wildcard on each term. Prefer
-single-word queries.
+**FTS5 query tips for `search_content`:** fw-context gives every bare
+term a trailing `*` and OR-joins them. Prefer single-word queries.
 
 #### `lookup_symbol`
 
@@ -800,8 +899,8 @@ Structural overview of a file: all symbols grouped by kind. This tool
 works like a fast table of contents, before you read the whole file.
 
 ```
-Input:  {"file_path": "src/modem_msg.cpp", "project_root?": "/path/to/project", "signatures?": false, "max_per_kind?": 30}
-Output: {"file": "src/modem_msg.cpp", "total_symbols": 426,
+Input:  {"file_path": "src/net_msg.cpp", "project_root?": "/path/to/project", "signatures?": false, "max_per_kind?": 30}
+Output: {"file": "src/net_msg.cpp", "total_symbols": 426,
          "symbols": {
            "method":    [{"name": "_is_socket_ok", "line": 140, "signature": "bool _is_socket_ok()"}, …],
            "variable":  [{"name": "_buffer_msg", "line": 105}, …],
@@ -845,7 +944,13 @@ Output: {"name": "adc_read", "kind": "function", "file": "/path/src/adc.c",
 ```
 
 Uses libclang's `end_line` for exact body boundaries. Falls back to
-brace-matching for older indexes.
+brace-matching for older indexes. The result also carries `end_line`, thus
+`file:line-end_line` is the citation — no counting.
+
+Every line of `source` starts with its line number in the file: four
+columns, right-aligned, then two spaces. The `source` of `search_bodies`
+is bare, and so is the `content` of `read_file` until you ask for
+`line_numbers=True`.
 
 For enum constants, the result includes `enum_value` (the integer value).
 For enums, the result includes a `constants` array that lists all the
@@ -853,7 +958,7 @@ member constants, with their names and values:
 
 ```
 Input:  {"name": "BleCmd::StatusCode", "project_root?": "/path/to/project"}
-Output: {"name": "StatusCode", "kind": "enum", "file": "/path/src/ble_cmd.h",
+Output: {"name": "StatusCode", "kind": "enum", "file": "/path/src/radio_cmd.h",
          "line": 20, "signature": "",
          "constants": [
            {"name": "OPERATION_SUCCESSFUL", "enum_value": 1},
@@ -984,6 +1089,24 @@ The path can be relative to the project root, such as `src/main.cpp`, or
 just the filename, such as `main.cpp`. This tool falls back to the raw
 disk content, with a `warning`, when the indexed `files.content` column is
 empty. Run `fw-context index` to populate the ifdef-filtered content.
+
+`line_numbers=True` prefixes every line with its number, in the format
+that `get_source` uses. `start_line` and `end_line` cut a window out of
+the file — 1-based, both ends inclusive, and 0 means no bound on that
+side. Reading around a known line costs a fraction of the whole file.
+
+```
+Input:  {"file_path": "src/command.h", "start_line": 25, "end_line": 31, "line_numbers": true}
+Output: {"file": "/path/src/command.h", "language": "c", "mtime": 1748534400.0,
+         "lines": 140, "start_line": 25, "end_line": 31,
+         "content": "  25      CLEAR_SD     = 11,\n  …"}
+```
+
+`lines` stays the length of the whole file. `start_line` and `end_line`
+in the result say which lines the `content` really holds, after the end
+was clamped to the length of the file. A negative bound, an `end_line`
+before `start_line`, or a `start_line` past the end of the file gives an
+`error`.
 
 ### Call graph
 

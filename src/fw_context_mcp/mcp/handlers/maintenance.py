@@ -36,8 +36,12 @@ from pydantic import Field
 from ...config import derive_project_id
 from ...config import load as load_config
 from ...config.settings import Config
+from ...indexer.autobuild import AutobuildState
+from ...indexer.autobuild import state as autobuild_state
+from ...indexer.compile_commands import command_line_defines
 from ...indexer.compile_commands import parse as parse_cc
 from ...indexer.db import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     DatabaseCorruptionError,
     WriteLockTimeout,
@@ -47,13 +51,18 @@ from ...indexer.db import (
     get_all_builds_for_project,
     get_all_projects,
     get_db_schema_version,
+    get_entry_point,
+    get_entry_points_by_config,
+    get_memory_regions,
+    get_memory_regions_by_config,
     make_analysis_summary,
     open_db,
     transaction,
 )
+from ...indexer.git_context import branch_moved_since
 from ...llm.ollama import check_setup
-from ...utils import resolve_project_root
-from ..background import _is_bg_reindex_running
+from ...utils import HEADER_EXTENSIONS, resolve_project_root
+from ..background import _is_bg_reindex_running, read_reindex_progress
 from ..shared.context import (
     _db_path,
     _detect_build_system,
@@ -63,9 +72,54 @@ from ..shared.context import (
     get_executor,
     invalidate_executor,
 )
-from ..shared.stale import _check_header_staleness, _count_modified_files
+from ..shared.stale import (
+    _check_header_staleness,
+    _count_modified_files,
+    find_unindexed_sources,
+)
 
 log = logging.getLogger(__name__)
+
+
+# What to tell the caller for each outcome of the automatic build.  Three
+# different sentences, because the required action differs: none, run the
+# build, or look at why the build failed.
+_AUTOBUILD_ADVICE: dict[AutobuildState, str] = {
+    AutobuildState.WILL_BUILD: (
+        "fw-context builds them on its own; no command is needed"
+    ),
+    AutobuildState.UNSUPPORTED: (
+        "this build system cannot build in the background without touching "
+        "the output of your own build — run `fw-context index --build`"
+    ),
+    AutobuildState.BACKOFF: (
+        "an automatic build for these files failed recently — run "
+        "`fw-context index --build` and read the error"
+    ),
+}
+
+
+def _autobuild_state(
+    root: Path, proj_cfg, db_path: Path, new_sources: list[str]
+) -> AutobuildState:
+    """Say what will happen to *new_sources*, for the message and the status.
+
+    Answers UNSUPPORTED when the build system cannot be determined: without
+    a backend nothing can build on its own, and that is the answer that
+    tells the caller to act rather than to wait.
+    """
+    if not new_sources:
+        return AutobuildState.WILL_BUILD  # unused — no file to report
+
+    from dataclasses import replace
+
+    from ...indexer.builders import registry
+    from ...utils import autobuild_dir
+
+    system = proj_cfg.build.system or _detect_build_system(root)
+    builder_cls = registry.get(system) if system else None
+    candidate = replace(proj_cfg.build, isolated_build_dir=autobuild_dir())
+    return autobuild_state(builder_cls, candidate, db_path.parent, new_sources)
 
 
 def _expand_dir_placeholder(dir_str: str, root: Path) -> str:
@@ -88,6 +142,37 @@ def _expand_dir_placeholder(dir_str: str, root: Path) -> str:
     except Exception:  # nosec B110 — best-effort display expansion
         pass
     return dir_str
+
+
+def _background_build_allowed(root: Path, proj_cfg: Config) -> bool:
+    """Say whether fw-context may run a build of this project on its own.
+
+    The same question `daemon._branch_needs_build` asks, and the same
+    answer: `background_build_safe` refuses where a build of fw-context
+    would reach the object files of the build of the user.  Asked here only
+    to word the advice — a project the daemon will handle should not read
+    like one that needs a command typed.
+
+    Any failure to decide answers no, which keeps the command in the advice.
+    """
+    from dataclasses import replace
+
+    from ...indexer.build import detect_build_system
+    from ...indexer.builders import background_build_safe, registry
+    from ...utils import SAFE_EXCEPT, autobuild_dir
+
+    try:
+        key = proj_cfg.build.system or detect_build_system(root)
+        builder_cls = registry.get(key) if key else None
+        if builder_cls is None:
+            return False
+        candidate = replace(
+            proj_cfg.build,
+            isolated_build_dir=autobuild_dir(proj_cfg.build.default_variant or ""),
+        )
+        return background_build_safe(builder_cls(), candidate)
+    except SAFE_EXCEPT:
+        return False
 
 
 def _build_variant_discovery(cfg: Config, builds: list, root: Path) -> dict:
@@ -181,7 +266,21 @@ def list_variants(
         Each build dict holds: variant (str — empty for a single-project
         index), image (str — empty for a single-project index), board (str),
         config_hash (str), symbol_count (int), file_count (int),
-        manifest_verification (str — "full" or "none").
+        manifest_verification (str — "full" or "none"),
+        entry_point (str — the `ENTRY()` of the linker script of this build,
+        empty when no script names one),
+        memory (list[dict] — the `MEMORY` regions of this build:
+        {name, attributes, origin, length, origin_value, length_value,
+        file_path, line}).  `origin` and `length` are the expression the
+        script writes; `origin_value` and `length_value` are numbers, and
+        they are None for an expression that names a symbol such as
+        `ORIGIN(RAM) + LENGTH(RAM)`.  Empty for a build whose system
+        records no linker script — see the note below.
+
+        THIS is where a per-build memory map lives, not in the `images`
+        list of ``get_active_build``: that list holds one entry per image
+        NAME, and one name can belong to two variants with different
+        addresses.
 
         When the project is not initialized, or has no index, the result is
         {builds: [], multi: False, error (str)}.
@@ -198,6 +297,18 @@ def list_variants(
     conn = _quick_open_readonly(db_path)
     try:
         builds = get_all_builds_for_project(conn, project_id)
+        # The memory map is per build, thus it belongs on these rows and not
+        # in the `images` list of get_active_build: that list holds one entry
+        # per image NAME, and two variants of the Zephyr project both carry an
+        # image called `app` with different flash addresses.
+        hashes = [b["config_hash"] for b in builds]
+        regions_by_config = get_memory_regions_by_config(conn, hashes)
+        # Read separately and not as a column of the query above: this
+        # connection comes from `_quick_open_readonly`, which skips the
+        # schema block by design, so an index written before this feature
+        # holds no such column.  Naming it in a shared SELECT made
+        # get_active_build raise on the ESP32 project.
+        entry_by_config = get_entry_points_by_config(conn, hashes)
     finally:
         conn.close()
 
@@ -212,6 +323,8 @@ def list_variants(
                 "symbol_count": b["symbol_count"],
                 "file_count": b["file_count"],
                 "manifest_verification": b["manifest_verification"],
+                "entry_point": entry_by_config.get(b["config_hash"], ""),
+                "memory": regions_by_config.get(b["config_hash"], []),
             }
         )
 
@@ -225,9 +338,9 @@ def get_active_build(
         str | None, Field(description="Project root directory. Auto-detected from CWD if omitted.")
     ] = None,
     fast: Annotated[
-        bool, Field(description="When True (default), skip the per-file stat scan. "
-        "modified_files_count is then always 0. header_affected_tus still comes from the "
-        "cached manifest hashes when manifest_verification is 'full'.")
+        bool, Field(description="When True (default), reuse the cached manifest "
+        "hashes for the header check. Both modes count modified files. Pass "
+        "False to recompute the header hashes, which is far slower.")
     ] = True,
 ) -> dict:
     """MANDATORY FIRST CALL for C/C++ projects. Return metadata about the
@@ -242,15 +355,28 @@ def get_active_build(
     * ``"ready"`` — up to date. Continue.
     * ``"reindexing"`` — background reindex running; queries stay accurate.
       Continue. ``reindex_progress`` holds its last log line.
-    * ``"reindex_needed"`` — schema mismatch or compile_commands.json
-      changed. Queries still work on existing data; run ``fw-context index``.
+    * ``"reindex_needed"`` — schema mismatch, an old row format, changed
+      compile_commands.json, or a source file that compile_commands.json
+      does not cover. Queries still work on existing data. Read
+      ``reindex_reasons``: a missing source file needs
+      ``fw-context index --build``, the others need only
+      ``fw-context index``.
     * ``"no_index"`` — initialized, never indexed. Run ``fw-context index``.
     * ``"not_initialized"`` — run ``fw-context init``.
     * ``"error"`` — DB corruption or access error. Use other tools.
 
-    Only a structural mismatch sets ``reindex_needed`` — an outdated schema,
-    or a changed compile_commands.json.  Modified source files are handled
-    per-query, and never set it.
+    Four conditions set ``reindex_needed``: an outdated schema, an outdated
+    ROW FORMAT, a changed compile_commands.json, and a source file that is
+    on disk but absent from compile_commands.json.  The last one needs a
+    build, because only the build system writes that file — a plain reindex
+    has no translation unit for the file and skips it without a word.
+    Modified source files are something else: they are handled per-query,
+    and never set it.
+
+    ``row_format_mismatch`` means that the same columns hold text with an
+    older meaning.  Take it seriously: an index written before
+    ``fw-context-rows/1`` keeps every inactive ``#ifdef`` branch, thus a
+    body or a file from it can show code that the compiler never sees.
 
     ``indexed_at`` and ``first_indexed_at`` are UTC; file mtimes are local
     time.  Never compare the two directly — in UTC+2 a correctly indexed
@@ -265,7 +391,7 @@ def get_active_build(
     * ``analyze_vendor`` — the value at index time, not the current config.
     * ``project`` / ``vendor`` — ``{analyzed, skipped, total}``.
       ``skipped`` = tried, but not analyzable (body larger than the model
-      context, or an unparseable answer).
+      context, an unparseable answer, or a body that was not readable).
     * ``complete`` — no work left: every project symbol is analyzed or
       skipped.  True exactly when ``reindex_reasons`` holds no "unanalyzed
       symbols" entry.  Vendor symbols excluded by ``analyze_vendor=False``
@@ -275,16 +401,19 @@ def get_active_build(
     Args:
         project_root: Project root directory. Auto-detected from CWD if
             omitted.
-        fast: When True (default), skip the per-file stat scan.
-            ``modified_files_count`` is then always 0.  ``header_affected_tus``
-            still comes from the cached manifest hashes when
-            ``manifest_verification`` is "full".
+        fast: When True (default), the header check reuses the cached
+            manifest hashes.  Both modes run the per-file scan, thus
+            ``modified_files_count`` is accurate either way — a tool that
+            reported "ready" while the search tools warned about the same
+            file gave the caller two readings and no way to choose.
+            False recomputes the header hashes and costs several times more.
 
     Returns:
         dict: {config_hash, project_id, project_root, build_system,
         compile_commands, indexed_at (str — "YYYY-MM-DD HH:MM:SS" in UTC,
         the completion time of the last full index), symbol_count, file_count,
-        reference_count, modified_files_count (int — 0 when fast=True),
+        reference_count, modified_files_count (int — files whose content no
+        longer matches the index; counted in both modes),
         header_affected_tus (int — number of TUs with stale header
         dependencies), manifest_verification (str —
         "full" when manifest.json exists, "none" otherwise),
@@ -295,13 +424,23 @@ def get_active_build(
         indexed_at),
         vendor_paths (list[str] — config index.vendor_paths),
         project_paths (list[str] — config index.project_paths),
+        effective_vendor_patterns (list[str] — the SQL LIKE patterns that
+        this build really used to mark vendor code, for example
+        ``["mbed-os/%"]``; empty when the manifest cannot be read.  The two
+        lists above hold what the config asks for, this one what the index
+        did),
         bg_reindex_running (bool),
         reindex_progress (str or None — last log line when reindex is running),
         schema_version (int — DB schema version),
         current_schema (int — code expects), status (str — "ready"|"reindexing"|
         "reindex_needed"|"no_index"|"not_initialized"|"error"), reindex_needed (bool —
         structural mismatch requiring a full reindex),
-        reindex_reasons (list[str] — why reindex is needed, empty when False),
+        reindex_reasons (list[str] — why reindex is needed, empty when False.
+        One of them asks for `fw-context index --build` rather than a plain
+        reindex: when the tree is on a different branch than the index,
+        compile_commands.json belongs to the OLD branch and carries its file
+        list and its compiler flags, so only a build regenerates it.  Read
+        the reason text — it names the command it needs),
         stale (bool — True when reindex_needed or header_affected_tus > 0),
         _warning (str, optional — when manifest verification is not "full"),
         vec_available (bool), vec_error (str, optional),
@@ -311,7 +450,50 @@ def get_active_build(
         images (list[dict] — {name, description, dir, type}),
         variant_images (dict — variant name to its image names),
         active_variant (str or None — [build] default_variant),
-        active_image (str or None — [build] default_image)}
+        active_image (str or None — [build] default_image),
+        entry_point (str — the `ENTRY()` of the linker script of the build
+        that the other fields describe, empty when no script names one),
+        memory (list[dict] — the `MEMORY` regions of that build:
+        {name, attributes, origin, length, origin_value, length_value,
+        file_path, line})}
+
+        About ``memory``: ``origin`` and ``length`` hold the expression the
+        script writes, thus they differ by platform — an mbed script writes
+        `0xefe00` and a Zephyr script writes `((673792) - 0xe6)`.
+        ``origin_value`` and ``length_value`` hold the number, and both are
+        None for an expression that names a symbol, such as
+        `ORIGIN(RAM) + LENGTH(RAM)`.  The end of a region is
+        ``origin_value + length_value``.
+
+        ``memory`` and ``entry_point`` describe ONE build.  For a
+        multi-variant project they follow ``config_hash``, which is the
+        build named by ``[build] default_variant``, and both are empty when
+        the config names no default.  Use ``list_variants`` for the map of
+        every build.
+
+        ``memory`` is empty for a build system that records no linker
+        script.  A PlatformIO project is the measured case: SCons writes no
+        ninja file and no link command the index can read, and the map file
+        never names the script.  An empty list means "not recorded", never
+        "no memory".
+
+        ``defines`` (dict — the `-D` flags of that build) and
+        ``defines_varying`` (int).  ``defines`` holds only the names that
+        EVERY translation unit of the build carries with the same value, so
+        the tool never shows the defines of one file as the defines of the
+        build.  ``defines_varying`` counts the names left out, thus a name
+        absent from ``defines`` is either not defined at all or not defined
+        everywhere — measured on the Mbed project: 27 names in all 881 units, 59
+        in only some, where the three assembly files get a shorter set.
+
+        This is the configuration the BUILD states, not every macro the
+        preprocessor saw.  The second is three orders of magnitude larger —
+        27800 distinct names on the STM32 project — and almost all of it comes from the
+        headers and the compiler.  A Zephyr build keeps its real
+        configuration in ``autoconf.h`` (740 `CONFIG_*` names) and passes
+        few `-D` flags, so ``defines`` says little there and a great deal on
+        an mbed build, where it holds `APPLICATION_ADDR`,
+        `APPLICATION_SIZE`, and `CMSIS_VECTAB_VIRTUAL`.
 
         For a project that is not initialized, the result holds only
         ``status``, ``project_root``, and ``index_message``.  When no index
@@ -385,10 +567,19 @@ def get_active_build(
         ref_count = count_refs(conn, config_hash)
         manifest_verification = cfg.get("manifest_verification", "none")
         if fast:
-            modified_count = 0
-            # header_affected_tus is cheap when the manifest is available —
-            # it compares stored hashes, not file stats.  Always compute it
-            # even in fast mode so the LLM knows about header staleness.
+            # The scan runs in fast mode too.  Without it this tool answered
+            # "ready" while search_code on the same index warned about the
+            # same file, and the caller had no way to tell which reading
+            # held.  It costs about 41 ms on a project of 1900 files,
+            # against the 749 ms that the header check below already spends.
+            #
+            # use_cache=False on purpose: the cache validates itself against
+            # MAX(mtime) of the files table, which only a reindex moves, thus
+            # a cached answer would miss the edit that just happened.
+            modified_count = _count_modified_files(conn, config_hash, root, use_cache=False)
+            # NOTE: the header check is NOT cheap — it hashes every header of
+            # every translation unit, which is 22,693 files and 749 ms on
+            # The Mbed project.  `fast` only gives it a cache; it does not skip it.
             if manifest_verification == "full":
                 header_affected_tus, _ = _check_header_staleness(
                     conn, config_hash, root, use_cache=True,
@@ -445,36 +636,138 @@ def get_active_build(
 
         cc_changed, stale_reason = _is_stale(cfg, cfg["compile_commands_path"])
         schema_old = db_schema_ver < CURRENT_SCHEMA_VERSION
+        # Does the stored text still mean what this version reads it to mean?
+        # The schema version above cannot answer that: it hashes the column
+        # SET, thus it moves only when a column appears or goes, while the
+        # content of a column can change under an unchanged name.  See
+        # CURRENT_ROW_FORMAT.
+        stored_row_format = str(cfg.get("row_format") or "")
+        row_format_old = stored_row_format != CURRENT_ROW_FORMAT
 
-        # Two conditions force a reindex:
+        # A source file that the build system never saw has no translation
+        # unit, thus a plain reindex cannot pick it up: it is absent from
+        # compile_commands.json, and only a build puts it there.  Without
+        # this check the tool reported "ready" over a file it knew nothing
+        # about, and it kept reporting it after a reindex.
+        new_sources = find_unindexed_sources(
+            conn, config_hash, root, Path(cfg["compile_commands_path"])
+        )
+        # What will happen to those files decides both the status and the
+        # wording.  fw-context builds them on its own where the backend can
+        # isolate its output, and then the caller has nothing to do; where it
+        # cannot, or where a build already failed, the caller must act.
+        auto_state = _autobuild_state(root, proj_cfg, db_path, new_sources)
+
+        # Three conditions force a reindex:
         #   1. Schema version in DB is older than current code expects.
         #   2. compile_commands.json was modified since indexing
         #      (detected via mtime comparison in _is_stale).
+        #   3. A source file is missing from compile_commands.json AND
+        #      fw-context will not build it on its own.  When it will, the
+        #      state is "reindexing" below — work is under way, and telling
+        #      the caller to run a command would only duplicate it.
         # Modified source files are handled per-query via auto-reindex
         # and do NOT cause reindex_needed=True.
-        needs_reindex = cc_changed or schema_old
+        blocked_sources = bool(new_sources) and auto_state is not AutobuildState.WILL_BUILD
+
+        # ── The tree moved to another branch since this index ──
+        # A fourth condition, and the only one a plain reindex cannot fix.
+        # compile_commands.json is a build artifact of the branch it was
+        # generated on: it carries that branch's file list AND its compiler
+        # flags.  Measured on the Mbed project, a switch from 4.15.3 to 4.15.1
+        # left two generated zcbor sources listed in that file and absent
+        # from the tree, and a reindex reads the same file again.
+        indexed_branch, live_branch = branch_moved_since(
+            cfg["description"] if "description" in cfg.keys() else "", root
+        )
+        branch_moved = bool(indexed_branch)
+        needs_reindex = (
+            cc_changed or schema_old or row_format_old or blocked_sources or branch_moved
+        )
 
         # Build reindex_reasons — only when reindex is actually needed
         reindex_reasons: list[str] = []
+        if branch_moved:
+            # Always names `--build`, never a plain reindex: that would reuse
+            # compile_commands.json, which belongs to the branch the index
+            # was built on, with its file list and its compiler flags.
+            #
+            # The daemon runs it on its own where the backend allows a
+            # background build, so the advice says both — a checkout on a
+            # project nobody is watching gets no burst, and then the manual
+            # command is the only thing that fixes it.  Measured: without the
+            # second half this reason read as a command while the
+            # new-source reason beside it read "no command is needed", and
+            # the two contradicted each other on one checkout of the Mbed project.
+            reindex_reasons.append(
+                f"branch changed: indexed on {indexed_branch!r}, "
+                f"now on {live_branch!r} — compile_commands.json belongs to "
+                f"the old branch"
+                + (
+                    "; a background reindex regenerates it with --build when "
+                    "the watcher sees a change, or run "
+                    "`fw-context index --build` now"
+                    if _background_build_allowed(root, proj_cfg)
+                    else ", run `fw-context index --build`"
+                )
+            )
         if schema_old:
             reindex_reasons.append(f"schema_mismatch: {db_schema_ver} < {CURRENT_SCHEMA_VERSION}")
+        if row_format_old:
+            # Names the effect, not only the value: the caller has to know
+            # that the answers it gets now can hold code that never
+            # compiles, which is not obvious from a version string.
+            reindex_reasons.append(
+                f"row_format_mismatch: {stored_row_format or '(none)'} != "
+                f"{CURRENT_ROW_FORMAT} — the stored text of this index keeps "
+                f"inactive #ifdef branches, thus a body or a file can show "
+                f"code that does not compile. Run `fw-context index`"
+            )
         if cc_changed:
             reindex_reasons.append(stale_reason or "compile_commands_changed")
+        if new_sources:
+            listed = ", ".join(new_sources[:3])
+            more = f" and {len(new_sources) - 3} more" if len(new_sources) > 3 else ""
+            reindex_reasons.append(
+                f"{len(new_sources)} source file(s) not in compile_commands.json "
+                f"({listed}{more}) — {_AUTOBUILD_ADVICE[auto_state]}"
+            )
 
         # Determine status — single value that drives LLM decision-making.
         # Priority: reindex_needed > reindexing > ready.
+        #
+        # A file that fw-context will build on its own counts as
+        # "reindexing": the work is under way or about to be, and every query
+        # keeps working meanwhile.  "reindex_needed" would ask the caller for
+        # a command that only duplicates it.
         if needs_reindex:
             status = "reindex_needed"
-        elif bg_running:
+        elif bg_running or (new_sources and auto_state is AutobuildState.WILL_BUILD):
             status = "reindexing"
         else:
             status = "ready"
 
         # Build human-readable index message
-        if status == "ready":
+        if status == "ready" and modified_count:
+            # The index is structurally sound, thus the status stays "ready"
+            # and every query keeps working.  But files on disk have moved
+            # past it, and the per-query warnings will say so — this message
+            # must not contradict them by claiming full freshness.
+            index_message = (
+                f"Index is usable ({sym_count} symbols), but {modified_count} file(s) "
+                f"changed since the last index run. Results about those files can be "
+                f"out of date — run `fw-context index`."
+            )
+        elif status == "ready":
             index_message = f"Index is fully up to date ({sym_count} symbols)"
         elif status == "reindexing":
-            if modified_count:
+            if new_sources and auto_state is AutobuildState.WILL_BUILD:
+                index_message = (
+                    f"{len(new_sources)} source file(s) are not in compile_commands.json "
+                    f"(first: {new_sources[0]}). fw-context builds them on its own — "
+                    f"no command is needed. Queries work on existing data meanwhile."
+                )
+            elif modified_count:
                 index_message = (
                     f"Index is usable — {modified_count} file(s) being reindexed "
                     f"in background. All queries return accurate results."
@@ -483,6 +776,17 @@ def get_active_build(
                 index_message = (
                     "Index is usable — background reindex in progress. All queries return accurate results."
                 )
+        elif new_sources:
+            # Checked before the other reindex reasons: `--build` is the only
+            # command that repairs this one, and a message that says plain
+            # `index` would send the caller in a circle.  Reaching here means
+            # fw-context will NOT build them itself — _AUTOBUILD_ADVICE says
+            # which of the two reasons applies.
+            index_message = (
+                f"{len(new_sources)} source file(s) are not in compile_commands.json "
+                f"(first: {new_sources[0]}). A plain reindex cannot see them — "
+                f"{_AUTOBUILD_ADVICE[auto_state]}. Queries still work on existing data."
+            )
         elif schema_old and cc_changed:
             index_message = (
                 f"Schema version mismatch ({db_schema_ver} < {CURRENT_SCHEMA_VERSION}) "
@@ -615,6 +919,39 @@ def get_active_build(
                 default_build["compile_commands_path"] if default_build else ""
             )
 
+        # ── The memory map of the build these fields describe ──
+        # AFTER the multi-variant block, because that block replaces
+        # `config_hash` with the default build.  Read before it, a
+        # multi-variant project would report the map of one build under the
+        # identity of another — measured on the Zephyr project, where `app`
+        # starts at flash 372736 and `mcuboot` at 110592.
+        #
+        # One build only.  `list_variants` reports every build's map, and
+        # this tool has no variant parameter to ask for another.
+        active_hash = result["config_hash"]
+        if active_hash:
+            result["entry_point"] = get_entry_point(conn, active_hash)
+            result["memory"] = get_memory_regions(conn, active_hash)
+            # The `-D` flags of the build that `config_hash` names, read
+            # from ITS compile_commands.json rather than from the project's.
+            # Computed here and not stored: the read costs 19 ms on
+            # The Mbed project with 881 units, measured, so a column would buy
+            # nothing and a stale one would mislead.
+            defines, varying = command_line_defines(
+                Path(result["compile_commands"])
+                if result["compile_commands"] else Path()
+            )
+            result["defines"] = defines
+            result["defines_varying"] = varying
+        else:
+            # A multi-variant project with no [build] default_variant: the
+            # LLM has to pick a variant first, thus there is no one map to
+            # report.  Empty rather than a guess at which build is meant.
+            result["entry_point"] = ""
+            result["memory"] = []
+            result["defines"] = {}
+            result["defines_varying"] = 0
+
         return result
 
     result = executor.execute_sync(_query, config_hash)
@@ -625,7 +962,7 @@ def get_active_build(
     # not spawn subprocesses.
     result["bg_reindex_running"] = bg_running
     if bg_running:
-        result["reindex_progress"] = _read_reindex_progress(db_path)
+        result["reindex_progress"] = read_reindex_progress(db_path.parent)
 
     # sqlite-vec is an optional C extension for vector embeddings.
     # Report its availability so semantic_search can degrade gracefully.
@@ -636,27 +973,6 @@ def get_active_build(
         result["vec_error"] = vec_err
 
     return result
-def _read_reindex_progress(db_path: Path) -> str | None:
-    """Read the last log line from the background reindex process.
-
-    Opens ``reindex.log`` in the same directory as the index database.
-    Reads only the last 4 KiB of the file — sufficient for a single
-    log line without reading a multi-megabyte log file into memory.
-    Returns ``None`` when the log file is missing or empty.
-    """
-    log_file = db_path.parent / "reindex.log"
-    try:
-        with open(log_file, encoding="utf-8") as fh:
-            fh.seek(0, 2)
-            file_size = fh.tell()
-            if file_size == 0:
-                return None
-            fh.seek(max(0, file_size - 4096))
-            last_chunk = fh.read()
-            lines = last_chunk.splitlines()
-            return lines[-1].strip() if lines else None
-    except (OSError, IndexError):
-        return None
 
 
 # ── moved from server.py ──
@@ -750,7 +1066,10 @@ def list_projects(
         ``info`` key.  When fw-context cannot read a database, the result
         holds a dict with ``db`` and ``error`` keys for that file.
     """
-    cfg = load_config(project_root=Path(project_root).resolve() if project_root else None)
+    # resolve_project_root, not Path().resolve(): project_root can hold a
+    # project name or a project_id, and only the shared resolver reads the
+    # global registry that maps those to a root directory.
+    cfg = load_config(project_root=resolve_project_root(project_root) if project_root else None)
     index_dir = cfg.index.db_dir
     # Glob for subdirectories containing index.db — each subdirectory
     # is named after a project_id UUID4.
@@ -932,6 +1251,13 @@ def reset_index(
         for suffix in ("-wal", "-shm", "-journal"):
             p = db_path.with_name(db_path.name + suffix)
             p.unlink(missing_ok=True)
+        # Both autobuild markers describe the index that just went away: a
+        # build that failed for a file list, and the files a build ran for
+        # and did not cover.  Left behind they would suppress or delay work
+        # on a fresh index that knows nothing about either.
+        from ...indexer.autobuild import clear_excluded, clear_failure
+        clear_failure(db_path.parent)
+        clear_excluded(db_path.parent)
         from ...mcp.shared.stale import _invalidate_modified_cache
         _invalidate_modified_cache()  # clear all entries — DB is gone
         info["action"] = "deleted"
@@ -1147,7 +1473,7 @@ def _update_manifest_after_reindex(
             # every header, so every record this function writes claimed
             # "generated": False.  After the end of vendor trust `generated`
             # is the only trust rule left, so that turned every build of a
-            # re-indexed file into a full reparse.  Measured on zbox-ecb-fw-v5
+            # re-indexed file into a full reparse.  Measured on the Zephyr project
             # variant nrf52840-dev: 27 generated headers dropped to 0.
             bdp = manifest_data.get("build_dir_patterns")
             if not bdp:
@@ -1381,7 +1707,6 @@ def _reindex_post_write_phases(
     total_symbols: int,
     db_dir: Path,
     target: Path,
-    matching: list,
     result: dict,
     root: Path,
 ) -> dict:
@@ -1398,9 +1723,13 @@ def _reindex_post_write_phases(
     When ``total_symbols <= 0``, all phases are skipped (nothing was
     added or updated).
 
-    A warning is emitted when a single header file is reindexed via only
-    one TU — other TUs including the same header may still have stale
-    symbols and the user should run a full ``fw-context index``.
+    The coverage warning for a header is NOT set here.  It used to be, and
+    that put it behind two gates it has nothing to do with: this function
+    returns early when ``total_symbols <= 0``, and the caller skips it
+    entirely when ``with_analysis=False`` — the mode the background
+    auto-reindex uses.  A caller that re-parsed a header through one unit
+    has to hear about it whether or not the enrichment phases ran, thus
+    _header_coverage_warning() is applied by the caller.
     """
     if total_symbols <= 0:
         return result
@@ -1409,14 +1738,33 @@ def _reindex_post_write_phases(
     _reindex_overrides(conn, config_hash, cfg, db_dir, result)
     _reindex_pagerank(conn, config_hash, cfg, result)
 
-    if len(matching) == 1 and target.suffix.lower() in {".h", ".hpp"}:
-        result["warning"] = (
-            "Header re-indexed via one TU. Other TUs including this header "
-            "may still have stale symbols — run 'fw-context index' for full accuracy."
-        )
-
     _reindex_embeddings(conn, config_hash, cfg, db_dir, target, root, result)
     return result
+
+
+def _header_coverage_warning(
+    target: Path, matching: list, via_header: bool
+) -> str | None:
+    """Say that a header was re-parsed through one compilation context.
+
+    Another unit can include the same header under a different set of
+    ``#define`` values and still hold symbols from before the edit.  Only a
+    full index covers every context, and the caller has to know that the
+    answer is partial.
+
+    *via_header* covers the manifest fallback.  The suffix test covers a
+    header that compile_commands.json does list, which some build systems
+    emit.  The suffix test alone is not enough: it names ``.h`` and
+    ``.hpp``, while an ``#include`` reaches ``.hh``, ``.hxx``, ``.inc`` and
+    extension-less headers just as well, and the fallback resolves those
+    too.
+    """
+    if not (via_header or (len(matching) == 1 and target.suffix in HEADER_EXTENSIONS)):
+        return None
+    return (
+        "Header re-indexed via one TU. Other TUs including this header "
+        "may still have stale symbols — run 'fw-context index' for full accuracy."
+    )
 
 
 # ── moved from server.py ──
@@ -1424,7 +1772,7 @@ def reindex_file_impl(
     file_path: Annotated[
         str,
         Field(
-            description="Absolute or project-relative path to the source file to re-parse. Must have a matching entry in compile_commands.json."
+            description="Absolute or project-relative path to the file to re-parse. A source file must have an entry in compile_commands.json. A header is re-parsed through one translation unit that includes it, and the result then carries a warning that other units can still hold stale symbols."
         ),
     ],
     project_root: Annotated[
@@ -1441,15 +1789,25 @@ def reindex_file_impl(
     """Re-parse a single source file with libclang and update its symbols in the index.
 
     Not read-only — uses the exact compiler flags from ``compile_commands.json``.
-    The file must be listed in ``compile_commands.json`` (headers are re-indexed
-    via the translation unit that includes them). Use after editing a file to
-    keep the index current without a full rebuild.
+    Use after editing a file to keep the index current without a full rebuild.
+
+    A source file must be listed in ``compile_commands.json``.  A header is
+    not listed there — compile_commands.json names translation units — so it
+    is re-parsed through one unit that includes it, taken from the manifest.
+    That answer describes a single compilation context, thus the result
+    carries a ``warning``: another unit can see the header under a different
+    set of ``#define`` values and still hold stale symbols.  Only a full
+    ``fw-context index`` covers every context.  One unit and not all of them
+    is a cost decision — an application header reaches a median of 3 units
+    but as many as 266 on a real project, at tens of seconds each.
 
     Also regenerates LLM analysis and method override relationships for
-    affected symbols when ``with_analysis=True``.
+    affected symbols when ``with_analysis=True``.  The analysis is
+    content-addressed, thus an unchanged symbol is never re-analysed.
 
     Args:
-        file_path: Path to source file to re-parse. Must be in compile_commands.json.
+        file_path: Path to the file to re-parse.  A source file must be in
+            compile_commands.json; a header goes through one including unit.
         project_root: Project root directory. Auto-detected if omitted.
         with_analysis: When True (default), also regenerates LLM symbol analysis,
             method override relationships, PageRank, and embeddings. Set False
@@ -1489,16 +1847,24 @@ def reindex_file_impl(
         if not target.exists():
             return _reindex_cleanup_deleted_file(conn, cfg_data, target, root, db_path)
 
-        matching, error = _reindex_match_tus(target, cfg_data)
-        if error:
-            return error
-
         # The manifest of THIS build carries the vendor set the index run
         # applied.  reindex_file must write is_project with that same
         # boundary, or one file ends up on the other side of it.
+        #
+        # Loaded before the match because it answers a second question:
+        # compile_commands.json lists no headers, so a header target finds
+        # its translation unit only through the manifest.  One load serves
+        # both — it costs 14 ms on a 9.3 MB manifest.
         from ...indexer.manifest import load as load_manifest
 
         build_manifest = load_manifest(db_path.parent, config_hash)
+
+        matching, via_header, error = _reindex_match_tus(
+            target, cfg_data, manifest=build_manifest, project_root=root,
+        )
+        if error:
+            return error
+
         vendor_patterns, project_patterns_list = _reindex_build_patterns(
             cfg, root, build_manifest
         )
@@ -1508,12 +1874,20 @@ def reindex_file_impl(
         )
         if "error" in result:
             return result
+
+        # Set before the with_analysis gate: the warning describes how much
+        # of the header the re-parse covered, which does not depend on
+        # whether the enrichment phases run.
+        coverage_warning = _header_coverage_warning(target, matching, via_header)
+        if coverage_warning:
+            result["warning"] = coverage_warning
+
         if not with_analysis:
             return result
 
         return _reindex_post_write_phases(
             conn, config_hash, cfg, total_symbols, db_path.parent,
-            target, matching, result, root,
+            target, result, root,
         )
 
     try:
@@ -1551,28 +1925,99 @@ def _reindex_resolve_target(
     return target, None
 
 
+def _tu_for_header(
+    target: Path, manifest: dict | None, project_root: Path
+) -> Path | None:
+    """Return one translation unit that includes *target*, or None.
+
+    A header is never its own entry in compile_commands.json, thus the
+    direct match cannot find it.  The manifest records each TU with the
+    header paths it pulled in, which answers the reverse question.
+
+    ONE unit, not all of them.  The fan-out is large: measured on
+    the Mbed project, an application header reaches a median of 3 translation
+    units but ``sdk_config.h`` reaches 266, and one re-parse costs about
+    42 s on that project.  Re-parsing every including unit would turn a
+    single tool call into hours, thus the caller warns that the answer
+    comes from one compilation context and points at a full index.
+
+    The choice is the lowest path in sort order, not the first entry.
+    Manifest order follows compile_commands.json, which a rebuild can
+    reshuffle, and a tool that picked a different unit on every call
+    would be hard to reason about.
+
+    Paths are compared as strings.  The manifest already stores resolved
+    forms — relative to the project root when inside it, absolute
+    otherwise (see ops.py) — and *target* arrives resolved from
+    _reindex_resolve_target, thus another resolve() per header would only
+    add a syscall for each of the tens of thousands of header references
+    a large manifest holds.
+    """
+    if not manifest:
+        return None
+    root = project_root.resolve()
+    target_str = str(target)
+    best: str | None = None
+    for entry in manifest.get("entries") or ():
+        tu_file = entry.get("file")
+        if not tu_file:
+            continue
+        for header in entry.get("headers") or ():
+            header_abs = header if Path(header).is_absolute() else str(root / header)
+            if header_abs != target_str:
+                continue
+            tu_abs = tu_file if Path(tu_file).is_absolute() else str(root / tu_file)
+            if best is None or tu_abs < best:
+                best = tu_abs
+            break
+    return Path(best) if best is not None else None
+
+
 def _reindex_match_tus(
-    target: Path, cfg_data: sqlite3.Row
-) -> tuple[list, dict | None]:
+    target: Path,
+    cfg_data: sqlite3.Row,
+    *,
+    manifest: dict | None = None,
+    project_root: Path | None = None,
+) -> tuple[list, bool, dict | None]:
     """Find compilation units in compile_commands.json that build *target*.
 
     Parses the compile_commands.json file and matches by absolute,
-    resolved file path.  A single source file may appear in multiple TUs
-    (e.g. when a header is included by several .cpp files) — all
-    matching TUs are returned so symbols from every context are updated.
+    resolved file path.  A single source file may appear in more than one
+    unit — the same .cpp built with two flag sets — and every match is
+    returned so symbols from each context are updated.
 
-    Returns ``(matching_tus, None)`` on success or an empty list with
-    an ``error_dict`` when the compile_commands.json is missing or the
-    target file is not listed.
+    A header matches nothing this way, because compile_commands.json
+    lists translation units and a header is not one.  For that case
+    *manifest* supplies one unit that includes the header; see
+    _tu_for_header for why one and which one.
+
+    Returns ``(matching_tus, via_header, None)`` on success, where
+    *via_header* says the units came from the manifest fallback and the
+    result therefore describes a single compilation context.  On failure
+    it returns an empty list with an ``error_dict`` — the
+    compile_commands.json is missing, or nothing builds the target.
     """
     cc_path = Path(cfg_data["compile_commands_path"])
     if not cc_path.exists():
-        return [], {"error": f"compile_commands.json not found: {cc_path}"}
-    units = parse_cc(cc_path)
+        return [], False, {"error": f"compile_commands.json not found: {cc_path}"}
+    # list(), not the iterator parse_cc returns: the header fallback below
+    # walks the units a second time, and a generator is empty by then.
+    units = list(parse_cc(cc_path))
     matching = [u for u in units if Path(u.file).resolve() == target]
-    if not matching:
-        return [], {"error": f"{target.name} not found in compile_commands.json — it may be a header-only file."}
-    return matching, None
+    if matching:
+        return matching, False, None
+
+    tu_path = _tu_for_header(target, manifest, project_root or target.parent)
+    if tu_path is not None:
+        # The manifest can name a unit that a later build dropped from
+        # compile_commands.json.  An empty result here falls through to
+        # the error below, which is the same answer as before.
+        via = [u for u in units if Path(u.file).resolve() == tu_path]
+        if via:
+            return via[:1], True, None
+
+    return [], False, {"error": f"{target.name} not found in compile_commands.json — it may be a header-only file."}
 
 
 def _effective_vendor_patterns(
@@ -1610,7 +2055,11 @@ def _reindex_build_patterns_for_generated(root: Path) -> tuple[list[str], None]:
     builder_cls = registry.get(system) if system else None
     if builder_cls is None:
         return [], None
-    return list(builder_cls().get_build_dir_patterns(root)), None
+    from ...utils import build_dir_patterns_with_fw_context
+
+    return build_dir_patterns_with_fw_context(
+        list(builder_cls().get_build_dir_patterns(root))
+    ), None
 
 
 def _reindex_build_patterns(
@@ -1649,21 +2098,27 @@ def _reindex_build_patterns(
 
 # ── moved from server.py ──
 def reindex_file(
-    file_path: Annotated[str, Field(description="Path to source file to re-parse. Must be in compile_commands.json.")],
+    file_path: Annotated[str, Field(description="Path to the file to re-parse. A source file must be in compile_commands.json. A header goes through one translation unit that includes it, and the result then carries a warning about the other units.")],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
 ) -> dict:
     """Re-parse a single source file with libclang and update its symbols in the index.
 
     Not read-only — uses the exact compiler flags from ``compile_commands.json``.
-    The file must be listed in ``compile_commands.json`` (headers are re-indexed
-    via the translation unit that includes them). Use after editing a file to
-    keep the index current without a full rebuild.
+    Use after editing a file to keep the index current without a full rebuild.
+
+    A source file must be listed in ``compile_commands.json``.  A header is
+    not listed there, thus it is re-parsed through one unit that includes
+    it.  That answer covers a single compilation context, thus the result
+    carries a ``warning`` — only a full ``fw-context index`` covers every
+    unit that includes the header.
 
     Also regenerates LLM analysis and method override relationships for
-    affected symbols when those features are enabled in config.
+    affected symbols when those features are enabled in config.  An
+    unchanged symbol keeps its stored analysis.
 
     Args:
-        file_path: Path to source file to re-parse. Must be in compile_commands.json.
+        file_path: Path to the file to re-parse.  A source file must be in
+            compile_commands.json; a header goes through one including unit.
         project_root: Project root directory. Auto-detected if omitted.
 
     Returns:
@@ -1696,6 +2151,8 @@ def check_ollama(
         "not_configured"|"model_missing"|"embedding_unavailable"|"error"),
         ollama_running (bool), ollama_url (str), configured_model (str),
         num_ctx (int), installed_models (list[str]),
+        chat_api (dict — ``{configured (bool), model (str)}``: whether an
+        external chat API replaces Ollama, and the model it names),
         configured_embed_model (str), embedding_installed (bool),
         message (str, on error/disabled), model_details (list[dict], when
         Ollama running), suggest_cloud (bool), vec_available (bool),
@@ -1963,8 +2420,15 @@ def get_project_info(
 
     if not project_id:
         # Empty string is the default — the LLM must be told that a
-        # project_id is required before this tool can return anything.
-        return {"error": "project_id is required — provide a UUID4 hex string from fw-context init."}
+        # project_id is necessary before this tool can return anything.
+        #
+        # The message names the two tools that give the value.  It used to
+        # say "from fw-context init", which is a command the caller cannot
+        # run to answer a question about a project that is already indexed.
+        return {
+            "error": "project_id is necessary. Call list_projects for the id of every "
+            "indexed project, or get_active_build for the id of this one."
+        }
     result = get_project_by_id(project_id)
     if result is None:
         # The UUID was not found in the global registry (~/.fw-context/projects.db).

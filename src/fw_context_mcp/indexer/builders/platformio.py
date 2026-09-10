@@ -106,16 +106,24 @@ class PlatformIOBuildSystem:
 
         cmd: list[str] = pio_prefix + ["run", "--project-dir", str(project_root), "--target", "compiledb"]
 
+        # PlatformIO has no CLI flag for the build directory; the documented
+        # override is the environment variable, which beats build_dir in
+        # platformio.ini.  run_build_command merges this into the child
+        # environment, thus every pio call below writes to it.
+        build_env: dict[str, str] | None = None
+        if cfg.isolated_build_dir:
+            build_env = {"PLATFORMIO_BUILD_DIR": cfg.isolated_build_dir}
+
         if cfg.clean:
             clean_cmd = pio_prefix + ["run", "--project-dir", str(project_root), "--target", "clean"]
             log.info("platformio clean: %s", " ".join(clean_cmd))
             try:
-                run_build_command(clean_cmd, cwd=project_root, description="pio run --target clean", build_cfg=cfg)
+                run_build_command(clean_cmd, cwd=project_root, description="pio run --target clean", build_cfg=cfg, env=build_env)
             except RuntimeError:
                 pass  # clean is best-effort — build dir may not exist yet
 
         log.info("platformio build: %s", " ".join(cmd))
-        run_build_command(cmd, cwd=project_root, description="pio run --target compiledb", build_cfg=cfg)
+        run_build_command(cmd, cwd=project_root, description="pio run --target compiledb", build_cfg=cfg, env=build_env)
 
         # PlatformIO writes compile_commands.json natively to the project
         # root; copy it to the gitignored fw-context build dir for a stable
@@ -136,7 +144,7 @@ class PlatformIOBuildSystem:
         build_cmd = pio_prefix + ["run", "--project-dir", str(project_root)]
         log.info("platformio compile: %s", " ".join(build_cmd))
         try:
-            run_build_command(build_cmd, cwd=project_root, description="pio run (full build for .d files)", build_cfg=cfg)
+            run_build_command(build_cmd, cwd=project_root, description="pio run (full build for .d files)", build_cfg=cfg, env=build_env)
         except RuntimeError:
             log.warning(
                 "Full build failed — .d files may be missing. "
@@ -146,7 +154,70 @@ class PlatformIOBuildSystem:
 
         return cc_path
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — ``PLATFORMIO_BUILD_DIR`` keeps the object files apart.
+
+        The variable wins over ``build_dir`` in platformio.ini, and every
+        pio call of this backend gets it, thus the artifacts stay out of
+        ``.pio/build/``.  That is what the contract asks for.
+
+        ``pio run -t compiledb`` ALSO rewrites
+        ``<project>/compile_commands.json``, and that cannot be redirected
+        from outside.  Three ways were checked and none exists:
+        ``COMPILATIONDB_PATH`` is a SCons construction variable that
+        ``clivars`` does not declare (builder/main.py:39-47,78), PlatformIO
+        has no project option for it, and the SCons tool takes the path from
+        the argument main.py passes.  Only an ``extra_scripts`` pre-script
+        could move it, which means editing the platformio.ini of the user.
+
+        That write is deliberately NOT repaired, and this paragraph is here
+        so nobody repairs it.  Measured over 209 entries, the file differs
+        from the one the build of the user produces in exactly one token per
+        entry — the ``.o`` output path — with no difference in -I, -D, -std,
+        -isystem or directory.  clangd does not read -o; config_hash and
+        flags_hash normalise it away (config_hash.py:_normalize_entry), so
+        alternating between an automatic and an explicit build neither
+        splits the index nor reparses one translation unit; and
+        ``fw-context init`` gitignores the file.
+
+        Both repairs that suggest themselves are worse than the write.  A
+        save/restore can leave the file missing or truncated, and on a real
+        project it is the ONLY compile_commands.json the user has — removing
+        it takes away what their clangd reads.  A generated second
+        platformio.ini works, but it has to reproduce the whole resolved
+        configuration, and getting that wrong feeds fw-context the wrong
+        flags in silence.  See plans/review_8d98343_fixes.md, finding 9.
+        """
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return nothing: PlatformIO records no reachable link command.
+
+        SCons runs the link and writes no ninja file, no `link.txt`, and no
+        response file that the index can read.  The map file does not name
+        the script either: measured on the STM32 project, `firmware.map` holds the
+        resolved `Memory Configuration` and the assignments, but never the
+        file name of the script.
+
+        Measured on the STM32 project, whose `ldscript.ld` comes from the
+        framework variant, and on the ESP32 project: neither names its
+        script anywhere the index
+        can find.  A search of the include directories would find a
+        candidate, and a candidate is a guess.
+
+        The map file is a possible source of the memory map by itself, and
+        `plans/vector_normalization.md` keeps that as separate work.
+        """
+        return []
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return the directory PlatformIO writes its build output into.
@@ -159,8 +230,8 @@ class PlatformIOBuildSystem:
         That mattered once a build-generated header became the only thing the
         staleness check still trusts: every vendored library header under
         ``.pio/libdeps/`` was trusted, so an edit to one went unnoticed.
-        Measured: 56 of the 56 headers HA_Boiler called generated were under
-        libdeps and none were under build, and 1 of 1 on FM.  Every other
+        Measured: 56 of the 56 headers the ESP32 project called generated were under
+        libdeps and none were under build, and 1 of 1 on the STM32 project.  Every other
         build system was clean — Mbed 0 of 1, Zephyr 0 of 27.
 
         ``.pio/libdeps/`` keeps its own answer in get_vendor_patterns(): it is

@@ -17,6 +17,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from fw_context_mcp.utils import CPP_SOURCE_EXTENSIONS, TU_EXTENSIONS
+
 # Flags libclang does not support — drop silently
 _DROP_FLAGS = frozenset({
     "-flto",
@@ -43,6 +45,18 @@ _DROP_FLAGS = frozenset({
     "-Wno-format-overflow",
     "-Wformat-truncation",
     "-Wno-format-truncation",
+    # GCC-only code-generation flags.  They change no declaration and no
+    # macro, so dropping them cannot change what the index sees — but clang
+    # rejects them as unknown arguments and the whole parse dies.
+    #
+    # Found by running clang over the flags of every real project rather
+    # than one at a time: five, not the two that first showed up.  They
+    # blocked the preprocessor on assembly units, where there is no libclang
+    # fallback to hide the failure.
+    "-fno-reorder-functions",
+    "-fno-printf-return-value",
+    "-fstrict-volatile-bitfields",
+    "-fno-tree-switch-conversion",
 })
 
 # GCC-only warning flags that take a level suffix (=1, =2) — drop any token
@@ -53,6 +67,9 @@ _DROP_PREFIXES = frozenset({
     "-Wno-format-overflow=",
     "-Wformat-truncation=",
     "-Wno-format-truncation=",
+    # GCC-only ABI switch carrying a value (=ieee, =alternative).  A prefix
+    # rather than an exact match, because the value varies by project.
+    "-mfp16-format=",
 })
 
 # Two-token flags: drop both the flag and its next argument
@@ -63,7 +80,7 @@ _DROP_WITH_ARG = frozenset({
     "-MQ",   # dependency target (quoted)
 })
 
-_SOURCE_EXTS = frozenset({".c", ".cpp", ".cc", ".cxx", ".c++"})
+
 
 # Target triple prefixes known to be supported by the bundled libclang.
 # Only inject --target for these; unsupported triples (xtensa, etc.) cause
@@ -237,11 +254,22 @@ def expand_response_file(token: str, cwd: Path | None = None) -> list[str]:
 
 
 def _is_source_file(token: str) -> bool:
-    return Path(token).suffix.lower() in _SOURCE_EXTS
+    # No .lower(): the suffix table of gcc is case-sensitive, and `.C`
+    # is a C++ source while `.c` is a C one.
+    return Path(token).suffix in TU_EXTENSIONS
 
 
 def _detect_language(file: Path, clang_args: list[str]) -> str:
-    if file.suffix.lower() in {".cpp", ".cc", ".cxx", ".c++"}:
+    """Say whether the compiler reads this unit as C or as C++.
+
+    The suffix decides when the compiler has a rule for it — see
+    CPP_SOURCE_EXTENSIONS, taken from the table in `man gcc`.  Case is part
+    of that rule: `.C` is C++ and `.c` is C, so this must not lowercase.
+
+    A suffix the table does not cover falls through to `-std=`, which is how
+    a project building `.S` or an unusual extension still gets an answer.
+    """
+    if file.suffix in CPP_SOURCE_EXTENSIONS:
         return "cpp"
     std = next((a for a in clang_args if a.startswith("-std=")), "")
     if "++" in std:
@@ -501,3 +529,140 @@ def parse(path: Path) -> Iterator[CompilationUnit]:
             clang_args=clang_args,
             raw_entry=entry,
         )
+
+
+# ── Command-line defines ───────────────────────────────────────────────────
+
+
+def _defines_of_entry(entry: dict) -> dict[str, str]:
+    """Return the `-D` flags of one compilation database entry.
+
+    Both spellings: `-DNAME=value` and `-D NAME=value`.  A name with no
+    value maps to an empty string, which is what the compiler does — a bare
+    `-DNAME` defines it as `1`, and the index reports the flag as written
+    rather than the value the preprocessor derives.
+    """
+    tokens = entry.get("arguments")
+    if not isinstance(tokens, list):
+        command = entry.get("command")
+        tokens = str(command).split() if command else []
+    found: dict[str, str] = {}
+    expect_value = False
+    for token in tokens:
+        text = str(token)
+        if expect_value:
+            name, _, value = text.partition("=")
+            found[name] = value
+            expect_value = False
+            continue
+        if text == "-D":
+            expect_value = True
+        elif text.startswith("-D") and len(text) > 2:
+            name, _, value = text[2:].partition("=")
+            found[name] = value
+    return found
+
+
+def command_line_defines(cc_path: Path) -> tuple[dict[str, str], int]:
+    """Return the defines EVERY unit shares, and how many names vary.
+
+    The `-D` flags of a build are its configuration.  The Mbed project passes
+    `APPLICATION_ADDR=0x10200`, `APPLICATION_SIZE=0xefe00`, and
+    `CMSIS_VECTAB_VIRTUAL` — the memory map and the fact that the vector
+    table moves to RAM, stated by the build itself.
+
+    WHY only the shared set: a tool that describes ONE build must not show
+    the defines of one file as the defines of the build.  Measured:
+    The Mbed project has 881 units, 27 names in every one and 59 in only some —
+    the three `.S` files get a shorter set.  The ESP32 project splits on
+    `ARDUINO_CORE_BUILD`, which 46 of its 114 units carry.  The second
+    return value counts the names left out, so a caller can tell "not
+    defined" from "not defined everywhere".
+
+    WHY this reads the JSON itself instead of calling `parse`: `parse`
+    normalizes every flag for libclang, which costs 6966 ms on the Mbed project
+    against 19 ms here — measured.  `get_active_build` is the mandatory
+    first call, so seven seconds of flag normalization to read 27 defines
+    would be paid by every session.
+
+    WHY not the `macros` table: that holds every macro the preprocessor
+    saw — 27800 distinct names on the STM32 project, 23507 on the Mbed project.  Three orders
+    of magnitude more, and almost all of it comes from the headers and the
+    compiler rather than from the build.
+
+    Returns an empty dict and 0 when the file is unreadable.  A missing
+    answer is correct there; an invented one is not.
+
+    No log line on that path, and this module keeps no logger on purpose.
+    An unreadable compile_commands.json is not a detail a caller could
+    miss: the whole index is built from it, and `get_active_build` reports
+    that state on its own.
+    """
+    try:
+        entries = json.loads(cc_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return {}, 0
+    if not isinstance(entries, list):
+        return {}, 0
+
+    shared: dict[str, str] | None = None
+    every_name: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        one = _defines_of_entry(entry)
+        every_name |= set(one)
+        if shared is None:
+            shared = dict(one)
+        else:
+            # A name survives only with the SAME value everywhere.  Two
+            # units that define one name differently do not agree on it,
+            # and reporting either value would be a guess.
+            shared = {
+                name: value
+                for name, value in shared.items()
+                if name in one and one[name] == value
+            }
+    if shared is None:
+        return {}, 0
+    return shared, len(every_name) - len(shared)
+
+
+def compile_directory(cc_path: Path) -> Path | None:
+    """Return the directory the compiler worked in, or None.
+
+    The ``directory`` field of an entry is the working directory of that
+    compilation, which is the build tree.  The location of
+    compile_commands.json is NOT that tree: fw-context writes its own copy
+    under ``.fw-context/build/``, one file per variant and image, so the
+    parent of that file holds no build artifact at all.
+
+    Measured on the Zephyr project: the parent is ``.fw-context/build``,
+    while ``directory`` is ``build/nrf52840_dev/stage0`` — where
+    ``zephyr/zephyr_pre0.elf`` and its ``.intList`` section really are.
+    A caller that took the parent found nothing and had no way to tell
+    "no artifact" from "wrong directory".
+
+    WHY this reads the JSON itself instead of calling `parse`: the same
+    reason `command_line_defines` does — flag normalization costs three
+    orders of magnitude more than reading one field, and this answers a
+    question about the build, not about a translation unit.
+
+    The first entry that names a directory answers.  The entries of one
+    build configuration are compiled in one tree, and an entry without
+    the field says nothing about where that tree is.
+
+    Returns None when the file is unreadable or names no directory.  The
+    caller then has the same answer it had before this existed, which is
+    "not known" rather than a guess.
+    """
+    try:
+        entries = json.loads(cc_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("directory"):
+            return Path(str(entry["directory"]))
+    return None

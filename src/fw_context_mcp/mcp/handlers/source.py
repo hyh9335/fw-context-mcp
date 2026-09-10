@@ -64,6 +64,7 @@ from ...indexer.db import (
 from ...llm.ollama import OllamaError, OllamaModelNotFoundError, call_ollama_async
 from ...utils import abs_path, read_file_lines
 from ..shared.context import _normalize_file_path_query
+from ..shared.stale import _file_differs
 from ._base import BaseHandler
 
 log = logging.getLogger(__name__)
@@ -132,8 +133,25 @@ def _lookup_definition(
     the kind-priority clause so project-code symbols (``is_project=1``) sort
     before vendor/SDK symbols.  This prevents base-class definitions in SDK
     headers from shadowing project overrides when both share the same name.
+
+    An assembly definition always sorts last.  A CMSIS startup file defines
+    every interrupt handler weakly so that C code can override it, and both
+    definitions are then in the index under the same name: measured on
+    the Mbed project, 11 names carry one of each.  The C definition is the one
+    the linker keeps, thus it is the one to report — and without this the
+    winner is decided by line number, so a project whose handler sits
+    further down its file than the stub does in the startup file gets the
+    stub, with no callers and no body worth reading.
+
+    The reverse pattern — a weak C definition overridden in assembly — does
+    not appear in the projects measured, and the convention runs the other
+    way.
     """
-    _order_parts: list[str] = []
+    # substr, not LIKE: the templates below are composed with `%`, so a
+    # literal one in the SQL would be read as a conversion specifier.
+    _order_parts: list[str] = [
+        "CASE WHEN substr(s.usr, 1, 4) = 'asm:' THEN 1 ELSE 0 END"
+    ]
     if preferred_kinds:
         for k in preferred_kinds:
             if not isinstance(k, str) or "'" in k:
@@ -166,7 +184,7 @@ def _lookup_definition(
         )
         if result:
             return result
-        # Plain-name fallback: e.g. "zbox::NoinitStruct" where the symbol
+        # Plain-name fallback: e.g. "the Mbed project::NoinitStruct" where the symbol
         # is global (qualified_name == name, no namespace prefix).
         result = _lookup_try_columns(
             conn, f"{QUERY_WHERE} AND s.qualified_name = s.name {QUERY_ORDER} LIMIT 1",
@@ -222,6 +240,12 @@ def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines
 
     When *end_line* is provided (from libclang) it is used as the exact body
     boundary.  Otherwise brace-matching finds the closing ``}``.
+
+    Every line gets a ``"%4d  "`` prefix with its number in the file, thus
+    the caller can cite a statement inside the body without counting.  This
+    is the only body text in the tool surface that is numbered — the
+    ``source`` column that ``search_bodies`` returns is bare, and so is the
+    ``content`` of ``read_file``.
     """
     try:
         p = Path(file_path)
@@ -255,6 +279,195 @@ def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines
 
     local_end = find_closing_brace(window, local_start)
     return "\n".join(f"{read_start + i + 1:4d}  {window[i]}" for i in range(local_start, local_end + 1))
+
+
+# ── stale-aware body reading ──
+# A body and its line number both come from the index while the file on disk
+# still matches it, because only the indexed body is ifdef-filtered.  Once
+# the file changes, the disk holds the current text and the index holds the
+# filtered one, and the two cannot both be right.
+#
+# An edit that adds or removes lines above a symbol moves that symbol, and
+# the stored line number then points at unrelated code.  That code reads as
+# a valid function body, thus the caller cannot see the error.  The helpers
+# below detect this condition and give the caller a body it can trust.
+
+# Lines from the start of the window that can hold the symbol name.  A
+# definition can start with attributes, a template header, or a signature
+# that continues over more than one line, thus the name is not always on
+# the first line.
+_NAME_PROBE_LINES = 3
+
+
+def _stored_file_state(conn: sqlite3.Connection, file_id: int) -> tuple[float, str]:
+    """Return ``(mtime, source_hash)`` that the index holds for *file_id*.
+
+    Returns ``(0.0, "")`` when the row is absent or the columns hold NULL.
+    That pair makes ``_file_differs`` report the file as changed, thus an
+    index that predates either column degrades to the safe path instead of a
+    silent wrong answer.
+
+    The hash matters because the timestamp lies in both directions: git
+    rewrites it without changing the bytes, and a write inside the tolerance
+    band keeps it.  With the hash the timestamp only raises the question.
+    """
+    try:
+        row = conn.execute(
+            "SELECT mtime, source_hash FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+    except sqlite3.Error:
+        return 0.0, ""
+    if row is None or row["mtime"] is None:
+        return 0.0, ""
+    return float(row["mtime"]), row["source_hash"] or ""
+
+
+def _read_probe_lines(file_path: str, line_no: int, count: int = _NAME_PROBE_LINES) -> list[str]:
+    """Read *count* lines from *file_path*, starting at 1-based *line_no*.
+
+    Gives the raw text, without the line numbers that ``_read_symbol_body``
+    adds.  ``_body_matches_symbol`` compares this text, thus it must not
+    hold the number prefix.
+    """
+    from itertools import islice
+
+    start = max(0, line_no - 1)
+    try:
+        with Path(file_path).open(errors="replace") as fh:
+            return [line.rstrip("\n\r") for line in islice(fh, start, start + count)]
+    except OSError:
+        return []
+
+
+def _first_content_line(text: str) -> str:
+    """Return the first line of *text* that is not empty, with spaces collapsed."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return " ".join(stripped.split())
+    return ""
+
+
+def _number_lines(text: str, start_line: int) -> str:
+    """Add the line-number prefix that ``_read_symbol_body`` uses.
+
+    Keeps one output format for both body origins.  Without it the caller
+    gets numbered text from the disk and bare text from the index, and it
+    cannot tell the two apart from the shape alone.
+
+    The numbers are the ones the index holds.  For an unchanged file they are
+    the numbers of the file, because the index read that same file.  For a
+    file that changed after the index run they can differ, and the warning
+    that goes with that body says so.
+    """
+    return "\n".join(
+        f"{start_line + offset:4d}  {line}"
+        for offset, line in enumerate(text.splitlines())
+    )
+
+
+def _body_matches_symbol(file_path: str, row) -> bool:
+    """Tell whether the text at the stored line number is still the symbol.
+
+    Two checks, in order of accuracy:
+
+    1. ``symbols.source`` holds the body that the index run read.  Its first
+       content line is the exact start of the symbol, thus a comparison with
+       the disk is definite.
+    2. Without an indexed body, look for the symbol name in the first
+       ``_NAME_PROBE_LINES`` lines of the window.  This check is permissive:
+       it accepts a name that a comment holds.  A false accept keeps the
+       current behaviour, and a false reject only costs the indexed body,
+       thus the permissive direction is the safe one.
+    """
+    probe = _read_probe_lines(file_path, row["line"])
+    if not probe:
+        return False
+
+    indexed_body = row["source"] or ""
+    if indexed_body:
+        indexed_first = _first_content_line(indexed_body)
+        disk_first = _first_content_line("\n".join(probe))
+        if indexed_first and disk_first:
+            return indexed_first == disk_first
+
+    name = row["name"] or ""
+    return bool(name) and any(name in line for line in probe)
+
+
+def _read_verified_body(
+    row, file_path: str, stored_state: tuple[float, str]
+) -> tuple[str, str, str | None]:
+    """Return the symbol body, its origin, and a warning about its age.
+
+    Args:
+        row: The ``symbols`` row of the symbol.  Must hold ``line``,
+            ``end_line``, ``name``, and ``source``.
+        file_path: Absolute path of the file that holds the symbol.
+        stored_state: ``(mtime, source_hash)`` that the index holds for that
+            file.  The hash decides when it exists, because git rewrites the
+            mtime of a file it did not change.
+
+    Returns:
+        tuple: ``(text, origin, warning)``.  *origin* is ``"disk"`` when the
+        text comes from the file, ``"index"`` when it comes from
+        ``symbols.source``, and ``""`` when there is no body.  *warning* is
+        None when the file did not change after the index run.
+
+    WHY the index comes first: only ``symbols.source`` is ifdef-filtered.
+    The disk holds every branch, thus a body read from it shows the code of
+    an inactive ``#if`` as live code.  The two texts are the same for a file
+    with no conditional, and for one with a conditional the index is the
+    text that answers the question the tool promises to answer.
+    """
+    line_no = row["line"]
+    end_line = row["end_line"] or 0
+
+    if not _file_differs(file_path, *stored_state):
+        # The usual path: the file did not change after the index run, thus
+        # the stored body is current AND filtered.  Costs one read of the
+        # file to hash it, and one extra read of one file buys an answer a
+        # stat() cannot give, because git rewrites the stamp of a file it
+        # did not change.
+        indexed_body = row["source"] or ""
+        if indexed_body:
+            return _number_lines(indexed_body, line_no), "index", None
+        # No stored body — a declaration, or an extent of one line.  Only
+        # the disk can answer, and such a symbol has no branch to filter.
+        return _read_symbol_body(file_path, line_no, end_line=end_line), "disk", None
+
+    if _body_matches_symbol(file_path, row):
+        # The file changed, but the symbol did not move.  The disk gives the
+        # current body, which is better than a copy of the earlier text.
+        # Nothing can filter it: which branch compiles now is a question for
+        # the preprocessor, and only an index run asks it.
+        return (
+            _read_symbol_body(file_path, line_no, end_line=end_line),
+            "disk",
+            f"{file_path} changed after the last index run. The body below is "
+            f"current, and it holds EVERY #ifdef branch — the index could not "
+            f"filter the inactive ones. The metadata (callers, callees, line "
+            f"numbers of other symbols) can be out of date.",
+        )
+
+    indexed_body = row["source"] or ""
+    if indexed_body:
+        return (
+            _number_lines(indexed_body, line_no),
+            "index",
+            f"{file_path} changed after the last index run, and the stored line "
+            f"number does not point at {row['name']} any more. The body below "
+            f"comes from the index, not from the disk. Its line numbers can be "
+            f"different now.",
+        )
+
+    return (
+        "",
+        "",
+        f"{file_path} changed after the last index run, and the stored line "
+        f"number does not point at {row['name']} any more. The index holds no "
+        f"body for this symbol. Run `fw-context index`.",
+    )
 
 
 # ── shared macro fallback ──
@@ -333,6 +546,12 @@ async def explain_symbol(
         holds ``source`` and ``explain_prompt``: read the source, and answer
         the prompt yourself.
 
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str).  ``stale_warning`` is
+        separate from ``warning``, which the LLM error paths use.  A symbol
+        that moved gives its indexed body, not the code that now sits at the
+        stored line number.
+
         On failure the dict holds only ``error`` with the reason.
     """
     try:
@@ -361,12 +580,22 @@ async def explain_symbol(
             return {"error": f"Path {file_path} outside project root"}
         # Check for pre-computed LLM analysis (instant, no Ollama call)
         llm_analysis = get_llm_analysis_for_symbol(conn, row["id"])
-        return row, file_path, llm_analysis
+        return row, file_path, llm_analysis, _stored_file_state(conn, row["file_id"])
 
     query_result = db.executor.execute_sync(_query, db.config_hash)
     if isinstance(query_result, dict):
         return query_result
-    row, file_path, llm_analysis = query_result
+    row, file_path, llm_analysis, stored_state = query_result
+    # A changed file can move the symbol, thus the stored line number can
+    # point at unrelated code.  The prompt below must never carry that code.
+    file_changed = _file_differs(file_path, *stored_state)
+    symbol_moved = file_changed and not _body_matches_symbol(file_path, row)
+    stale_warning = (
+        f"{file_path} changed after the last index run. The result below can "
+        f"be out of date."
+        if file_changed
+        else None
+    )
     line_no = row["line"]
     signature = row["signature"] or ""
     kind = row["kind"]
@@ -390,6 +619,10 @@ async def explain_symbol(
             explanation += f"\nOutputs: {llm_analysis['outputs']}"
         result["explanation"] = explanation
         result["llm_analysis"] = llm_analysis
+        if stale_warning:
+            # The stored analysis describes the code as it was at index time.
+            result["stale_warning"] = stale_warning
+            result["stale"] = True
         return result
 
     # No pre-computed analysis — fall through to the on-demand path.
@@ -397,16 +630,32 @@ async def explain_symbol(
     # see what the code actually does, not just the signature.
     context_lines = max(1, min(context_lines, _CONTEXT_LINES_MAX))
     source_snippet = ""
-    try:
-        lines = Path(file_path).read_text(errors="replace").splitlines()
-        start = max(0, line_no - context_lines - 1)
-        end = min(len(lines), line_no + context_lines)
-        numbered = "\n".join(
-            f"{i + start + 1:4d}  {lines[i + start]}" for i in range(end - start)
+    if symbol_moved:
+        # The disk window would show unrelated code.  The indexed body is
+        # older, but it is the code of this symbol.
+        source_snippet = row["source"] or ""
+        stale_warning = (
+            f"{file_path} changed after the last index run, and the stored line "
+            f"number does not point at {name} any more. The source below comes "
+            f"from the index, not from the disk."
         )
-        source_snippet = numbered
-    except (IndexError, ValueError, OSError):
-        pass
+    else:
+        try:
+            lines = Path(file_path).read_text(errors="replace").splitlines()
+            start = max(0, line_no - context_lines - 1)
+            end = min(len(lines), line_no + context_lines)
+            numbered = "\n".join(
+                f"{i + start + 1:4d}  {lines[i + start]}" for i in range(end - start)
+            )
+            source_snippet = numbered
+        except (IndexError, ValueError, OSError):
+            pass
+    if stale_warning:
+        # Set before the Ollama call, thus every return path below carries it.
+        # A separate key keeps it clear of ``warning``, which the LLM error
+        # paths use.
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
     prompt = (
         f"You are a C/C++ embedded firmware expert.\n"
         f"Explain what the following {kind} does. "
@@ -464,6 +713,14 @@ def get_source(
     don't know where a function actually ends — libclang tracks exact
     {start, end} from the AST.
 
+    The body is **ifdef-filtered**: a line of an inactive ``#if`` branch
+    comes back blank, thus the text holds only the code that compiles for
+    this build.  The line numbers do not move.  ``source_origin`` says where
+    the text came from — ``"index"`` is the filtered copy, ``"disk"`` is the
+    file itself and holds EVERY branch.  A body reaches you from the disk
+    only when the file changed after the last index run, and
+    ``stale_warning`` says so.
+
     For enums, includes a ``constants`` array listing all member constants
     with their values. For macros, returns kind="macro" with ``value``
     (raw definition) and ``expanded_value`` (preprocessor-resolved).
@@ -487,9 +744,29 @@ def get_source(
         docstring, is_definition, is_template, is_virtual, is_pure_virtual,
         source (str — the function/enum/macro body, truncated at 8000 chars),
         warning (str, optional — when source file cannot be read)}.
-        May also include ``template_usr``, ``parent_usr``, ``enum_value``,
-        ``constants`` (list for enums), ``value`` (raw macro definition),
-        ``expanded_value`` (preprocessor-resolved macro value) when applicable.
+        May also include ``end_line`` (the last line of the extent),
+        ``template_usr``, ``parent_usr``, ``enum_value``, ``constants``
+        (list for enums), ``value`` (raw macro definition),
+        ``expanded_value`` (preprocessor-resolved macro value) when
+        applicable.  A declaration has no extent, thus it gets no
+        ``end_line``.
+
+        ``line`` and ``end_line`` are the extent of the symbol, thus they
+        are the citation: quote ``file:line-end_line``.  Do not count the
+        lines of ``source`` to find the end.
+
+        ``source`` carries a line-number prefix on every line — four
+        columns, right-aligned, then two spaces (``"  20     bool ..."``).
+        This tool always numbers its text.  ``read_file`` numbers its
+        ``content`` when you pass ``line_numbers=True``, and the ``source``
+        of ``search_bodies`` is always bare.  Strip the prefix before you
+        compare the text with anything.
+
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str).  ``source_origin`` then
+        tells where the body comes from: ``"disk"`` when the symbol did not
+        move, ``"index"`` when it did and the body comes from the index
+        instead.  A moved symbol never gives the code of another symbol.
 
         On failure the dict holds only ``error`` with the reason.
     """
@@ -529,6 +806,14 @@ def get_source(
             "is_pure_virtual": bool(row["is_pure_virtual"]),
             "docstring": row["docstring"] or "",
         }
+        # `end_line` completes the citation.  With `line` alone a caller
+        # that must quote `file:start-end` has to count the lines of
+        # `source` by hand, and one that reads the body from disk has no
+        # bound to stop at.  The column holds 0 for a declaration, which
+        # has no extent to report, thus the key appears only when it
+        # carries an answer.
+        if row["end_line"]:
+            result["end_line"] = row["end_line"]
         if row["template_usr"]:
             result["template_usr"] = row["template_usr"]
         if row["parent_usr"]:
@@ -558,18 +843,25 @@ def get_source(
                     }
                     for c in const_rows
                 ]
-        return result, file_path, row["line"], row["end_line"] or 0
+        # The mtime must come from the same connection as the symbol row —
+        # _read_verified_body compares it against the file on disk to decide
+        # whether the stored line number still points at this symbol.
+        return result, file_path, row, _stored_file_state(conn, row["file_id"])
 
     query_result = db.executor.execute_sync(_query, db.config_hash)
     if isinstance(query_result, dict):
         # Early-return path from the closure: macro fallback or error dict.
         return query_result
-    result, file_path, line_no, end_line = query_result
-    source = _read_symbol_body(file_path, line_no, end_line=end_line)
-    if not source:
-        result["warning"] = f"Could not read source from {file_path}"
-    else:
+    result, file_path, row, stored_state = query_result
+    source, origin, stale_warning = _read_verified_body(row, file_path, stored_state)
+    if stale_warning:
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
+    if source:
         result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        result["source_origin"] = origin
+    elif not stale_warning:
+        result["warning"] = f"Could not read source from {file_path}"
     return result
 
 # ── moved from server.py ──
@@ -619,6 +911,10 @@ def get_file_map(
         dict: {file, total_symbols, symbols: {kind: {count, items[],
         subgroups?[]}}}
 
+        Each item holds ``name``, ``qualified_name``, and ``line``, plus
+        ``end_line`` when the symbol is a definition.  The two line numbers
+        are the extent, thus ``file:line-end_line`` is the citation.
+
         On failure the dict holds only ``error`` with the reason.
     """
     try:
@@ -662,7 +958,9 @@ def get_file_map(
             signatures=signatures, max_per_kind=max_per_kind,
         )
 
-    return db.executor.execute_sync(_query, db.config_hash)
+    from ..shared.stale import with_stale_annotation
+
+    return with_stale_annotation(root, db.executor, _query, db.config_hash)
 
 # ── moved from server.py ──
 # ── get_symbol_context collectors ───────────────────────────────────
@@ -892,6 +1190,11 @@ def get_symbol_context(
     graph naturally spans project and vendor boundaries in both directions
     (project → vendor API, vendor callback → project handler).
 
+    The body is **ifdef-filtered**, the same as in ``get_source``: a line of
+    an inactive ``#if`` branch comes back blank and the line numbers do not
+    move.  ``source_origin`` says whether the text is the filtered copy
+    (``"index"``) or the file itself (``"disk"``, every branch present).
+
     Read-only. No side effects.
 
     Args:
@@ -920,6 +1223,12 @@ def get_symbol_context(
         includes ``llm_analysis``: {summary, inputs, outputs, model, analyzed_at}
         with a structured description of the symbol's purpose, parameters, and
         return values/side effects.
+
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str), and ``source_origin``
+        tells where the body comes from: ``"disk"`` when the symbol did not
+        move, ``"index"`` when it did.  The callers and callees come from the
+        index in all cases, thus a stale dict can hold an incomplete list.
 
         The dict also carries the libclang flags of the symbol:
         is_virtual, is_pure_virtual, is_template, parent_usr, and
@@ -986,6 +1295,7 @@ def get_symbol_context(
         return (
             row, file_path, callers_list, callees_list, indirect_calls_list,
             resolution, enum_constants, llm_analysis, overrides_info,
+            _stored_file_state(conn, row["file_id"]),
         )
 
     query_result = db.executor.execute_sync(_query, db.config_hash)
@@ -995,9 +1305,10 @@ def get_symbol_context(
     (
         row, file_path, callers_list, callees_list, indirect_calls_list,
         resolution, enum_constants, llm_analysis, overrides_info,
+        stored_state,
     ) = query_result
 
-    source = _read_symbol_body(file_path, row["line"], end_line=row["end_line"] or 0)
+    source, source_origin, stale_warning = _read_verified_body(row, file_path, stored_state)
     result: dict = {
         "name": row["name"],
         "qualified_name": row["qualified_name"],
@@ -1031,14 +1342,62 @@ def get_symbol_context(
         result["overridden_by"] = overrides_info["overridden_by"]
     if source:
         result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        result["source_origin"] = source_origin
+    if stale_warning:
+        # The callers and callees come from the index, thus a changed file
+        # makes them incomplete as well.  One warning covers the whole dict.
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
     return result
 
 
 # ── moved from server.py ──
 
+# Least width of the line-number prefix.  Four columns keep a short file
+# aligned with the body that ``get_source`` prints, and a longer file widens
+# the column — a fixed "%4d" loses the alignment above 9999 lines, and an
+# embedded project reaches that in generated and vendor headers.
+_LINE_NUMBER_MIN_WIDTH = 4
+
+
+def _shape_file_lines(
+    lines_list: list[str], start_line: int, end_line: int, line_numbers: bool,
+) -> tuple[str, int, int] | str:
+    """Cut *lines_list* to a range and number it, or say what is wrong.
+
+    Returns ``(text, first_line, last_line)``, or an error message when the
+    range makes no sense.  Both bounds are 1-based and inclusive, and 0 on
+    either means "no bound on this side" — the caller that passes neither
+    gets the whole file, which is what every caller before the range
+    parameters got.
+
+    WHY the numbers are optional and not always there: the text of this tool
+    is read by a machine that also compares it with a patch or a diff, and a
+    prefix would have to be stripped first.  The caller that needs to cite a
+    line asks for the numbers; the caller that needs the code does not.
+    """
+    total = len(lines_list)
+    if start_line < 0 or end_line < 0:
+        return "start_line and end_line must not be negative."
+    if start_line and end_line and end_line < start_line:
+        return f"end_line ({end_line}) is before start_line ({start_line})."
+    if start_line > total:
+        return f"start_line ({start_line}) is past the end of the file ({total} lines)."
+    first = start_line or 1
+    last = min(end_line or total, total)
+    window = lines_list[first - 1:last]
+    if line_numbers:
+        width = max(_LINE_NUMBER_MIN_WIDTH, len(str(last)))
+        window = [f"{first + i:>{width}}  {text}" for i, text in enumerate(window)]
+    return "\n".join(window), first, last
+
+
 def read_file(
     file_path: Annotated[str, Field(description="Path to source file — relative to project root or just filename.")],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    line_numbers: Annotated[bool, Field(description="Prefix every line with its line number, like get_source. Default False (bare text).")] = False,
+    start_line: Annotated[int, Field(description="First line to return, 1-based inclusive. 0 = from the start of the file.")] = 0,
+    end_line: Annotated[int, Field(description="Last line to return, 1-based inclusive. 0 = to the end of the file.")] = 0,
     variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
     image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
 ) -> dict:
@@ -1051,7 +1410,24 @@ def read_file(
     Unlike generic file readers, this tool returns build-accurate content:
     code gated behind ``#ifdef BOARD_V2`` stays visible only when
     ``BOARD_V2`` is actually defined for this build.  Line numbers match
-    the original file — inactive branches appear as blank lines.
+    the original file — inactive branches appear as blank lines, and the
+    text spans the whole file, thus ``lines`` is the length of the file.
+
+    ``content`` is bare text by default and carries NO line-number prefix —
+    unlike the ``source`` of ``get_source``, which numbers every line.
+    Never count the lines here to find a number.  Take it from a field
+    instead: the ``match_lines`` of ``search_bodies`` or ``search_content``,
+    the ``line`` / ``end_line`` of ``get_source`` and ``get_file_map``, or
+    pass ``line_numbers=True`` and read the number off the line.
+
+    ``start_line`` and ``end_line`` cut a window out of the file (1-based,
+    both ends inclusive, 0 = no bound on that side).  Reading around a
+    known line costs a fraction of the whole file — 40 lines around a match
+    instead of 2000 lines of a header.
+
+    An include guard is a blank line: ``#ifndef`` and ``#endif`` are
+    conditional directives, which carry no token and thus never count as
+    active.  The line stays in place, and only its text is gone.
 
     For reading a single function body with libclang exact extents use
     ``get_source``.  For body + callers + callees in one call use
@@ -1068,18 +1444,30 @@ def read_file(
         file_path: Path relative to project root, or just the filename.
             E.g. ``src/main.cpp`` or ``main.cpp``.
         project_root: Project root. Auto-detected if omitted.
+        line_numbers: Prefix every line with its number, right-aligned and
+            followed by two spaces, as ``get_source`` does. Default False.
+        start_line: First line to return, 1-based inclusive. 0 = file start.
+        end_line: Last line to return, 1-based inclusive. 0 = file end.
         variant: Build variant (multi-project). Omit for the default
             variant, ``"*"`` for all.
         image: Sysbuild image in the variant. Omit for all images.
 
     Returns:
         dict: {file (str), language (str — ``"c"`` or ``"cpp"``),
-        mtime (float), lines (int — total line count),
-        content (str — the complete ifdef-filtered file text),
+        mtime (float), lines (int — total line count of the WHOLE file,
+        whatever range was asked for),
+        content (str — the ifdef-filtered text, bare unless
+        ``line_numbers`` was set),
         warning (str, optional — when reading from raw disk instead of
         indexed content)}.
 
-        On failure the dict holds only ``error`` with the reason.
+        A range adds ``start_line`` and ``end_line`` — the first and last
+        line the ``content`` really holds, after the end was clamped to the
+        length of the file.
+
+        On failure the dict holds only ``error`` with the reason: a
+        negative bound, an ``end_line`` before ``start_line``, or a
+        ``start_line`` past the end of the file.
     """
     try:
         db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
@@ -1119,7 +1507,8 @@ def read_file(
             return {"error": err}
 
         row = conn.execute(
-            "SELECT content, language, path, mtime FROM files WHERE config_hash=? AND path=?",
+            "SELECT content, language, path, mtime, source_hash "
+            "FROM files WHERE config_hash=? AND path=?",
             (config_hash, resolved),
         ).fetchone()
         return resolved, row
@@ -1144,21 +1533,50 @@ def read_file(
         # Normal path: ifdef-filtered content is available from the index.
         # This is the preferred code path — inactive #ifdef branches are
         # already stripped, line numbers are preserved as blank lines.
-        lines_list = content.splitlines()
-        result["lines"] = len(lines_list)
-        result["content"] = content
+        if _file_differs(result["file"], row["mtime"] or 0.0, row["source_hash"] or ""):
+            # The content comes from the index, thus a changed file makes it
+            # a copy of an older state.  The disk path below does not need
+            # this warning: it reads the file as it is now.
+            result["stale"] = True
+            result["stale_warning"] = (
+                f"{result['file']} changed after the last index run. The content "
+                f"below comes from the index, not from the disk."
+            )
     else:
-        # Legacy index fallback: older indexes (pre-ifdef-filtering) have an
-        # empty content column.  Read from raw disk instead and emit a
-        # warning so the user knows this is NOT build-accurate content.
+        # No stored content.  Two causes, and the warning covers both:
+        #   1. A legacy index, written before the content column was filled.
+        #   2. A file that the parse saw with no active line at all — the
+        #      content pass skips it, thus no text was ever stored.  A header
+        #      with no include guard whose whole body is one dead #ifdef is
+        #      such a file: the #define of a guard would have been an active
+        #      line, and without one nothing is.
+        # Read from raw disk instead and warn, because this content is NOT
+        # build-accurate — it holds every #ifdef branch.
         disk_lines = read_file_lines(abs_path(root, resolved))
         if disk_lines is None:
             return {"error": f"Could not read file: {abs_path(root, resolved)}"}
-        result["lines"] = len(disk_lines)
-        result["content"] = "".join(disk_lines)
+        content = "".join(disk_lines)
         result["warning"] = (
             "Raw disk content — ifdef-filtered content not available. "
             "Run 'fw-context index' to populate build-accurate content."
         )
 
+    # Both paths end here: `lines` stays the length of the whole file, and
+    # the range only decides how much of it travels to the caller.
+    lines_list = content.splitlines()
+    result["lines"] = len(lines_list)
+    if not (start_line or end_line or line_numbers):
+        # The whole file, bare: hand over the stored text itself.  Rebuilding
+        # it from the split would drop the closing newline, and a caller that
+        # compares the text with the file would see a difference that is not
+        # there.
+        result["content"] = content
+        return result
+    shaped = _shape_file_lines(lines_list, start_line, end_line, line_numbers)
+    if isinstance(shaped, str):
+        return {"error": shaped}
+    result["content"], first, last = shaped
+    if start_line or end_line:
+        result["start_line"] = first
+        result["end_line"] = last
     return result

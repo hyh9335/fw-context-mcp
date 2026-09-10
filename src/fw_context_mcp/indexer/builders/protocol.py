@@ -77,6 +77,35 @@ class BuildSystem(Protocol):
         """Return the CLI tool names required by this build system."""
         ...
 
+    # ── Optional: automatic background build ──
+    # Not every backend implements the method below.  The concrete classes
+    # are structural implementations of this Protocol, not subclasses, thus
+    # a default here would never reach them.  Ask through
+    # ``builders.background_build_safe`` instead, which treats a missing
+    # method as "no" — the safe answer, because it stops fw-context from
+    # starting a build that could collide with the one in the IDE.
+
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Tell whether fw-context may run this build on its own.
+
+        fw-context starts a build by itself when it finds a source file that
+        compile_commands.json does not cover.  That build runs while the user
+        works, possibly while an IDE builds the same project, and fw-context
+        cannot lock the build of the IDE — the IDE knows nothing about it.
+
+        Answer True only when one of these holds:
+
+        * The backend writes every artifact under
+          ``cfg.isolated_build_dir``, thus the two builds cannot meet.
+        * The backend compiles nothing (a converter, or a dry run), thus
+          there is no artifact to corrupt.
+
+        Answer False otherwise, and for a backend that cannot build at all.
+        *cfg* is a parameter because the answer can depend on it: the
+        makefile backend compiles only when ``make_dry_run`` is off.
+        """
+        ...
+
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return path patterns for build-output directories.
 
@@ -111,6 +140,48 @@ class BuildSystem(Protocol):
         A builder that needs the compiler flags reads them from *units*.  With
         None it must use the environment and the project files, so it stays
         usable before the units are parsed.
+        """
+        return []
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return the linker scripts of this build, or an empty list.
+
+        The linker script defines symbols that no translation unit defines —
+        the initial stack pointer of a vector table, the boundaries of
+        `.data` and `.bss` — and it holds the memory map.  It is an INPUT to
+        the linker, thus `compile_commands.json` never names it, and each
+        build system keeps it somewhere else.
+
+        Answer with a path only when the BUILD names it.  A path built from
+        a pattern that looks right is a guess, and a wrong script puts a
+        wrong memory map in front of a user who cannot tell.  An empty list
+        is the correct answer for a build system that records nothing, and
+        `builders._linker` holds the mechanisms that more than one backend
+        shares.
+
+        The return type is a list because one build can pass several
+        scripts: ESP-IDF splits its script into about ten files, and Zephyr
+        passes a final script and a pre-pass script.
+
+        *compile_commands* is this build's compile_commands.json, whose
+        directory is the build directory for a CMake backend.  *variant*
+        names the build variant, which a backend needs when it keeps one
+        output directory per variant.  *units* are this build's translation
+        units, which a backend reads when the compiler flags name the
+        output tree — mbed-tools writes one tree per toolchain and profile,
+        and the flags say which one this build used.
+
+        Ask through ``builders.linker_scripts``, which treats a missing
+        method as "no script".  The concrete classes implement this
+        Protocol structurally and not by inheritance, thus a default here
+        would never reach them.
         """
         return []
 

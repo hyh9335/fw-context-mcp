@@ -10,6 +10,7 @@ specialized modules.  The package is split by concern:
 - ``_embeddings`` — vector storage (BLOB and vec0)
 - ``_fts`` — FTS5 rebuild utilities
 - ``_llm`` — LLM analysis storage
+- ``_memory`` — memory map (the MEMORY command of the linker script)
 - ``_locking`` — file-system write lock
 - ``_projects`` — project/build config CRUD
 - ``_schema`` — schema versioning and migration
@@ -23,6 +24,7 @@ testable in isolation and reducing merge conflicts in team workflows.
 from __future__ import annotations
 
 __all__ = [
+    "CURRENT_ROW_FORMAT",
     "CURRENT_SCHEMA_VERSION",
     "DatabaseCorruptionError",
     "FileHashRecord",
@@ -31,16 +33,18 @@ __all__ = [
     "_ensure_column",
     "_expand_query",
     "_resolve_target_usr",
+    "clean_orphan_embeddings",
+    "clean_orphan_embeddings_vec",
+    "compute_analysis_coverage",
     "count_fp_assignments",
     "count_indirect_call_sites",
     "count_llm_analysis",
-    "count_refs",
-    "compute_analysis_coverage",
     "count_pending_analysis",
+    "count_refs",
     "delete_build_data",
     "delete_fp_assignments_for_files",
-    "delete_inheritance_for_file",
     "delete_indirect_call_sites_for_files",
+    "delete_inheritance_for_file",
     "delete_macros_for_files",
     "delete_orphan_files",
     "delete_overrides_for_file",
@@ -49,8 +53,8 @@ __all__ = [
     "drop_fts_triggers",
     "ensure_schema",
     "find_all_callers_recursive",
-    "find_callees_recursive",
     "find_call_path",
+    "find_callees_recursive",
     "find_dead_code",
     "find_hotspots",
     "find_indirect_call_sites",
@@ -69,16 +73,21 @@ __all__ = [
     "get_direct_derived",
     "get_direct_derived_batch",
     "get_embeddings",
-    "get_vec_dim",
-    "clean_orphan_embeddings",
-    "clean_orphan_embeddings_vec",
+    "get_entry_point",
+    "get_entry_points_by_config",
     "get_file_hashes",
     "get_file_map",
     "get_file_mtime_indexed",
     "get_file_mtimes",
+    "get_function_address_arrays",
     "get_llm_analysis_for_symbol",
+    "get_memory_regions",
+    "get_memory_regions_by_config",
     "get_overrides_for_method",
+    "get_table_coverage",
     "get_template_instances",
+    "get_vec_dim",
+    "get_vector_table",
     "init_vec_table",
     "insert_fp_assignments_batch",
     "insert_indirect_call_sites_batch",
@@ -92,13 +101,15 @@ __all__ = [
     "open_db",
     "purge_file_records",
     "purge_missing_files_batch",
-    "replace_file_data",
     "rebuild_files_fts",
     "rebuild_fts",
     "rebuild_macros_fts",
+    "replace_file_data",
+    "replace_memory_regions",
     "search_similar_hybrid",
     "search_similar_vec",
     "search_symbols",
+    "set_entry_point",
     "split_tokens",
     "transaction",
     "upsert_build_config",
@@ -119,6 +130,9 @@ from ._callgraph import (
     find_callees_recursive,
     find_dead_code,
     find_hotspots,
+    get_function_address_arrays,
+    get_table_coverage,
+    get_vector_table,
 )
 from ._connection import (
     DatabaseCorruptionError,
@@ -176,6 +190,14 @@ from ._llm import (
     upsert_llm_analysis_batch,
 )
 from ._locking import WriteLockTimeout, write_lock
+from ._memory import (
+    get_entry_point,
+    get_entry_points_by_config,
+    get_memory_regions,
+    get_memory_regions_by_config,
+    replace_memory_regions,
+    set_entry_point,
+)
 from ._projects import (
     compute_analysis_coverage,
     count_pending_analysis,
@@ -204,6 +226,7 @@ from ._refs import (
     insert_refs_batch,
 )
 from ._schema import (
+    CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
     _ensure_column,
     drop_fts_triggers,

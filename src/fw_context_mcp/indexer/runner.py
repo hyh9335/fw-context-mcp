@@ -28,6 +28,7 @@ from ..exit_codes import (  # noqa: F401 — re-exported
     EXIT_SUPERSEDED,
 )
 from ..mcp.shared.pid_file import PidFile
+from ..utils import TU_EXTENSIONS
 from ._embedding import (
     _build_embeddings,
     _chunk_body,
@@ -47,8 +48,8 @@ from ._unit_processor import (
     _handle_unchanged,
     _process_unit,
 )
-from .compile_commands import _SOURCE_EXTS, validate_include_files
 from .compile_commands import parse as parse_compile_commands
+from .compile_commands import validate_include_files
 from .db import (
     drop_fts_triggers,
     get_file_hashes,
@@ -69,9 +70,9 @@ __all__ = [
     "_build_pagerank",
     "_chunk_body",
     "_cleanup_orphaned_cc_artifacts",
-    "_fmt_dur",
     "_fetch_callees",
     "_fetch_referencers",
+    "_fmt_dur",
     "_run_postprocess",
     "_truncate_body",
     "run",
@@ -181,6 +182,83 @@ def _tus_to_requeue(
     )
 
 
+def _store_linker_scripts(
+    *,
+    conn,
+    config_hash: str,
+    project_root: Path,
+    db_dir: Path,
+    compile_commands: Path,
+    build_system: str | None,
+    variant: str,
+    units: list,
+    vendor_patterns: list[str],
+    project_patterns: list[str],
+):
+    """Read the linker scripts of this build and store what they define.
+
+    Returns a ``linker_script.LinkerResult``, or None when the build names
+    no script.
+
+    **The position of this pass is between the C units and the assembly**,
+    and both neighbours depend on it:
+
+    * AFTER C, so ``store_scripts`` can see a definition the compiled code
+      makes and leave that name alone.  A linker script and a C file can
+      name the same symbol, and the compiled definition is the real one.
+    * BEFORE assembly, so ``asm._declare_referenced_only`` finds the name
+      already in the index and adds no ``kind="undefined"`` row for it.
+      That is what closes slot 0 of a vector table: measured before this,
+      the STM32 project held ``_estack`` and the Mbed project held ``__StackTop`` with that kind, one
+      per project.
+
+    *build_system* is the ``[build] system`` config key, which wins over
+    marker detection for the same reason it does for the vendor patterns: a
+    freestanding NCS application reads as a plain CMake project by its
+    markers alone.
+
+    A build that names no script gets a log line and nothing else.  Reading
+    a script the build did not name would be a guess, and a wrong memory
+    map is worse than none — see ``builders._linker``.
+    """
+    from .build import detect_build_system
+    from .builders import linker_scripts, registry
+    from .linker_script import store_scripts
+
+    key = build_system or detect_build_system(project_root)
+    builder_cls = registry.get(key) if key else None
+    scripts = linker_scripts(
+        builder_cls() if builder_cls else None,
+        project_root,
+        compile_commands=compile_commands,
+        variant=variant,
+        units=units,
+    )
+    if not scripts:
+        log.info("linker script: none found for this build")
+        return None
+
+    with write_lock(db_dir, timeout=120.0):
+        with transaction(conn, checkpoint=False):
+            result = store_scripts(
+                conn, config_hash, scripts, project_root,
+                vendor_patterns, project_patterns,
+            )
+    log.info(
+        "linker script: %d file(s) -> %d symbol(s), %d region(s), entry %s%s",
+        result.files, result.symbols, result.regions,
+        result.entry or "(none)",
+        f", {result.skipped_defined} name(s) already defined"
+        if result.skipped_defined else "",
+    )
+    # A refusal nobody can see looks exactly like a script that held nothing
+    # worth indexing.
+    summary = result.report.summary()
+    if summary:
+        log.info("linker script refusals: %s", summary)
+    return result
+
+
 def run(
     compile_commands: Path,
     db_path: Path,
@@ -283,8 +361,35 @@ def run(
     # Parse compile_commands.json to discover translation units.  Must
     # happen before config_hash computation so the manifest can be built
     # from the actual TU list.
-    units = list(parse_compile_commands(compile_commands))
-    units = [u for u in units if u.file.suffix.lower() in _SOURCE_EXTS]
+    all_units = list(parse_compile_commands(compile_commands))
+
+    # libclang reads a translation unit as C or C++.  Given an assembly
+    # unit, it parses that unit as C and gets no cursor and one error
+    # diagnostic per file — measured on a Zephyr startup.S: 0 cursors,
+    # "error: expected identifier or '('".  So libclang never gets them.
+    #
+    # They are NOT dropped.  The assembly pass further down preprocesses
+    # them, stores their symbols, and logs its own "assembly:" summary.
+    # This line reports only the split, and it must say so: the wording
+    # was "skipping %d of %d TUs", which reads as data loss to anyone who
+    # watches the run — the units are indexed, by a different reader.
+    #
+    # The line stays, because no other line reports these units before the
+    # assembly pass ends.  The new-file scan cannot report them either: a
+    # suffix outside TU_EXTENSIONS is not even a candidate there, so the
+    # units are invisible from that direction.  Five of the seven test
+    # projects compile assembly.
+    units = [u for u in all_units if u.file.suffix in TU_EXTENSIONS]
+    asm_units = [u for u in all_units if u.file.suffix not in TU_EXTENSIONS]
+    if asm_units:
+        from collections import Counter
+        by_ext = Counter(u.file.suffix for u in asm_units)
+        log.info(
+            "%d of %d TUs go to the assembly indexer "
+            "(libclang cannot read them as C or C++): %s",
+            len(asm_units), len(all_units),
+            ", ".join(f"{n}x {ext or '(no suffix)'}" for ext, n in by_ext.most_common()),
+        )
     log.info("TUs to index: %d", len(units))
 
     # ── The effective vendor set, computed HERE and not earlier ──
@@ -411,7 +516,13 @@ def run(
                 config_hash,
                 project_id,
                 str(compile_commands),
-                description=git_description,
+                # None keeps the recorded git context of the CONTENT.  This
+                # write happens before a single translation unit is read, so
+                # stamping the current branch here would mark the index as
+                # coming from a tree it has not been built from — and a run
+                # that fails leaves exactly that.  `_run_postprocess` writes
+                # the real value at the end, when the content matches it.
+                description=None,
                 manifest_verification=initial_manifest_verification,
                 analyze_vendor=int(_analyze_vendor),
                 variant=variant,
@@ -645,9 +756,64 @@ def run(
                 log.info("[%d/%d] %s: skipped", processed, len(units), fname)
 
 
+    # ── Linker scripts, between the C units and the assembly ──
+    # The position is deliberate, and both neighbours depend on it — see
+    # _store_linker_scripts.
+    linker = _store_linker_scripts(
+        conn=conn,
+        config_hash=config_hash,
+        project_root=project_root,
+        db_dir=db_path.parent,
+        compile_commands=compile_commands,
+        build_system=build_system,
+        variant=variant,
+        units=all_units,
+        vendor_patterns=vendor_patterns,
+        project_patterns=project_patterns_list,
+    )
+
+    asm = None
+
+    # ── Assembly, after every other unit ──
+    # The ordering is deliberate and the steps built on this one depend on
+    # it: deciding whether a vector slot is handled means asking whether a
+    # strong definition exists, and nothing can answer that until the C and
+    # C++ units are stored.
+    if asm_units:
+        from .asm import store_units as _store_asm
+
+        with write_lock(db_path.parent, timeout=120.0):
+            with transaction(conn, checkpoint=False):
+                asm = _store_asm(
+                    conn, config_hash, asm_units, project_root, build_dir_patterns,
+                    vendor_patterns, project_patterns_list,
+                )
+        log.info(
+            "assembly: %d unit(s) -> %d file(s), %d symbol(s), "
+            "%d vector edge(s), %d alias edge(s), %d unresolved vector(s)%s",
+            len(asm_units), asm.files, asm.symbols, asm.vectors, asm.aliases,
+            asm.unresolved,
+            f", {asm.failed} could not be preprocessed" if asm.failed else "",
+        )
+        # A separate line, and only when a unit held a `.macro` at all.
+        # A refused macro leaves its symbols out of the index, and a
+        # refusal nobody can see looks exactly like a file that held
+        # nothing worth indexing.
+        macro_summary = asm.macros.summary()
+        if macro_summary:
+            log.info("assembly macros: %s", macro_summary)
 
     # ── Post-processing ──
+    # Every path no libclang unit covers travels in one set.  The coverage
+    # purge counts a file it cannot see in the units as missing, and the
+    # assembly pass lost every row it wrote to exactly that purge before
+    # its paths were threaded through.  A linker script is invisible the
+    # same way — it is an input to the linker, not a compilation unit.
+    uncovered_paths = set(asm.paths) if asm is not None else set()
+    if linker is not None:
+        uncovered_paths |= linker.paths
     _run_postprocess(
+        asm_paths=uncovered_paths,
         conn=conn,
         config_hash=config_hash,
         project_root=project_root,

@@ -50,6 +50,7 @@ try:
 except ImportError:
     TranslationUnitLoadError = RuntimeError  # clang not available — use fallback
 from collections import OrderedDict
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -72,11 +73,18 @@ from fw_context_mcp.indexer.db import (
     split_tokens,
     upsert_file,
 )
-from fw_context_mcp.utils import abs_path, compute_content_hash, compute_source_hash, read_file_lines
+from fw_context_mcp.utils import (
+    CPP_EXTENSIONS,
+    abs_path,
+    compute_content_hash,
+    compute_source_hash,
+    read_file_lines,
+)
 
 from .db._chunking import chunked
 from .db._files import FileIdLookup
 from .manifest import _is_generated_header
+from .skipped_ranges import collect_skipped_lines
 
 log = logging.getLogger(__name__)
 
@@ -124,15 +132,34 @@ def _clear_body_cache() -> None:
     _body_cache.clear()
 
 
-def _read_body(lines: list[str], start_line: int, end_line: int) -> str:
+def _read_body(
+    lines: list[str], start_line: int, end_line: int, skipped: AbstractSet[int]
+) -> str:
     """Extract symbol body from pre-read file lines using libclang extents.
 
     *start_line* and *end_line* are 1-based.
     Returns the joined body text or an empty string when the range is invalid.
+
+    *skipped* holds the lines of *the file these lines come from* that the
+    preprocessor did not take (see ``skipped_ranges.py``).  An extent is one
+    continuous range of lines, thus a dead ``#ifdef`` block inside a body is
+    inside the extent of that body.  Such a line becomes a bare newline: the
+    body then holds only the code that compiles, and every line that stays
+    keeps its number.
+
+    The parameter has no default on purpose.  A body that reaches the index
+    unfiltered shows dead code as live code, and an audit can then approve
+    code that the compiler never sees.  A required parameter makes the type
+    checker name each call site instead.
     """
-    if end_line > start_line and end_line <= len(lines):
+    if not (end_line > start_line and end_line <= len(lines)):
+        return ""
+    if not skipped:
         return "".join(lines[start_line - 1 : end_line])
-    return ""
+    return "".join(
+        "\n" if number in skipped else lines[number - 1]
+        for number in range(start_line, end_line + 1)
+    )
 
 
 def _compute_content_hash(
@@ -142,14 +169,20 @@ def _compute_content_hash(
     signature: str,
     qualified_name: str,
     docstring: str,
+    skipped: AbstractSet[int],
 ) -> str:
     """Stable hash of a symbol's body + identity for change detection.
 
     Uses the actual body text (read from disk via libclang extents) so that
     even a refactor preserving line count is detected.  Whitespace is stripped
     so formatting-only changes are ignored.
+
+    *skipped* must be the same set that ``_read_body`` gets for the stored
+    body.  When the two disagree, the hash covers text that the index does
+    not hold, and a change inside a dead branch then reads as a changed
+    symbol.
     """
-    body = _read_body(lines, start_line, end_line)
+    body = _read_body(lines, start_line, end_line, skipped)
     return compute_content_hash(body, qualified_name, signature, docstring)
 
 
@@ -164,7 +197,7 @@ def _normalize_file_path(file_path: str, project_root: Path) -> str:
     function stored verbatim, while ``_build_filtered_file_content`` stored
     ``str(Path(p).resolve())`` — ``/usr/include/c++/16/algorithm``.  The
     symbols hung off one row and the content off the other, and nothing
-    matched them up.  Measured on HA_Boiler: 145 duplicate rows, and the
+    matched them up.  Measured on the ESP32 project: 145 duplicate rows, and the
     whole C++ standard library became invisible once the coverage purge
     removed the spelling the manifest did not use.
 
@@ -183,10 +216,16 @@ def _build_filtered_file_content(
     skip_files: frozenset[str] | None = None,
     refresh_paths: set[str] | None = None,
 ) -> tuple[int, list[dict]]:
-    """Tokenize TU, extract active lines per file, store ifdef-filtered content.
+    """Find the active lines of each file of a TU, store ifdef-filtered content.
 
     Parses *unit* (a ``CompilationUnit`` data class) with libclang, then
-    tokenizes to find which source lines are active (not ``#ifdef``-dead).
+    collects the lines that carry code and subtracts the lines that the
+    preprocessor skipped.  Two steps build the first set — the tokens of the
+    TU and the extent of every cursor — and neither can tell an inactive
+    ``#if`` branch from live code.  ``collect_skipped_lines`` gives the
+    record the preprocessor made of the branches it did not take, and that
+    record decides.  See ``skipped_ranges.py``.
+
     Processes files whose ``content`` column is still empty, plus the files
     named in *refresh_paths* — the set this parse owns, whose text just
     changed.  Everything else keeps its stored content: re-filtering a file
@@ -201,7 +240,9 @@ def _build_filtered_file_content(
     the manifest update phase to avoid a second tokenization pass.
 
     Inactive lines are replaced with ``\\n`` so line numbers stay
-    consistent with the original source.
+    consistent with the original source.  The text spans the whole file:
+    the lines after the last active one are blank, and not absent, thus
+    ``len(content.splitlines())`` is the length of the file.
 
     Files inside *project_root* are stored with a relative path; files
     outside (framework headers from PlatformIO, ESP-IDF, Zephyr modules)
@@ -262,6 +303,12 @@ def _build_filtered_file_content(
     # ── Collect included header paths + SHA-256 hashes (always needed for manifest) ──
     headers: list[dict] = []
     seen_headers: set[str] = set()
+    # (resolved absolute path, content hash) for every header this parse
+    # read.  The blank-out pass at the end of this function needs both: the
+    # absolute path to read the file and to key the files row, and the hash
+    # to tell a changed header from an unchanged one.  `headers` alone
+    # cannot serve it — it stores the project-relative spelling.
+    header_files: list[tuple[str, str]] = []
 
     for inc in tu.get_includes():
         abs_path = str(inc.include.name)
@@ -281,13 +328,24 @@ def _build_filtered_file_content(
         h = compute_source_hash(resolved)
         generated = _is_generated_header(rel, build_dir_patterns)
         headers.append({"path": rel, "hash": h, "generated": generated})
+        header_files.append((str(resolved), h))
 
     # ── Fast-path return: all files already have filtered content ──
     # Skip tokenization and AST walk — they're only needed for content-fill,
     # not for header collection (which only needs get_includes, already done).
     filled = 0
-    if remaining == 0 and not refresh_paths:
+    # Asked before the fast-path return, because the answer decides whether
+    # that return may be taken at all.  One indexed lookup per header and no
+    # file read — the hashes arrived with header_files above, which this
+    # function computed for the manifest either way.
+    changed_headers = _changed_header_rows(conn, config_hash, project_root, header_files)
+    if remaining == 0 and not refresh_paths and not changed_headers:
         return 0, headers
+    # A changed header sends this parse down the full path even when every
+    # file already has content.  The blank-out pass at the end needs to know
+    # which files carried an active line, and only the tokenization below
+    # can tell it — without that set it cannot separate a header an edit
+    # emptied from one that still holds code, and it blanked both.
 
     # ── Build ifdef-filtered content for files that still need it ──
     tokens = list(tu.cursor.get_tokens())
@@ -335,12 +393,40 @@ def _build_filtered_file_content(
 
     _collect_all_active_lines(tu.cursor)
 
+    # Neither source above can tell an inactive #if branch from live code.
+    # The tokens come from a raw lexer, which does no preprocessing, and an
+    # extent is one continuous range of lines, thus it carries a dead block
+    # inside a function body along with the body.  The preprocessor kept a
+    # record of what it skipped; subtract it below, per file.
+    skipped = collect_skipped_lines(tu)
+
+    # Paths this loop wrote.  The blank-out pass below must not touch them
+    # again: this loop already put the current text there.
+    written: set[str] = set()
+    # Every file this parse saw an active line in, whether or not the loop
+    # below writes it.  `written` cannot serve as that set: the loop also
+    # skips a file it deliberately leaves alone — one that already has text
+    # and that this parse does not own — and such a file carried active
+    # lines all the same.  The blank-out pass took the absence from
+    # `written` as "no active line" and erased the text of a header that
+    # still held code.
+    active_paths: set[str] = {
+        _normalize_file_path(path, project_root)
+        for path, lines in active.items()
+        if lines
+    }
+
     for abs_path, active_lines in active.items():
         if not active_lines:
             continue
 
         db_path = _normalize_file_path(abs_path, project_root)
         resolved = Path(abs_path).resolve()
+
+        # Drop the lines of every inactive #if branch.  The key of `active`
+        # is the spelling libclang used at that point, which is not stable
+        # for one file, thus the two sides meet on the resolved path.
+        active_lines = active_lines - skipped.get(resolved, frozenset())
 
         # Already processed — and not owned by this parse, so its stored
         # content still matches the disk.
@@ -361,15 +447,26 @@ def _build_filtered_file_content(
         if not original:
             continue
 
-        # Replace inactive lines with \n to preserve line numbers
-        max_line = max(active_lines)
+        # Replace inactive lines with \n to keep the line numbers.
+        #
+        # The range covers the whole file, and not only the lines up to the
+        # last active one.  A conditional directive carries no token, thus
+        # the `#endif` of an include guard is never an active line — and it
+        # is the last line of almost every header.  A range that stopped at
+        # max(active_lines) cut that tail off: measured on a 115-line
+        # header, `read_file` stored 113 lines and then reported 113 as the
+        # length of the file.  The same column backs `search_content`, so a
+        # pattern in the tail was also unreachable.
+        #
+        # The cost is one byte for each line after the last active one, thus
+        # a few bytes for each header.
         filtered = [
-            original[i - 1] if (i in active_lines) else "\n" for i in range(1, min(len(original), max_line) + 1)
+            original[i - 1] if (i in active_lines) else "\n" for i in range(1, len(original) + 1)
         ]
         content = "".join(filtered)
 
         # Insert or update — file rows may not exist for headers-only files.
-        lang = "cpp" if db_path.endswith((".cpp", ".cc", ".cxx", ".hpp", ".hxx")) else "c"
+        lang = "cpp" if Path(db_path).suffix in CPP_EXTENSIONS else "c"
         # Grab real mtime so _count_modified_files won't flag this as stale.
         try:
             file_mtime = resolved.stat().st_mtime
@@ -381,7 +478,7 @@ def _build_filtered_file_content(
         # `generated` is written here too, and not only in
         # _store_symbol_rows.  That function iterates over SYMBOLS, so a
         # header that declares nothing never reaches it — this INSERT is the
-        # only creator of its row.  Measured on HA_Boiler: 7 of 56 generated
+        # only creator of its row.  Measured on the ESP32 project: 7 of 56 generated
         # headers, among them umbrella and version headers, came in this way
         # and kept generated=0 while the manifest said True.
         #
@@ -399,10 +496,138 @@ def _build_filtered_file_content(
             ),
         )
         filled += 1
+        written.add(db_path)
+
+    filled += _blank_out_inactive_files(
+        conn, config_hash, project_root, changed_headers, written, active_paths,
+        build_dir_patterns,
+    )
 
     if filled:
         log.info("content fill: %d files from TU %s in %.1fs", filled, unit.file.name, _time.monotonic() - _t0)
     return filled, headers
+
+
+def _changed_header_rows(
+    conn,
+    config_hash: str,
+    project_root: Path,
+    header_files: list[tuple[str, str]],
+) -> dict[str, tuple[str, str]]:
+    """Return ``{db_path: (abs_path, current_hash)}`` for headers gone stale.
+
+    A header qualifies when the index holds text for it AND a ``source_hash``
+    that disagrees with the file on disk.  Without a stored hash there is
+    nothing to compare, and rewriting on that basis alone would touch every
+    header on every parse.  Without stored text there is nothing that could
+    be serving a stale answer — the content loop owns the fill for those.
+
+    One indexed lookup per header and no file read: the current hash arrived
+    with *header_files*, which ``_build_filtered_file_content`` computes for
+    the manifest on every path, including the fast one.
+
+    The absolute path rides along because the blank-out pass has to read the
+    file: rebuilding it from *db_path* would depend on whether *project_root*
+    arrived resolved, and _normalize_file_path resolves before it compares.
+    The path that produced the key is the one that opens the file.
+
+    Two callers, one question: the fast-path return may not be taken while
+    this is non-empty, and the blank-out pass works from it.  Asking twice
+    would read the same rows twice.
+    """
+    changed: dict[str, tuple[str, str]] = {}
+    for header_path, current_hash in header_files:
+        db_path = _normalize_file_path(header_path, project_root)
+        row = conn.execute(
+            "SELECT content, source_hash FROM files WHERE config_hash=? AND path=?",
+            (config_hash, db_path),
+        ).fetchone()
+        if row is None or not row[0]:
+            continue
+        stored_hash = row[1]
+        if not stored_hash or stored_hash == current_hash:
+            continue
+        changed[db_path] = (header_path, current_hash)
+    return changed
+
+
+def _blank_out_inactive_files(
+    conn,
+    config_hash: str,
+    project_root: Path,
+    changed_headers: dict[str, tuple[str, str]],
+    written: set[str],
+    active_paths: set[str],
+    build_dir_patterns: list[str] | None,
+) -> int:
+    """Refresh a header the parse read that produced no active line.
+
+    ``active`` holds only files that carry a token or a cursor extent, and
+    the content loop skips an entry whose line set is empty.  A header with
+    nothing to parse reaches neither: an empty one, or one an edit reduced
+    to comments, pragmas and include guards.  Measured before this pass
+    existed, files.content then kept the text from BEFORE the edit,
+    read_file served that text, and search_content still matched words the
+    file no longer held.
+
+    The right text is the all-blank form.  The filter keeps line numbers
+    and blanks every inactive line; here every line is inactive, thus the
+    content becomes one newline per line of the file.  Storing "" instead
+    would be wrong: an empty content column means "not filled yet" to the
+    ``remaining`` count and to the loop's own skip test, so the file would
+    be re-read on every parse for ever.
+
+    TWO exclusions, and both are necessary:
+
+    * *written* — the content loop already put the current text there.
+    * *active_paths* — this parse saw an active line in the file, thus it
+      is not a header that produced none, whatever the loop then did with
+      it.  This is the check the function used to lack: it took the absence
+      of a path from *written* as proof of no active line, and the loop
+      leaves a file out of *written* for a second reason — it already has
+      text and this parse does not own it.  A header that changed on disk
+      and still held code was blanked, and the blank was not recoverable:
+      it is not the empty string, so the fill test on the next parse skips
+      the file for ever.
+
+    *changed_headers* already holds only headers whose stored hash
+    disagrees with the file, so an unchanged one costs nothing here.
+    """
+    # Local, like the one in _build_filtered_file_content: manifest imports
+    # from this module, thus a module-level import would close a cycle.
+    from fw_context_mcp.indexer.manifest import _is_generated_header
+
+    refreshed = 0
+    for db_path, (header_path, current_hash) in changed_headers.items():
+        if db_path in written or db_path in active_paths:
+            continue
+
+        resolved = Path(header_path)
+        try:
+            with open(resolved, encoding="utf-8", errors="replace") as handle:
+                line_count = sum(1 for _ in handle)
+            file_mtime = resolved.stat().st_mtime
+        except OSError:
+            continue
+        if not line_count:
+            continue
+
+        lang = "cpp" if Path(db_path).suffix in CPP_EXTENSIONS else "c"
+        conn.execute(
+            "INSERT INTO files (config_hash, path, language, content, mtime, generated, source_hash) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (config_hash, path) DO UPDATE SET "
+            "content = excluded.content, mtime = MAX(files.mtime, excluded.mtime), "
+            "generated = MAX(files.generated, excluded.generated), "
+            "source_hash = excluded.source_hash",
+            (
+                config_hash, db_path, lang, "\n" * line_count, file_mtime,
+                int(_is_generated_header(db_path, build_dir_patterns)),
+                current_hash,
+            ),
+        )
+        refreshed += 1
+    return refreshed
 
 
 def _store_symbol_rows(
@@ -413,12 +638,18 @@ def _store_symbol_rows(
     project_root: Path,
     vendor_patterns: list[str],
     project_patterns: list[str],
+    skipped: dict[Path, set[int]],
     build_dir_patterns: list[str] | None = None,
 ) -> tuple[int, dict[int, int]]:
     """Build and batch-insert symbol rows for one TU.
 
     Returns ``(syms_added, file_proj)`` where *file_proj* maps
     ``file_id → max(is_project)`` across all files touched by this TU.
+
+    *skipped* maps the resolved path of a file to the lines that the
+    preprocessor did not take, from ``collect_skipped_lines``.  The stored
+    body of a symbol drops those lines.  An empty map stores every body
+    complete, which is what a TU with no inactive branch needs.
 
     The caller uses *file_proj* to update ``files.is_project`` —
     a file that hosts both project and vendor symbols is treated as
@@ -456,15 +687,29 @@ def _store_symbol_rows(
         sym_file = s.file
         normalized_sym_file = _normalize_file_path(sym_file, project_root)
         if normalized_sym_file not in file_id_cache:
-            lang = "cpp" if Path(sym_file).suffix.lower() in {".cpp", ".cc", ".cxx", ".c++"} else "c"
+            lang = "cpp" if Path(sym_file).suffix in CPP_EXTENSIONS else "c"
             try:
                 sym_mtime = Path(sym_file).stat().st_mtime
             except OSError:
                 sym_mtime = 0.0
+            # The hash goes in for every file, not only for a translation
+            # unit.  The staleness check uses it to tell a real change from a
+            # file that git only rewrote, and a header is what git rewrites
+            # most.
+            #
+            # The cost is per (TU, file) pair, NOT per file: file_id_cache is
+            # built fresh for every translation unit, and compute_source_hash
+            # has no cache of its own.  A header that 200 units include is
+            # read 200 times.  Measured on the Mbed project: 1,037 unique headers
+            # but 86,686 references, an amplification of 84x.  It still costs
+            # only about 1 s over a whole index run, because the files are
+            # small and the page cache serves the repeats — the amplification
+            # is what matters to anyone sizing a change here, not the 1 s.
             file_id_cache[normalized_sym_file] = upsert_file(
                 conn, config_hash, normalized_sym_file, lang,
                 generated=_is_generated_header(normalized_sym_file, build_dir_patterns),
                 mtime=sym_mtime,
+                source_hash=compute_source_hash(Path(sym_file)),
             )
         rel_path = normalized_sym_file
         # ── Compute is_project ──
@@ -500,7 +745,13 @@ def _store_symbol_rows(
         if s.is_definition and s.end_line > s.line:
             file_lines = _cached_read_lines(s.file)
             if file_lines is not None:
-                body = _read_body(file_lines, s.line, s.end_line)
+                # resolved_sym is reused from the is_project block above:
+                # the skipped map is keyed by resolved path, and one
+                # Path.resolve() for each symbol is enough.
+                body = _read_body(
+                    file_lines, s.line, s.end_line,
+                    skipped.get(resolved_sym, frozenset()),
+                )
         fid = file_id_cache[normalized_sym_file]
         # Track the highest is_project value per file — files hosting any
         # project symbol get is_project=1 even if they also contain
@@ -531,6 +782,15 @@ def _store_symbol_rows(
                 is_proj,
                 0.0,
                 body,
+                # is_weak: always 0 on this path.  libclang's Python
+                # binding exposes no weak attribute, so a C definition
+                # marked `__attribute__((weak))` is indistinguishable
+                # from a strong one here.  The column exists for the
+                # assembly path, where `.weak` is a directive the reader
+                # sees plainly, and that is where the vector table needed
+                # it.  A C definition therefore counts as strong, which
+                # is what the code assumed before the column existed.
+                0,
             )
         )
     # Batch insert — a single SQL statement for all symbols in the TU
@@ -549,6 +809,7 @@ def _detect_moved_symbols(
     old_usrs: set[str],
     file_id_cache: dict[str, int],
     project_root: Path,
+    skipped: dict[Path, set[int]],
 ) -> None:
     """Detect symbols that moved between files without content changes.
 
@@ -605,13 +866,19 @@ def _detect_moved_symbols(
         lines = _cached_read_lines(s.file)
         if lines is None:
             continue
-        old_lines = _cached_read_lines(abs_path(project_root, old_row["file_path"]))
+        old_abs_path = abs_path(project_root, old_row["file_path"])
+        old_lines = _cached_read_lines(old_abs_path)
         if old_lines is None:
             continue
         # Compare content hashes — same body + signature = same symbol.
         # If hashes differ, the symbol was genuinely modified (not just
         # moved), so we keep the new insert (old row will be cleaned up
         # by _delete_old_for_tu on its original TU).
+        #
+        # Each body drops the dead lines of ITS OWN file: the two bodies
+        # come from two files, and the hash must cover the same text that
+        # the index stores for each.  A file outside this TU has no entry,
+        # and both sides then compare the full text of that file.
         old_ch = _compute_content_hash(
             old_lines,
             old_row["line"],
@@ -619,9 +886,11 @@ def _detect_moved_symbols(
             old_row["signature"],
             old_row["qualified_name"],
             old_row["docstring"],
+            skipped.get(Path(old_abs_path).resolve(), frozenset()),
         )
         new_ch = _compute_content_hash(
             lines, s.line, s.end_line, s.signature, s.qualified_name, s.docstring,
+            skipped.get(Path(s.file).resolve(), frozenset()),
         )
         if old_ch != new_ch:
             continue
@@ -805,13 +1074,20 @@ def _store_macros_for_unit(
         m_raw = str(m.file) if m.file else file_path
         m_path = _normalize_file_path(m_raw, project_root)
         if m_path not in file_id_cache:
-            lang = "cpp" if Path(m_raw).suffix.lower() in {".cpp", ".cc", ".cxx", ".c++"} else "c"
+            lang = "cpp" if Path(m_raw).suffix in CPP_EXTENSIONS else "c"
             m_mtime = current_mtime if m_path == normalized_tu_path else 0.0
             try:
                 m_mtime = Path(m_raw).stat().st_mtime
             except OSError:
                 pass
-            file_id_cache[m_path] = upsert_file(conn, config_hash, m_path, lang, mtime=m_mtime)
+            # source_hash for the same reason as in _store_symbol_rows: a
+            # file whose mtime moves must carry the hash of the text that
+            # moved it, or the staleness check reports it as changed for
+            # ever.  Same per-(TU, file) cost as there.
+            file_id_cache[m_path] = upsert_file(
+                conn, config_hash, m_path, lang, mtime=m_mtime,
+                source_hash=compute_source_hash(Path(m_raw)),
+            )
         m_file_id = file_id_cache[m_path]
         macro_rows.append(
             (
@@ -957,6 +1233,17 @@ def store_symbols_for_unit(
             log.warning("skip TU %s: %s", unit.file.name, exc)
             return 0, 0, []
 
+    # ── Lines the preprocessor skipped, for every file of this TU ──
+    # The stored body of a symbol must hold only the code that compiles.
+    # One C call for each TU serves every body below.
+    #
+    # A caller that gives an ExtractionResult without a TU (return_tu=False)
+    # leaves this map empty, and the bodies then keep their inactive #ifdef
+    # blocks.  Nothing in the package does that on the index path — both
+    # branches above ask for the TU — but the fallback stays silent rather
+    # than stop the run.
+    skipped = collect_skipped_lines(tu) if tu is not None else {}
+
     # ── Resolve known files for this TU ──
     # When the caller provides *existing_files* (bulk indexing path), use it
     # directly — avoids a redundant full-scan of the files table inside the
@@ -990,8 +1277,8 @@ def store_symbols_for_unit(
     # content/stability hashes), we store them in the files row.  These
     # hashes power the manifest verification step, which detects whether
     # a TU needs re-parsing by comparing current hashes to stored hashes.
-    # Without hashes (reindex_file path), we still upsert the file row
-    # but leave hash columns at their defaults.
+    # Without hashes (reindex_file path), we still compute source_hash —
+    # see the else branch for why it cannot be left out.
     if hashes is not None:
         source_hash, flags_hash, manifest_entry_hash = hashes
         content_hash_val = compute_tu_content_hash(source_hash, flags_hash, manifest_entry_hash)
@@ -1001,7 +1288,24 @@ def store_symbols_for_unit(
             source_hash=source_hash, flags_hash=flags_hash,
         )
     else:
-        tu_file_id = upsert_file(conn, config_hash, normalized_tu_path, unit.language, mtime=current_mtime)
+        # This call moves mtime forward, thus it MUST move source_hash too.
+        # upsert_file keeps a stored hash when the caller passes an empty
+        # one, which is right for a caller that knows nothing about the
+        # content — but this caller just re-parsed the file.  Left out, the
+        # row holds the hash of the text before the edit next to the mtime
+        # of the text after it, and every staleness check in
+        # mcp/shared/stale.py then reports the file as changed forever,
+        # although its symbols are current.
+        #
+        # content_hash and flags_hash stay as they are: they feed the
+        # manifest shortcut in _check_and_parse_unit, which compares them
+        # against freshly computed values and reparses on a mismatch.  A
+        # stale value there costs one parse, never a wrong answer.
+        tu_file_id = upsert_file(
+            conn, config_hash, normalized_tu_path, unit.language,
+            mtime=current_mtime,
+            source_hash=compute_source_hash(unit.file.resolve()),
+        )
 
     syms_added = 0
     refs_added = 0
@@ -1010,7 +1314,7 @@ def store_symbols_for_unit(
     if syms:
         syms_added, file_proj = _store_symbol_rows(
             conn, config_hash, syms, file_id_cache, project_root,
-            vendor_patterns, project_patterns, build_dir_patterns,
+            vendor_patterns, project_patterns, skipped, build_dir_patterns,
         )
         # Update files.is_project for all files touched by this TU.
         # Using ``is_project < ip`` ensures a file that was previously
@@ -1022,7 +1326,9 @@ def store_symbols_for_unit(
                 "UPDATE files SET is_project = ? WHERE id = ? AND is_project < ?",
                 (ip, fid, ip),
             )
-        _detect_moved_symbols(conn, config_hash, syms, old_usrs, file_id_cache, project_root)
+        _detect_moved_symbols(
+            conn, config_hash, syms, old_usrs, file_id_cache, project_root, skipped,
+        )
 
     # Every path written to or matched against the database goes through the
     # one normaliser.  There used to be a second, local one here that omitted
@@ -1038,7 +1344,10 @@ def store_symbols_for_unit(
 
     # References
     if index_refs and refs:
-        ref_rows = [(config_hash, r.to_usr, _rel(r.from_file), r.from_line, r.from_usr, r.ref_kind) for r in refs]
+        # The last column is refs.slot_index.  It carries a value only for an
+        # indirect reference that came from an element of a positional
+        # one-dimensional array initializer; it is None everywhere else.
+        ref_rows = [(config_hash, r.to_usr, _rel(r.from_file), r.from_line, r.from_usr, r.ref_kind, r.slot_index) for r in refs]
         insert_refs_batch(conn, ref_rows)
         refs_added = len(ref_rows)
 
@@ -1265,7 +1574,8 @@ def backfill_cross_tu_refs(
                     # (recursion) would already have a per-TU ref.
                     if target_usr and target_usr != fn_usr:
                         new_refs.append(
-                            (config_hash, target_usr, file_path_rel, lineno, fn_usr, "call")
+                            (config_hash, target_usr, file_path_rel, lineno,
+                             fn_usr, "call", None)
                         )
                         # Mark this line as having a ref to avoid
                         # inserting duplicate references when multiple

@@ -107,7 +107,7 @@ def upsert_file(
     ON CONFLICT clause never mentioned it, so a row that another caller
     created first kept 0 whatever a later caller knew.  Five callers reach
     this function and only one of them has the build-output patterns; the
-    other four pass the default False.  Measured on HA_Boiler once the
+    other four pass the default False.  Measured on the ESP32 project once the
     column was first filled: the manifest said 56 generated headers and the
     database said 49, and the seven that differed were exactly the rows some
     other caller had inserted first.
@@ -122,7 +122,7 @@ def upsert_file(
     version of this text claimed the case could not arise, because a change
     to build_dir_patterns mints a new config_hash.  Measured, that is false:
     narrowing PlatformIO from ``.pio/`` to ``.pio/build/`` left the
-    config_hash of HA_Boiler and of FM identical, because the path pass drops
+    config_hash of the ESP32 project and of the STM32 project identical, because the path pass drops
     in-project paths anyway.  _step_reconcile_generated() is what makes the
     column right again, and it is the authoritative write.
 
@@ -138,7 +138,18 @@ def upsert_file(
     mtime without changing the text, Tier 2 found an empty content_hash,
     could not take its shortcut, and paid one libclang parse to rebuild what
     was already known.  files.content_hash has exactly one reader,
-    _check_and_parse_unit; source_hash and flags_hash have none.
+    _check_and_parse_unit.  source_hash has two: the staleness checks in
+    mcp/shared/stale.py compare it against the file to tell a real change
+    from one where git only rewrote the mtime.  flags_hash still has none.
+
+    That second reader is why source_hash may no longer ride on this rule
+    alone.  A caller that MOVES mtime and knows the content must also pass
+    source_hash, or the row ends with the hash of the old text beside the
+    stamp of the new one, and the staleness checks then call the file
+    changed for as long as the pair disagrees.  store_symbols_for_unit()
+    computes it for exactly that reason.  The rule here stays as it is: it
+    protects a caller that knows NOTHING about the content, which is a
+    different case.
 
     Args:
         conn: Open database connection.
@@ -276,7 +287,7 @@ def delete_orphan_files(
     three times per build, and a 0-byte source yields no symbols, no macros
     and no content, so it matched all three conditions.  Its row went away
     on every run, Tier 1 needs a row to skip a translation unit, and the
-    next run parsed it again: measured on zbox-ecb-fw-v5, all 9 builds
+    next run parsed it again: measured on the Zephyr project, all 9 builds
     reported "3 updated" for ever and never reached "0 updated".
 
     *project_root* resolves a relative stored path.  Without it a relative
@@ -341,7 +352,7 @@ def get_file_map(
 ) -> dict:
     """Return all symbols in a file grouped by kind — fast structural overview.
 
-    *file_path* is relative to the project root (e.g. ``src/modem_msg.cpp``),
+    *file_path* is relative to the project root (e.g. ``src/net_msg.cpp``),
     matching the ``symbols.file_path`` column.  Exact match first, then
     LIKE-based path match so both ``src/main.cpp`` and ``main.cpp`` work.
 
@@ -359,8 +370,8 @@ def get_file_map(
     ).fetchall()
 
     # Two-phase path matching — the symbols table stores the relative
-    # path as libclang sees it (e.g. "src/modem_msg.cpp"), but callers
-    # may pass just the filename ("modem_msg.cpp") or a partial path.
+    # path as libclang sees it (e.g. "src/net_msg.cpp"), but callers
+    # may pass just the filename ("net_msg.cpp") or a partial path.
     #
     # Phase 1: exact file_path match.  Uses the index on (config_hash,
     # file_path), fast for the common case.
@@ -369,7 +380,7 @@ def get_file_map(
     # _escape_like call prevents "_" and "%" in the filename itself
     # from matching as wildcards (important for filenames like
     # "hw_config_v2.cpp" where "v2" must be literal).  The prefix "%"
-    # allows "modem_msg.cpp" to match "src/net/modem_msg.cpp".
+    # allows "net_msg.cpp" to match "src/net/net_msg.cpp".
     if not rows:
         rows = conn.execute(
             """SELECT name, qualified_name, kind, line, col, end_line,
@@ -427,6 +438,13 @@ def get_file_map(
                     "qualified_name": r["qualified_name"],
                     "line": r["line"],
                 }
+                # The SELECT above has always read `end_line`, and nothing
+                # here gave it to the caller.  A map that gives the start
+                # and not the end makes the reader open the file to find
+                # where a symbol stops.  0 means a declaration, which has
+                # no extent, thus the key appears only when it answers.
+                if r["end_line"]:
+                    entry["end_line"] = r["end_line"]
                 if signatures and r["signature"]:
                     entry["signature"] = r["signature"]
                 groups[kind]["items"].append(entry)

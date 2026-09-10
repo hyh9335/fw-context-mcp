@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
+from fw_context_mcp.utils import TU_EXTENSIONS
 from fw_context_mcp.indexer.compile_commands import (
-    _SOURCE_EXTS,
     _detect_language,
     _detect_target_triple,
     _gcc_system_includes,
@@ -107,6 +107,41 @@ class TestNormalizeArgs:
     def test_drops_save_temps(self):
         result = normalize_args(["-save-temps", "-std=c++14", "main.cpp"], Path.cwd())
         assert "-save-temps" not in result
+
+    def test_drops_gcc_only_codegen_flags(self):
+        """Flags clang rejects outright, which kills the whole parse.
+
+        They change no declaration and no macro, so dropping them cannot
+        change what the index sees.  Found by running clang over the flags
+        of every real project at once rather than one at a time — there were
+        five, not the two that first surfaced.
+        """
+        gcc_only = [
+            "-fno-reorder-functions",
+            "-fno-printf-return-value",
+            "-fstrict-volatile-bitfields",
+            "-fno-tree-switch-conversion",
+        ]
+        result = normalize_args([*gcc_only, "-std=c11", "main.c"], Path.cwd())
+
+        for flag in gcc_only:
+            assert flag not in result, f"clang rejects {flag} as an unknown argument"
+
+    def test_drops_the_fp16_format_flag_with_any_value(self):
+        """A prefix, not an exact match: the value varies by project."""
+        for value in ("ieee", "alternative"):
+            result = normalize_args(
+                [f"-mfp16-format={value}", "-std=c11", "main.c"], Path.cwd()
+            )
+            assert not any(a.startswith("-mfp16-format") for a in result)
+
+    def test_a_flag_that_changes_meaning_is_kept(self):
+        """The strip list must stay narrow — these decide what compiles."""
+        result = normalize_args(
+            ["-DFOO=1", "-I/inc", "-std=c11", "-mcpu=cortex-m4", "main.c"], Path.cwd()
+        )
+        for keep in ("-DFOO=1", "-I/inc", "-std=c11", "-mcpu=cortex-m4"):
+            assert keep in result, f"{keep} decides what the compiler sees"
 
     def test_drops_specs(self):
         result = normalize_args(["-specs=nosys.specs", "-std=c++14", "main.cpp"], Path.cwd())
@@ -225,18 +260,32 @@ class TestParse:
 
 
 class TestSourceExts:
-    """_SOURCE_EXTS should cover all common C/C++ extensions."""
+    """TU_EXTENSIONS should cover all common C/C++ extensions.
+
+    The set moved to utils: three modules kept their own copy and they had
+    drifted — `.c++` was in two of them and not in the third, so a new
+    `.c++` file was never reported as missing from compile_commands.json.
+    """
+
     def test_c(self):
-        assert ".c" in _SOURCE_EXTS
+        assert ".c" in TU_EXTENSIONS
 
     def test_cpp(self):
-        assert ".cpp" in _SOURCE_EXTS
+        assert ".cpp" in TU_EXTENSIONS
 
     def test_cc(self):
-        assert ".cc" in _SOURCE_EXTS
+        assert ".cc" in TU_EXTENSIONS
 
     def test_cxx(self):
-        assert ".cxx" in _SOURCE_EXTS
+        assert ".cxx" in TU_EXTENSIONS
+
+    def test_cxx_plus_plus(self):
+        assert ".c++" in TU_EXTENSIONS
+
+    def test_uppercase_is_covered_by_the_comparison(self):
+        """`.C` is a C++ source; the set is lowercase and callers lower()."""
+        assert _is_source_file("a.C")
+        assert _is_source_file("a.CPP")
 
 
 class TestEdgeCases:

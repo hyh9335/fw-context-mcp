@@ -18,7 +18,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fw_context_mcp.utils import cc_output_path, run_build_command
+from fw_context_mcp.utils import (
+    DEPS_REL,
+    TU_EXTENSIONS,
+    cc_output_path,
+    resolve_build_dir,
+    run_build_command,
+)
 
 from . import registry
 from .protocol import BuildIssue
@@ -28,7 +34,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_SOURCE_EXTENSIONS = {".c", ".cpp", ".cc", ".cxx", ".C", ".c++"}
+
 
 
 def _scan_source_files(dirs: list[Path]) -> list[Path]:
@@ -40,7 +46,7 @@ def _scan_source_files(dirs: list[Path]) -> list[Path]:
             log.warning("source directory does not exist: %s", d)
             continue
         for f in sorted(d.rglob("*")):
-            if f.suffix in _SOURCE_EXTENSIONS and str(f) not in seen:
+            if f.suffix in TU_EXTENSIONS and str(f) not in seen:
                 # Deduplicate by full path — two source_dirs might contain same-named files
                 seen.add(str(f))
                 result.append(f)
@@ -144,9 +150,25 @@ class ManualBuildSystem:
         # -fsyntax-only: check syntax but produce no object file (fast).
         # -MD -MF <path>.d: emit dependency file for header change detection.
         # -MP: add phony targets for each header (prevents errors if headers move).
+        #
+        # The .d files go to a directory that fw-context owns, never beside
+        # the source.  Beside the source they sit where the build of the user
+        # reads them, and the compiler does not write them atomically, thus a
+        # concurrent `make` could read a truncated file.  resolve_build_dir
+        # gives the isolated directory when fw-context started the build, and
+        # .fw-context/build/deps otherwise.
+        dep_root = resolve_build_dir(root, cfg, str(DEPS_REL))
         entries: list[dict] = []
         for src in sources:
-            d_file = src.with_suffix(".d")
+            # Mirror the tree under dep_root: `a/foo.c` and `b/foo.c` would
+            # otherwise share one `foo.d`.  A source outside the project root
+            # keeps its bare name — it has no relative path to mirror.
+            try:
+                rel = src.resolve().relative_to(root.resolve())
+            except ValueError:
+                rel = Path(src.name)
+            d_file = dep_root / rel.with_suffix(".d")
+            d_file.parent.mkdir(parents=True, exist_ok=True)
             dep_args = ["-MD", "-MF", str(d_file), "-MP"]
             cmd = [compiler] + dep_args + flags + ["-fsyntax-only", str(src)]
             log.debug("Compile: %s", " ".join(cmd))
@@ -184,7 +206,41 @@ class ManualBuildSystem:
         """Manual mode does not require any external tools."""
         return []
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — every artifact goes to a directory that fw-context owns.
+
+        ``-fsyntax-only`` writes no object file, but ``-MD -MF`` still writes
+        one ``.d`` file per source.  Those used to land beside the source.
+        The earlier note here argued that the content depends on the source
+        alone, thus a concurrent build would write the same bytes — true of
+        the content, and beside the point: the compiler does not write the
+        file atomically, so a `make` that reads `src/foo.d` while this build
+        rewrites it can see a truncated one.
+
+        They now go under ``cfg.isolated_build_dir`` when fw-context started
+        the build, and under ``.fw-context/build/deps`` otherwise.  Either
+        way nothing reaches the tree of the user, which is the first branch
+        of the contract in protocol.py.
+        """
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return nothing: the manual backend never links.
+
+        The user gives source directories and flags, and fw-context runs a
+        syntax-only compilation of each file.  There is no link step and
+        thus no linker script in this configuration.
+        """
+        return []
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""

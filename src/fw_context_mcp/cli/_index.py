@@ -30,12 +30,139 @@ import signal
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ..indexer import autobuild
 from ..mcp.shared.pid_file import PidFile
-from ..utils import CC_OUTPUT_REL
+from ..utils import (
+    CC_OUTPUT_REL,
+    SAFE_EXCEPT,
+    autobuild_dir,
+    build_dir_patterns_with_fw_context,
+)
 from . import VerboseFormatter
 
+if TYPE_CHECKING:
+    from ..indexer.build import BuildConfig
+
 log = logging.getLogger(__name__)
+
+
+# ── Automatic build for a source file the build system never saw ──
+# A new .c file has no translation unit: it is absent from
+# compile_commands.json, and only a build puts it there.  A plain reindex
+# skips it without a word, thus fw-context runs the build itself.
+#
+# The markers and the state machine live in indexer/autobuild.py, because
+# mcp/handlers/maintenance.py needs the same answers to tell the caller what
+# will happen, and it cannot import from cli/.
+
+
+def _plan_auto_build(
+    project_root: Path,
+    db_path: Path,
+    cfg,
+    detected_system: str | None,
+) -> tuple[list[str], BuildConfig | None, str]:
+    """Return ``(the keys of this build, its config, a line to log)``.
+
+    An empty list means "do not build", and the config is then None.  The
+    list is non-empty only when all of these hold:
+
+    1. An index exists.  Without one there is nothing to compare against.
+    2. Something a build can repair and a reindex cannot.  Two such things,
+       and either is enough:
+
+       * Source files sit on disk that compile_commands.json does not cover.
+         Such a file has no translation unit, so a reindex skips it.
+       * The tree is on a different branch than the index.
+         compile_commands.json is a build artifact of the branch it was
+         generated on and carries that branch's file list AND its compiler
+         flags.  Measured on the Mbed project, a switch from 4.15.3 to 4.15.1
+         left two generated zcbor sources listed in it and absent from the
+         tree; a reindex reads the same file again.
+
+    3. The backend may build in the background — it isolates its output, or
+       it compiles nothing.  See ``builders.background_build_safe``.
+    4. No recent automatic build failed for the same keys.
+
+    The KEYS are what ``autobuild.blocked`` compares, and they differ by
+    trigger: source paths for the first, ``"branch:<name>"`` for the second.
+    The comparison is on the list contents, thus a record for one trigger
+    does not block the other.
+
+    Condition 3 is the important one.  The build runs while the user works,
+    possibly while an IDE builds the same project, and fw-context cannot
+    lock the build of the IDE.
+
+    WHY the config comes back instead of being set on *cfg*: the contract of
+    ``background_build_safe`` says the answer MAY depend on
+    ``cfg.isolated_build_dir`` (protocol.py), thus the question has to be
+    asked with the value the build would really use.  Setting it on *cfg*
+    before asking would leave it behind on every path that then answers "do
+    not build", so the candidate is built with ``replace()`` and the caller
+    applies it only when there is something to do.
+    """
+    if not db_path.exists():
+        return [], None, ""
+
+    from dataclasses import replace
+
+    from ..indexer.builders import background_build_safe, registry
+    from ..indexer.git_context import branch_moved_since
+    from ..mcp.shared.stale import find_unindexed_sources
+
+    system = cfg.build.system or detected_system
+    builder_cls = registry.get(system) if system else None
+    if builder_cls is None:
+        return [], None, ""
+    candidate = replace(cfg.build, isolated_build_dir=autobuild_dir())
+    if not background_build_safe(builder_cls(), candidate):
+        return [], None, ""
+
+    from ..config import derive_project_id
+    from ..indexer.db import get_active_config, open_db
+
+    conn = open_db(db_path)
+    try:
+        active = get_active_config(conn, derive_project_id(project_root))
+        if not active or not active["compile_commands_path"]:
+            return [], None, ""
+        new_sources = find_unindexed_sources(
+            conn,
+            active["config_hash"],
+            project_root,
+            Path(active["compile_commands_path"]),
+        )
+        recorded = ""
+        if "description" in active.keys():
+            recorded = str(active["description"] or "")
+    finally:
+        conn.close()
+
+    # The branch first: it makes compile_commands.json wrong as a whole,
+    # while an uncovered source makes it incomplete.  A build repairs both,
+    # so the more complete reason is the one worth logging.
+    indexed_branch, live_branch = branch_moved_since(recorded, project_root)
+    if indexed_branch:
+        keys = [f"branch:{live_branch}"]
+        if autobuild.blocked(db_path.parent, keys):
+            return [], None, ""
+        return keys, candidate, (
+            f"branch changed from {indexed_branch} to {live_branch} — "
+            f"compile_commands.json belongs to the old branch, "
+            f"running a build into {candidate.isolated_build_dir}"
+        )
+
+    if not new_sources or autobuild.blocked(db_path.parent, new_sources):
+        return [], None, ""
+    listed = ", ".join(new_sources[:3])
+    more = f" and {len(new_sources) - 3} more" if len(new_sources) > 3 else ""
+    return new_sources, candidate, (
+        f"{len(new_sources)} source file(s) are missing from "
+        f"compile_commands.json ({listed}{more}) — running a build into "
+        f"{candidate.isolated_build_dir}"
+    )
 
 
 def _resolve_compile_commands(
@@ -64,7 +191,15 @@ def _resolve_compile_commands(
     explicit_cc = bool(args.compile_commands)
 
     if args.build:
-        if bg:
+        # `--background` means "skip the build" for a run that a user did not
+        # ask for, because a build competes for the CPU and for the output
+        # directory.  One case earns an exception: fw-context turned the
+        # build on itself, after it found a source file that
+        # compile_commands.json does not cover, and only a build can repair
+        # that.  It is allowed only with an isolated output directory, which
+        # `_plan_auto_build` grants to a backend that keeps its artifacts
+        # apart from the ones of the build of the user.
+        if bg and not cfg.build.isolated_build_dir:
             print("error: --build and --background are mutually exclusive", file=sys.stderr)
             return None, False
         from ..indexer.build import generate_compile_commands
@@ -154,7 +289,9 @@ def _validate_and_fix_artifacts(
         return compile_commands, None, True
 
     builder_instance = builder_cls()
-    build_dir_patterns = builder_instance.get_build_dir_patterns(project_root)
+    build_dir_patterns = build_dir_patterns_with_fw_context(
+        builder_instance.get_build_dir_patterns(project_root)
+    )
 
     if not bg:
         stale, stale_reasons = is_compile_commands_stale(compile_commands, project_root)
@@ -452,6 +589,11 @@ def _run_multi(
         else:
             for variant in variants:
                 vcfg = build_variant_config(build_cfg, variant)
+                if build_cfg.isolated_build_dir:
+                    # One directory per variant.  Every variant has its own
+                    # output directory, thus a shared one would make the
+                    # variants overwrite each other.
+                    vcfg.isolated_build_dir = autobuild_dir(variant.name)
                 try:
                     path = generate_compile_commands(project_root, vcfg)
                 except RuntimeError as exc:
@@ -477,7 +619,10 @@ def _run_multi(
         env = dict(build_cfg.env)
         if v is not None:
             env.update(v.env)
-        build_dir_patterns = [f"{_variant_build_dir(v, build_cfg)}/"] if v is not None else None
+        build_dir_patterns = (
+            build_dir_patterns_with_fw_context([f"{_variant_build_dir(v, build_cfg)}/"])
+            if v is not None else None
+        )
         # The path layers are summed per build, not once for the command:
         # two variants may vendor different in-tree trees.  run_kwargs holds
         # the [index] layer (or the CLI flag, which replaces it).
@@ -609,6 +754,30 @@ def _build_run_kwargs(
     )
 
 
+def _ensure_watcher_after_index(project_root: Path) -> None:
+    """Start the watcher daemon after an index run that was successful.
+
+    WHY: an MCP server spawns the daemon only at startup, and only when
+    ``index.db`` already exists.  A server that starts before the first
+    index takes an early return and spawns no daemon.  The daemon is the
+    only component that starts a background reindex, thus that project
+    gets no automatic reindex.
+
+    This function closes that window.  After the index run, ``index.db``
+    exists, which is the only precondition of ``_ensure_daemon_running``.
+    The call does nothing when a daemon already runs.
+    """
+    try:
+        from ..mcp.background import _ensure_daemon_running
+
+        _ensure_daemon_running(project_root)
+    except (RuntimeError, OSError):
+        # Not fatal — the index is complete and usable.  Only the
+        # automatic reindex of changed files is not available.  The
+        # command `fw-context watch restart` corrects this.
+        log.debug("Could not start the watcher daemon for %s", project_root, exc_info=True)
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     """Build or rebuild the symbol index from compile_commands.json.
 
@@ -672,6 +841,29 @@ def cmd_index(args: argparse.Namespace) -> int:
     project_id = derive_project_id(project_root)
     db_path = cfg.index.db_dir / project_id / "index.db"
 
+    # ── Automatic build for a source file that the build system never saw ──
+    # Such a file has no translation unit, thus a plain reindex skips it and
+    # reports success.  Only a build writes it into compile_commands.json.
+    # `_plan_auto_build` returns a non-empty list only when the backend can
+    # build without touching the output of the build of the user.
+    auto_build_sources: list[str] = []
+    if not getattr(args, "build", False):
+        auto_build_sources, auto_build_cfg, auto_build_reason = _plan_auto_build(
+            project_root, db_path, cfg, detected_system
+        )
+        # The two always arrive together; the second test is what lets the
+        # type checker see that, and it costs nothing.
+        if auto_build_sources and auto_build_cfg is not None:
+            args.build = True
+            # The candidate that _plan_auto_build asked the backend about.
+            # Applying it here, and nowhere else, keeps every "do not build"
+            # path from leaving an isolated directory behind on cfg.  It also
+            # carries `isolated_build_dir`, which is what makes `--build`
+            # legal on a `--background` run — see the check in
+            # `_resolve_compile_commands`.
+            cfg.build = auto_build_cfg
+            log.info("%s", auto_build_reason)
+
     # The CLI flag REPLACES the [index] layer.  A variant's own [index] keys
     # are added on top of whichever of the two won — see _layered_paths().
     vendor_paths = list(getattr(args, "vendor_paths", None) or cfg.index.vendor_paths)
@@ -703,7 +895,7 @@ def cmd_index(args: argparse.Namespace) -> int:
             with index_run_lock(db_path.parent):
                 _claim_index(db_path.parent)
                 try:
-                    return _run_multi(
+                    exit_code = _run_multi(
                         args, cfg, project_root, project_id, db_path,
                         detected_system, run_kwargs,
                     )
@@ -713,9 +905,24 @@ def cmd_index(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return EXIT_ALREADY_RUNNING
 
+        # Outside the index lock, and only after a run that was
+        # successful — see the same call at the end of this function.
+        if exit_code == 0:
+            if auto_build_sources:
+                autobuild.clear_failure(db_path.parent)
+            _ensure_watcher_after_index(project_root)
+        elif auto_build_sources:
+            autobuild.record_failure(db_path.parent, auto_build_sources)
+        return exit_code
+
     # ── Resolve compile_commands.json ──
     cc_result = _resolve_compile_commands(args, project_root, cfg, detected_system, bg)
     if cc_result[0] is None:
+        if auto_build_sources:
+            # The build that fw-context started failed.  Remember it, or the
+            # next daemon cycle repeats it: a failed build leaves
+            # compile_commands.json untouched, thus the trigger stays armed.
+            autobuild.record_failure(db_path.parent, auto_build_sources)
         return 1
     compile_commands, explicit_cc = cc_result
     assert compile_commands is not None  # checked above via cc_result[0]
@@ -753,7 +960,6 @@ def cmd_index(args: argparse.Namespace) -> int:
                 _post_index_optimize(
                     db_path, project_root, project_id, detected_system, args
                 )
-                return 0
             except IndexSuperseded as exc:
                 # Not a failure — see IndexSuperseded.  The distinct exit code
                 # lets the daemon retry instead of treating it as a broken run.
@@ -764,3 +970,79 @@ def cmd_index(args: argparse.Namespace) -> int:
     except IndexRunLocked as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ALREADY_RUNNING
+
+    if auto_build_sources:
+        # The build worked, thus the backoff marker of an earlier failure is
+        # obsolete.
+        autobuild.clear_failure(db_path.parent)
+
+    if getattr(args, "build", False):
+        _record_still_uncovered(project_root, db_path)
+
+    # Outside the index lock.  The daemon does a staleness check when it
+    # starts, thus a daemon that starts inside the lock could start a
+    # second index run against the database that this run still changes.
+    _ensure_watcher_after_index(project_root)
+    return 0
+
+
+def _record_still_uncovered(project_root: Path, db_path: Path) -> None:
+    """Remember the sources a build ran for and still did not cover.
+
+    Called only after a run that built.  What is left uncovered then is not
+    a file waiting for a build — the build system does not want it: a test
+    outside the build, an old experiment, a variant that is not compiled.
+    Reporting it again would tell the caller to run `fw-context index
+    --build`, which changes nothing, and would hold get_active_build on
+    "reindex_needed" for as long as the file stays edited.
+
+    Recomputing the scan here is simpler than remembering the list from
+    before the build, and it covers an explicit `--build` from the user just
+    as well as an automatic one.  ``apply_exclusions=False`` is required, or
+    the scan would filter out the files this is about to record, and
+    ``limit=None`` because the marker has to describe the WHOLE set.
+
+    Best-effort: a marker that cannot be written costs one repeated report,
+    never a wrong answer, thus no failure here may break the index run.
+    """
+    from ..config import derive_project_id
+    from ..indexer.db import get_active_config, open_db
+    from ..mcp.shared.stale import find_unindexed_sources
+    from ..utils import compute_source_hash
+
+    try:
+        conn = open_db(db_path)
+        try:
+            active = get_active_config(conn, derive_project_id(project_root))
+            if not active or not active["compile_commands_path"]:
+                return
+            # limit=None, and that is not a detail.  record_excluded
+            # replaces the marker wholesale, thus a list the report cap
+            # truncated would silently drop every entry past it — the
+            # marker could never hold more than the cap, and always the
+            # same first twenty in sort order.  A file past that point was
+            # reported again on every edit, armed a build that changed
+            # nothing, and never reached the suppression this marker is for.
+            uncovered = find_unindexed_sources(
+                conn,
+                active["config_hash"],
+                project_root,
+                Path(active["compile_commands_path"]),
+                limit=None,
+                apply_exclusions=False,
+            )
+        finally:
+            conn.close()
+    except SAFE_EXCEPT:
+        log.debug("could not recompute the uncovered sources", exc_info=True)
+        return
+
+    if uncovered:
+        log.info(
+            "%d source file(s) stay outside compile_commands.json after the "
+            "build — recorded so they are not reported again", len(uncovered),
+        )
+    autobuild.record_excluded(
+        db_path.parent,
+        {path: compute_source_hash(project_root / path) for path in uncovered},
+    )

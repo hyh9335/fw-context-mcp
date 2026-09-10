@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from fw_context_mcp.utils import cc_output_path, run_build_command
 
-from . import registry
+from . import _linker, registry
 from .protocol import BuildIssue
 
 if TYPE_CHECKING:
@@ -144,6 +144,12 @@ class MbedOSBuildSystem:
         for d in cfg.defines:
             cmd += ["-D", d]
 
+        if cfg.isolated_build_dir:
+            # `mbed compile --build <dir>` writes every artifact there, thus
+            # a build that fw-context starts cannot touch the object files
+            # of the build that the user runs in an IDE.
+            cmd += ["--build", cfg.isolated_build_dir]
+
         if cfg.clean:
             cmd.append("--clean")
 
@@ -155,7 +161,65 @@ class MbedOSBuildSystem:
 
         return cc_path
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — ``mbed compile`` takes ``--build <dir>``.
+
+        Every artifact goes under that directory, thus the build of
+        fw-context cannot reach the object files in ``BUILD/<TARGET>/``.
+        """
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return the script that mbed-tools wrote for this variant.
+
+        mbed-tools preprocesses the target's script and writes the result as
+        `.link_script.ld` in the build output directory.  Measured on
+        the Mbed project: `.fw-context/autobuild/default/.link_script.ld`, which
+        holds the four regions of that target and `__StackTop`.
+
+        The output directory is per variant, thus one shared directory would
+        make the variants overwrite each other — see `utils.autobuild_dir`.
+        `compile_commands.json` is NOT in it: fw-context writes that under
+        `.fw-context/build/`, so this backend cannot use the directory of
+        the compile commands the way a CMake backend does.
+
+        A project the USER built keeps the tree somewhere else:
+        `BUILD/<target>/<toolchain>-<profile>/`.  Measured on
+        the second Mbed project, which holds two of them, `GCC_ARM-DEBUG` and
+        `GCC_ARM-DEVELOP`, each with its own `.link_script.ld`.  The `-o`
+        flags of the units say which tree this build compiled into, so
+        `output_dirs_from_units` reads them instead of choosing by name.
+
+        `single_script_in` takes the known name first.  Without it, it
+        accepts a `.ld` file only when the directory holds exactly one,
+        because a directory with two offers a choice and a choice made by a
+        pattern is a guess.
+        """
+        from fw_context_mcp.utils import autobuild_dir
+
+        found = _linker.single_script_in(
+            project_root / autobuild_dir(variant), preferred=".link_script.ld"
+        )
+        if found:
+            return found
+        for directory in _linker.output_dirs_from_units(
+            project_root, units, marker="BUILD"
+        ):
+            found = _linker.single_script_in(
+                directory, preferred=".link_script.ld"
+            )
+            if found:
+                return found
+        return []
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""

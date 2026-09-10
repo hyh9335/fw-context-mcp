@@ -12,9 +12,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fw_context_mcp.utils import cc_output_path, resolve_real_binary, run_build_command
+from fw_context_mcp.utils import (
+    cc_output_path,
+    resolve_build_dir,
+    resolve_real_binary,
+    run_build_command,
+)
 
-from . import registry
+from . import _linker, registry
 from .protocol import BuildIssue
 
 if TYPE_CHECKING:
@@ -39,7 +44,7 @@ def _zephyr_vendor_patterns(
     Derived from ZEPHYR_BASE and WEST_TOPDIR, never guessed from a marker
     file.  The application directory gives no signal: it is arbitrary, and
     for a sysbuild image such as mcuboot it sits INSIDE the SDK.  Measured on
-    zbox-ecb-fw-v5: four different CMAKE_SOURCE_DIR values across 9 builds,
+    the Zephyr project: four different CMAKE_SOURCE_DIR values across 9 builds,
     one of them under the SDK root.
 
     A root outside project_root needs no pattern.  A path outside
@@ -77,7 +82,7 @@ def _prefix_map_roots(units: list | None) -> tuple[Path | None, Path | None]:
         -fmacro-prefix-map=/home/u/ncs/v3.4.0=WEST_TOPDIR
         -fmacro-prefix-map=<app dir>=CMAKE_SOURCE_DIR
 
-    Verified in all 9 production artifacts of zbox-ecb-fw-v5 with no
+    Verified in all 9 production artifacts of the Zephyr project with no
     exception.  This is the strongest source there is: it describes the
     build that is indexed, not the shell that runs fw-context and not the
     state of the filesystem.
@@ -181,6 +186,12 @@ class SdkChoice:
         return f"{self.label} {self.version}  {self.path}{state}"
 
 
+# The script of the real link.  Zephyr links twice, and the pre-pass script
+# carries a suffix — `linker_zephyr_pre0.cmd`.  ninja names the pre-pass
+# first, so `get_linker_scripts` moves this name to the front.
+_FINAL_LINKER_SCRIPT = "linker.cmd"
+
+
 class ZephyrBuildSystem:
     """Zephyr RTOS build system (``west build``).
 
@@ -224,7 +235,7 @@ class ZephyrBuildSystem:
                 'Zephyr requires a board name.  Set it in .fw-context/config.toml:\n  [build]\n  board = "your_board"'
             )
 
-        build_dir = project_root / (cfg.build_dir or "build")
+        build_dir = resolve_build_dir(project_root, cfg, cfg.build_dir or "build")
 
         _, env = self._prepare_ninja_wrapper(project_root)
 
@@ -419,7 +430,41 @@ class ZephyrBuildSystem:
 
         return results
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — ``west build -d <dir>`` puts every artifact there."""
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return the scripts that this image's ninja file names with `-T`.
+
+        A sysbuild image keeps its own `build.ninja` and its own
+        `compile_commands.json` in one directory, thus the build directory
+        is the parent of *compile_commands*.  Every image has its own memory
+        map: measured on the Zephyr project, `app` starts at flash 372736,
+        `mcuboot` at 110592, and `app_flpr` declares no flash region at all.
+
+        Zephyr links twice and names two scripts, `zephyr/linker.cmd` and
+        `zephyr/linker_zephyr_pre0.cmd`.  Both come back, and the FINAL one
+        goes first.  Measured on three images, the two hold the same symbols
+        on the same lines and the same regions, thus the order changes no
+        value — but the caller keeps the first file it reads, and
+        `get_source` should show the script of the real link and not the
+        pre-pass.  The ninja file names the pre-pass first, so the order
+        needs this correction.
+        """
+        if compile_commands is None:
+            return []
+        found = _linker.from_ninja(compile_commands.parent)
+        return sorted(found, key=lambda path: path.name != _FINAL_LINKER_SCRIPT)
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""

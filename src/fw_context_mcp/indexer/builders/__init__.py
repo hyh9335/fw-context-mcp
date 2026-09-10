@@ -29,6 +29,77 @@ from .protocol import BuildSystem
 log = logging.getLogger(__name__)
 
 
+def background_build_safe(builder: BuildSystem | None, cfg) -> bool:
+    """Tell whether fw-context may start a build of *builder* on its own.
+
+    The question is whether the build can DAMAGE the build of the user, not
+    whether it writes no file at all.  A backend qualifies when it keeps its
+    object files out of the directory the build of the user owns, or when it
+    compiles nothing.  fw-context cannot lock the build of an IDE, so two
+    builds sharing one output directory is the case this rule prevents.
+
+    A generated file the project already treats as build output is not a
+    violation.  ``fw-context init`` gitignores ``compile_commands.json`` for
+    exactly that reason — see ``cli/_init.py:_ensure_gitignore`` — and
+    PlatformIO rewrites it in the project root on every ``-t compiledb``.
+    The rule used to read "nothing reaches the tree of the user", which that
+    backend has never satisfied; stating an invariant the code does not hold
+    is how the next backend gets written against a promise that is not kept.
+
+    A backend that does not implement ``background_build_safe`` answers no.
+    The concrete classes implement the ``BuildSystem`` protocol structurally,
+    not by inheritance, thus a default on the protocol would never reach
+    them, and the safe answer is the negative one.
+    """
+    if builder is None:
+        return False
+    probe = getattr(builder, "background_build_safe", None)
+    if probe is None:
+        return False
+    try:
+        return bool(probe(cfg))
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        # A backend that cannot answer must not be trusted with a build.
+        log.debug("background_build_safe failed for %r", builder, exc_info=True)
+        return False
+
+
+def linker_scripts(
+    builder: BuildSystem | None,
+    project_root: Path,
+    *,
+    compile_commands: Path | None = None,
+    variant: str = "",
+    units: list | None = None,
+) -> list[Path]:
+    """Return the linker scripts of *builder*, or an empty list.
+
+    A backend that does not implement ``get_linker_scripts`` answers with
+    nothing, which is correct: the concrete classes implement the
+    ``BuildSystem`` protocol structurally and not by inheritance, thus a
+    default on the protocol never reaches them.
+
+    A backend that raises answers with nothing too.  A missing memory map
+    must not stop an index run, and a partial index is better than none.
+    """
+    if builder is None:
+        return []
+    probe = getattr(builder, "get_linker_scripts", None)
+    if probe is None:
+        return []
+    try:
+        found = probe(
+            project_root,
+            compile_commands=compile_commands,
+            variant=variant,
+            units=units,
+        )
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        log.debug("get_linker_scripts failed for %r", builder, exc_info=True)
+        return []
+    return [Path(item) for item in found or []]
+
+
 class BuildSystemRegistry:
     """Holds registered build systems and delegates detection to them.
 

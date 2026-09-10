@@ -16,6 +16,7 @@ Run::
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -327,23 +328,23 @@ class TestContentHashHelpers:
         from fw_context_mcp.indexer.ops import _read_body
 
         lines = ["a\n", "b\n", "c\n", "d\n", "e\n"]
-        body = _read_body(lines, 2, 4)
+        body = _read_body(lines, 2, 4, frozenset())
         assert body == "b\nc\nd\n"
 
     def test_read_body_invalid_range(self):
         from fw_context_mcp.indexer.ops import _read_body
 
         lines = ["a\n", "b\n"]
-        assert _read_body(lines, 5, 6) == ""
-        assert _read_body(lines, 2, 1) == ""
-        assert _read_body(lines, 1, 10) == ""
+        assert _read_body(lines, 5, 6, frozenset()) == ""
+        assert _read_body(lines, 2, 1, frozenset()) == ""
+        assert _read_body(lines, 1, 10, frozenset()) == ""
 
     def test_compute_content_hash_deterministic(self):
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo() {\n", "    return 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "", frozenset())
         assert h1 == h2
         assert len(h1) == 64  # full SHA256 hex
 
@@ -352,16 +353,16 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "    return 99;\n", "}\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "", frozenset())
         assert h1 != h2
 
     def test_compute_content_hash_differs_on_signature_change(self):
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo(int x) {\n", "    return x;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo(int x)", "foo", "")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo(float x)", "foo", "")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo(int x)", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo(float x)", "foo", "", frozenset())
         assert h1 != h2
 
     def test_compute_content_hash_ignores_trailing_whitespace(self):
@@ -369,8 +370,8 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "    return 42;\n", "}\n", "\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 4, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 4, "void foo()", "foo", "", frozenset())
         # Extra trailing empty line stripped by body.strip()
         assert h1 == h2
 
@@ -380,8 +381,8 @@ class TestContentHashHelpers:
 
         lines1 = ["void foo() {\n", "    return 42;\n", "}\n"]
         lines2 = ["void foo() {\n", "\treturn 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "")
-        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "")
+        h1 = _compute_content_hash(lines1, 1, 3, "void foo()", "foo", "", frozenset())
+        h2 = _compute_content_hash(lines2, 1, 3, "void foo()", "foo", "", frozenset())
         # Internal whitespace differences are preserved
         assert h1 != h2
 
@@ -389,12 +390,382 @@ class TestContentHashHelpers:
         from fw_context_mcp.indexer.ops import _compute_content_hash
 
         lines = ["void foo() {\n", "    return 42;\n", "}\n"]
-        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does foo")
-        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does bar")
+        h1 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does foo", frozenset())
+        h2 = _compute_content_hash(lines, 1, 3, "void foo()", "foo", "Does bar", frozenset())
         assert h1 != h2
 
 
+class TestChangedHeaderRows:
+    """Which headers the pipeline considers stale enough to touch."""
+
+    @staticmethod
+    def _db(tmp_path: Path):
+        from fw_context_mcp.indexer.db import (
+            open_db,
+            transaction,
+            upsert_build_config,
+            upsert_file,
+            upsert_project,
+        )
+        from fw_context_mcp.utils import compute_source_hash
+
+        root = tmp_path / "proj"
+        (root / "src").mkdir(parents=True)
+        hdr = root / "src" / "api.h"
+        hdr.write_text("#pragma once\nint kept(void);\n", encoding="utf-8")
+
+        conn = open_db(tmp_path / "index.db")
+        with transaction(conn):
+            upsert_project(conn, "pid", "p", str(root))
+            upsert_build_config(conn, "ch", "pid", str(root / "compile_commands.json"))
+            upsert_file(conn, "ch", "src/api.h", "c", mtime=1.0,
+                        source_hash=compute_source_hash(hdr))
+            conn.execute(
+                "UPDATE files SET content=? WHERE config_hash='ch' AND path='src/api.h'",
+                ("int kept(void);\n",),
+            )
+        return conn, root, hdr
+
+    def test_an_unchanged_header_is_not_listed(self, tmp_path: Path):
+        from fw_context_mcp.indexer.ops import _changed_header_rows
+        from fw_context_mcp.utils import compute_source_hash
+
+        conn, root, hdr = self._db(tmp_path)
+        try:
+            rows = _changed_header_rows(
+                conn, "ch", root, [(str(hdr), compute_source_hash(hdr))]
+            )
+        finally:
+            conn.close()
+        assert rows == {}
+
+    def test_a_changed_header_is_listed_with_its_path(self, tmp_path: Path):
+        from fw_context_mcp.indexer.ops import _changed_header_rows
+        from fw_context_mcp.utils import compute_source_hash
+
+        conn, root, hdr = self._db(tmp_path)
+        hdr.write_text("#pragma once\nint other(void);\n", encoding="utf-8")
+        digest = compute_source_hash(hdr)
+        try:
+            rows = _changed_header_rows(conn, "ch", root, [(str(hdr), digest)])
+        finally:
+            conn.close()
+        assert rows == {"src/api.h": (str(hdr), digest)}, (
+            "the absolute path rides along so the blank-out pass need not "
+            "rebuild it from the key"
+        )
+
+    def test_a_header_with_no_stored_hash_is_not_listed(self, tmp_path: Path):
+        from fw_context_mcp.indexer.db import transaction
+        from fw_context_mcp.indexer.ops import _changed_header_rows
+        from fw_context_mcp.utils import compute_source_hash
+
+        conn, root, hdr = self._db(tmp_path)
+        try:
+            with transaction(conn):
+                conn.execute("UPDATE files SET source_hash='' WHERE config_hash='ch'")
+            hdr.write_text("#pragma once\n/* nothing */\n", encoding="utf-8")
+            rows = _changed_header_rows(
+                conn, "ch", root, [(str(hdr), compute_source_hash(hdr))]
+            )
+        finally:
+            conn.close()
+        assert rows == {}, "nothing to compare against — see the docstring"
+
+    def test_a_header_with_no_stored_content_is_not_listed(self, tmp_path: Path):
+        from fw_context_mcp.indexer.db import transaction
+        from fw_context_mcp.indexer.ops import _changed_header_rows
+        from fw_context_mcp.utils import compute_source_hash
+
+        conn, root, hdr = self._db(tmp_path)
+        try:
+            with transaction(conn):
+                conn.execute("UPDATE files SET content='' WHERE config_hash='ch'")
+            hdr.write_text("#pragma once\n/* nothing */\n", encoding="utf-8")
+            rows = _changed_header_rows(
+                conn, "ch", root, [(str(hdr), compute_source_hash(hdr))]
+            )
+        finally:
+            conn.close()
+        assert rows == {}, "the content loop owns the fill for an empty column"
+
+
+class TestBlankOutInactiveFiles:
+    """A header the parse read that produced no active line.
+
+    ``active`` in _build_filtered_file_content holds only files that carry a
+    token or a cursor extent, and its loop skips an entry whose line set is
+    empty.  A header reduced to comments and pragmas reaches neither, thus
+    the loop cannot refresh it and files.content kept the text from before
+    the edit.
+    """
+
+    @staticmethod
+    def _project(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+        """Return (root, db_path, changed_header, unchanged_header)."""
+        from fw_context_mcp.indexer.db import (
+            open_db,
+            transaction,
+            upsert_build_config,
+            upsert_file,
+            upsert_project,
+        )
+        from fw_context_mcp.utils import compute_source_hash
+
+        root = tmp_path / "proj"
+        (root / "src").mkdir(parents=True)
+        changed = root / "src" / "changed.h"
+        unchanged = root / "src" / "unchanged.h"
+        changed.write_text("#pragma once\nint gone(void);\n", encoding="utf-8")
+        unchanged.write_text("#pragma once\nint kept(void);\n", encoding="utf-8")
+
+        db_path = tmp_path / "index.db"
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                upsert_project(conn, "pid", "p", str(root))
+                upsert_build_config(conn, "ch", "pid", str(root / "compile_commands.json"))
+                for path, text in ((changed, "int gone(void);\n"),
+                                   (unchanged, "int kept(void);\n")):
+                    rel = f"src/{path.name}"
+                    upsert_file(conn, "ch", rel, "c", mtime=1.0,
+                                source_hash=compute_source_hash(path))
+                    conn.execute(
+                        "UPDATE files SET content=? WHERE config_hash='ch' AND path=?",
+                        (text, rel),
+                    )
+        finally:
+            conn.close()
+        return root, db_path, changed, unchanged
+
+    @staticmethod
+    def _changed(conn, root: Path, *headers: Path) -> dict:
+        from fw_context_mcp.indexer.ops import _changed_header_rows
+        from fw_context_mcp.utils import compute_source_hash
+
+        return _changed_header_rows(
+            conn, "ch", root, [(str(h), compute_source_hash(h)) for h in headers]
+        )
+
+    def test_a_changed_header_loses_its_stale_text(self, tmp_path: Path):
+        from fw_context_mcp.indexer.db import open_db, transaction
+        from fw_context_mcp.indexer.ops import _blank_out_inactive_files
+
+        root, db_path, changed, unchanged = self._project(tmp_path)
+        # The edit: everything a parse could see is gone.
+        changed.write_text("#pragma once\n/* nothing left */\n", encoding="utf-8")
+
+        conn = open_db(db_path)
+        try:
+            rows = self._changed(conn, root, changed, unchanged)
+            with transaction(conn):
+                count = _blank_out_inactive_files(
+                    conn, "ch", root, rows, set(), set(), None,
+                )
+            stored = {
+                r["path"]: r["content"]
+                for r in conn.execute(
+                    "SELECT path, content FROM files WHERE config_hash='ch'"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+
+        assert count == 1, "only the changed header may be touched"
+        assert stored["src/changed.h"] == "\n\n", (
+            "the filter keeps line numbers and blanks inactive lines; here "
+            'every line is inactive, and "" would read as "not filled yet"'
+        )
+        assert stored["src/unchanged.h"] == "int kept(void);\n", (
+            "a header whose hash still matches must not be rewritten"
+        )
+
+    def test_a_changed_header_with_active_code_is_left_alone(self, tmp_path: Path):
+        """The regression this pass was blanking.
+
+        A header can change AND still hold code.  The parse then sees active
+        lines in it, and the content loop may still skip it — it already has
+        text and this parse does not own it.  Absence from *written* is
+        therefore no proof of "no active line", and taking it as proof
+        erased the text of a header that was perfectly fine.
+        """
+        from fw_context_mcp.indexer.db import open_db, transaction
+        from fw_context_mcp.indexer.ops import _blank_out_inactive_files
+
+        root, db_path, changed, _ = self._project(tmp_path)
+        # The edit: a REAL code change — a declaration is added.
+        changed.write_text(
+            "#pragma once\nint gone(void);\nint added(void);\n", encoding="utf-8"
+        )
+
+        conn = open_db(db_path)
+        try:
+            rows = self._changed(conn, root, changed)
+            with transaction(conn):
+                count = _blank_out_inactive_files(
+                    conn, "ch", root, rows, set(), {"src/changed.h"}, None,
+                )
+            content = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert count == 0
+        assert content == "int gone(void);\n", (
+            "a file the parse saw an active line in is not a header that "
+            "produced none, whatever the content loop then did with it"
+        )
+
+    def test_a_path_the_content_loop_wrote_is_left_alone(self, tmp_path: Path):
+        from fw_context_mcp.indexer.db import open_db, transaction
+        from fw_context_mcp.indexer.ops import _blank_out_inactive_files
+
+        root, db_path, changed, _ = self._project(tmp_path)
+        changed.write_text("#pragma once\n/* nothing left */\n", encoding="utf-8")
+
+        conn = open_db(db_path)
+        try:
+            rows = self._changed(conn, root, changed)
+            with transaction(conn):
+                count = _blank_out_inactive_files(
+                    conn, "ch", root, rows, {"src/changed.h"}, set(), None,
+                )
+            content = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert count == 0
+        assert content == "int gone(void);\n", (
+            "the content loop already put the current text there"
+        )
+
+    def test_a_header_with_no_stored_hash_is_left_alone(self, tmp_path: Path):
+        """Without a stored hash there is nothing to compare against.
+
+        An index written before source_hash was filled for every file would
+        otherwise have every header blanked on the next parse.
+        """
+        from fw_context_mcp.indexer.db import open_db, transaction
+        from fw_context_mcp.indexer.ops import _blank_out_inactive_files
+
+        root, db_path, changed, _ = self._project(tmp_path)
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE files SET source_hash='' WHERE config_hash='ch'"
+                )
+            changed.write_text("#pragma once\n/* nothing left */\n", encoding="utf-8")
+            rows = self._changed(conn, root, changed)
+            with transaction(conn):
+                count = _blank_out_inactive_files(
+                    conn, "ch", root, rows, set(), set(), None,
+                )
+            content = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert count == 0
+        assert content == "int gone(void);\n"
+
+
 # ── functional tests: full indexing + reindex flow ────────────────────
+
+
+@pytest.mark.libclang
+class TestActivePathsFromRealParse:
+    """_build_filtered_file_content must tell the blank-out pass the truth.
+
+    The unit tests above hand *active_paths* in.  This one makes libclang
+    produce it, because the defect was not in the blank-out pass alone — it
+    was that nothing computed the set the pass needed, so the pass inferred
+    it from `written` and inferred it wrong.
+    """
+
+    def test_a_changed_header_with_code_keeps_its_content(self, tmp_path: Path):
+        from fw_context_mcp.indexer.compile_commands import parse as parse_cc
+        from fw_context_mcp.indexer.db import (
+            open_db,
+            transaction,
+            upsert_build_config,
+            upsert_file,
+            upsert_project,
+        )
+        from fw_context_mcp.indexer.ops import _build_filtered_file_content
+        from fw_context_mcp.utils import compute_source_hash
+
+        root = tmp_path / "proj"
+        (root / "src").mkdir(parents=True)
+        hdr = root / "src" / "api.h"
+        src = root / "src" / "main.c"
+        hdr.write_text("#pragma once\nint kept(void);\n", encoding="utf-8")
+        src.write_text('#include "api.h"\nint main(void) { return kept(); }\n',
+                       encoding="utf-8")
+        cc = root / "compile_commands.json"
+        cc.write_text(json.dumps([{
+            "directory": str(root),
+            "file": str(src),
+            "arguments": ["cc", "-c", str(src), "-I", str(root / "src")],
+        }]), encoding="utf-8")
+
+        db_path = tmp_path / "index.db"
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                upsert_project(conn, "pid", "p", str(root))
+                upsert_build_config(conn, "ch", "pid", str(cc))
+                # The rows exist before the content pass runs, which is the
+                # order store_symbols_for_unit uses: _store_symbol_rows
+                # creates them, then the content fill writes into them.
+                # Without them `remaining` is 0 and the fast path returns
+                # before the loop this test is about.
+                upsert_file(conn, "ch", "src/main.c", "c", mtime=1.0)
+                upsert_file(conn, "ch", "src/api.h", "c", mtime=1.0)
+
+            unit = next(iter(parse_cc(cc)))
+            # First pass fills the content of both files.
+            with transaction(conn):
+                _build_filtered_file_content(conn, unit, "ch", root)
+
+            before = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/api.h'"
+            ).fetchone()[0]
+            assert "kept" in before, "the first pass must store the header text"
+
+            # _store_symbol_rows writes source_hash for every file it sees;
+            # the content loop does not.  Without it _changed_header_rows has
+            # nothing to compare and the case never arises.
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE files SET source_hash=? WHERE config_hash='ch' AND path='src/api.h'",
+                    (compute_source_hash(hdr),),
+                )
+
+            # The edit: real code changes, and the header still holds code.
+            hdr.write_text(
+                "#pragma once\nint kept(void);\nint added(void);\n", encoding="utf-8"
+            )
+            unit = next(iter(parse_cc(cc)))
+            with transaction(conn):
+                _build_filtered_file_content(conn, unit, "ch", root)
+
+            after = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/api.h'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert after.strip(), (
+            "the header still holds code, thus it must not be blanked — this "
+            "is the path where nothing handed active_paths in"
+        )
+        assert "kept" in after
+
 
 
 @pytest.mark.libclang
@@ -745,18 +1116,60 @@ int modem_flush(void) {
         # Restore original
         modem_c.write_text(original, encoding="utf-8")
 
-    def test_reindex_header_only_file(self, indexed_project: Path):
-        """Reindexing a header file that's not in compile_commands.json returns error."""
-        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+    def test_reindex_header_refreshes_its_stored_state(self, indexed_project: Path):
+        """Reindexing a header brings the index up to the header's new text.
 
-        result = reindex_file_impl("src/modem.h", str(indexed_project), with_analysis=False)
-        # Header-only files not in compile_commands.json should return error
-        assert "error" in result, (
-            f"Expected error for header file not in compile_commands.json, got: {result}"
-        )
-        assert "header" in result["error"].lower() or "not found" in result["error"].lower(), (
-            f"Expected 'header' or 'not found' in error message, got: {result['error']!r}"
-        )
+        This used to assert the opposite — that a header returns "not found
+        in compile_commands.json".  A header is indeed not listed there, but
+        the manifest names the units that include it, so one of them now
+        carries the re-parse.
+
+        The assertion is the incremental-reindex outcome, not the mechanism
+        that TestReindexFileImplEdgeCases covers.  Two columns have to move
+        together: ``source_hash``, which every staleness check in
+        mcp/shared/stale.py compares against the file, and ``content``,
+        which backs read_file and search_content.  A re-parse that moved
+        only one of them would either warn forever or serve the old text.
+        """
+        from fw_context_mcp.indexer.db import open_db as _open_db
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.utils import compute_source_hash
+
+        header = indexed_project / "src" / "modem.h"
+        original = header.read_text(encoding="utf-8")
+
+        def stored() -> tuple[str, str]:
+            conn = _open_db(_db_path_for_project(indexed_project))
+            try:
+                row = conn.execute(
+                    "SELECT source_hash, content FROM files WHERE path LIKE ?",
+                    ("%modem.h",),
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None, "modem.h missing from the files table"
+            return row["source_hash"], row["content"] or ""
+
+        try:
+            _write_file(header, original.replace(
+                "#endif", "int modem_reset(void);\n\n#endif"))
+            _advance_mtime(header)
+
+            result = reindex_file_impl("src/modem.h", str(indexed_project),
+                                       with_analysis=False)
+            assert "error" not in result, f"header reindex failed: {result.get('error')}"
+
+            source_hash, content = stored()
+            assert source_hash == compute_source_hash(header), (
+                "source_hash must describe the text the index just parsed"
+            )
+            assert "modem_reset" in content, (
+                "files.content backs read_file, thus it must hold the new text"
+            )
+        finally:
+            _write_file(header, original)
+            _advance_mtime(header)
+            reindex_file_impl("src/modem.h", str(indexed_project), with_analysis=False)
 
 
 @pytest.mark.libclang
@@ -1030,6 +1443,197 @@ class TestReindexFileImplEdgeCases:
         assert "error" in result
         assert "not found" in result["error"].lower()
 
+    def test_reindex_refreshes_source_hash(self, indexed_project: Path):
+        """A reindexed file must not stay marked as changed forever.
+
+        reindex_file_impl moves ``files.mtime`` forward.  When it left
+        ``files.source_hash`` at the value from before the edit, the two
+        columns disagreed and every staleness check in mcp/shared/stale.py
+        answered "changed" for a file whose symbols were current.
+        """
+        from fw_context_mcp.indexer.db import open_db as _open_db
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.mcp.shared.stale import _file_differs
+        from fw_context_mcp.utils import compute_source_hash
+
+        db_path = _db_path_for_project(indexed_project)
+        target = indexed_project / "src" / "modem.c"
+        original = target.read_text(encoding="utf-8")
+
+        def stored_row() -> tuple[float, str]:
+            conn = _open_db(db_path)
+            try:
+                row = conn.execute(
+                    "SELECT mtime, source_hash FROM files WHERE path LIKE ?",
+                    ("%modem.c",),
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None, "modem.c missing from the files table"
+            return row["mtime"], row["source_hash"]
+
+        _, hash_before = stored_row()
+        assert hash_before, "the index must store a source_hash to start from"
+
+        try:
+            _write_file(target, original + "\nint reindex_hash_probe(void) { return 7; }\n")
+            _advance_mtime(target)
+
+            result = reindex_file_impl("src/modem.c", str(indexed_project), with_analysis=False)
+            assert "error" not in result, f"Reindex failed: {result.get('error')}"
+
+            mtime_after, hash_after = stored_row()
+            assert hash_after == compute_source_hash(target), (
+                "source_hash must describe the text the index just parsed"
+            )
+            assert hash_after != hash_before, "the content changed, thus the hash must change"
+            assert not _file_differs(str(target), mtime_after, hash_after)
+        finally:
+            _write_file(target, original)
+            _advance_mtime(target)
+            reindex_file_impl("src/modem.c", str(indexed_project), with_analysis=False)
+
+    def test_header_reindexes_through_an_including_tu(self, indexed_project: Path):
+        """A header is not in compile_commands.json, but it can still be reindexed.
+
+        compile_commands.json lists translation units, thus a header never
+        matches it directly.  The manifest names the units that include the
+        header, and one of them carries the re-parse.
+
+        This also covers the iterator trap: _reindex_match_tus walks the
+        units twice, so parse() — which returns a generator — has to be
+        materialised first.  Without that the second walk sees an exhausted
+        iterator and the header falls through to the "not found" error.
+        """
+        from fw_context_mcp.indexer.db import open_db as _open_db
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+
+        header = indexed_project / "src" / "modem.h"
+        original = header.read_text(encoding="utf-8")
+
+        try:
+            _write_file(header, original.replace(
+                "#endif", "int modem_probe_added(int x);\n#endif"))
+            _advance_mtime(header)
+
+            result = reindex_file_impl("src/modem.h", str(indexed_project),
+                                       with_analysis=False)
+
+            assert "error" not in result, f"header reindex failed: {result.get('error')}"
+            assert result["translation_units"] == 1, (
+                "one unit carries the re-parse; re-parsing every including unit "
+                "would cost hours on a real project"
+            )
+            assert "warning" in result, (
+                "the answer covers one compilation context and must say so"
+            )
+            assert "run 'fw-context index'" in result["warning"]
+
+            conn = _open_db(_db_path_for_project(indexed_project))
+            try:
+                names = {
+                    r[0] for r in conn.execute(
+                        "SELECT name FROM symbols WHERE name = ?",
+                        ("modem_probe_added",),
+                    ).fetchall()
+                }
+            finally:
+                conn.close()
+            assert names == {"modem_probe_added"}, "the new declaration must be indexed"
+        finally:
+            _write_file(header, original)
+            _advance_mtime(header)
+            reindex_file_impl("src/modem.h", str(indexed_project), with_analysis=False)
+
+    def test_tu_for_header_is_deterministic(self, tmp_path: Path):
+        """Two units include the header — the lowest path in sort order wins.
+
+        Manifest order follows compile_commands.json, which a rebuild can
+        reshuffle.  A tool that re-parsed a different unit on every call
+        would give a different answer each time for no visible reason.
+        """
+        from fw_context_mcp.mcp.handlers.maintenance import _tu_for_header
+
+        manifest = {
+            "entries": [
+                {"file": "src/zeta.c", "headers": ["src/shared.h"]},
+                {"file": "src/alpha.c", "headers": ["src/shared.h"]},
+            ],
+        }
+        target = (tmp_path / "src" / "shared.h").resolve()
+
+        chosen = _tu_for_header(target, manifest, tmp_path)
+
+        assert chosen == tmp_path.resolve() / "src" / "alpha.c"
+        # Reversing the entries must not change the answer.
+        manifest["entries"].reverse()
+        assert _tu_for_header(target, manifest, tmp_path) == chosen
+
+    def test_header_reduced_to_comments_stops_serving_its_old_text(
+        self, indexed_project: Path
+    ):
+        """An emptied header must not keep answering with what it used to hold.
+
+        The header contributes no token and no cursor after the edit, thus
+        it never enters ``active`` and the content loop cannot reach it.
+        Measured before the fix: read_file returned the declarations and
+        search_content still matched a name the file no longer carried.
+        """
+        from fw_context_mcp.indexer.db import open_db as _open_db
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.utils import compute_source_hash
+
+        header = indexed_project / "src" / "utils.h"
+        original = header.read_text(encoding="utf-8")
+
+        def stored() -> tuple[str, str]:
+            conn = _open_db(_db_path_for_project(indexed_project))
+            try:
+                row = conn.execute(
+                    "SELECT content, source_hash FROM files WHERE path LIKE ?",
+                    ("%utils.h",),
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None, "utils.h missing from the files table"
+            return row["content"] or "", row["source_hash"]
+
+        assert "compute_checksum" in stored()[0], "precondition: the old text is stored"
+
+        try:
+            _write_file(header, "#pragma once\n/* every declaration is gone */\n")
+            _advance_mtime(header)
+
+            result = reindex_file_impl("src/utils.c", str(indexed_project),
+                                       with_analysis=False)
+            assert "error" not in result, f"reindex failed: {result.get('error')}"
+
+            content, source_hash = stored()
+            assert "compute_checksum" not in content, (
+                "the declaration left the file, thus read_file must stop serving it"
+            )
+            assert content == "\n" * len(content), (
+                f"every line is inactive, thus every line blanks out: {content!r}"
+            )
+            assert source_hash == compute_source_hash(header), (
+                "content and source_hash have to move together"
+            )
+        finally:
+            _write_file(header, original)
+            _advance_mtime(header)
+            reindex_file_impl("src/utils.c", str(indexed_project), with_analysis=False)
+
+    def test_tu_for_header_returns_none_when_nothing_includes_it(self, tmp_path: Path):
+        """No manifest, or no unit that includes the header, means no answer."""
+        from fw_context_mcp.mcp.handlers.maintenance import _tu_for_header
+
+        target = (tmp_path / "src" / "orphan.h").resolve()
+        manifest = {"entries": [{"file": "src/main.c", "headers": ["src/other.h"]}]}
+
+        assert _tu_for_header(target, None, tmp_path) is None
+        assert _tu_for_header(target, {}, tmp_path) is None
+        assert _tu_for_header(target, manifest, tmp_path) is None
+
 
 # ── direct store_symbols_for_unit tests ────────────────────────────────
 
@@ -1092,6 +1696,7 @@ class TestStoreSymbolsForUnitAnalysisRestore:
                     0,
                     0.0,
                     "",
+                    0,
                 ),
             ],
         )
@@ -1209,6 +1814,7 @@ class TestStoreSymbolsForUnitAnalysisRestore:
                     0,
                     0.0,
                     "int bar(int x) {\n    return x * 2;\n}\n",
+                        0,
                 ),
             ],
         )
@@ -1327,6 +1933,7 @@ class TestStoreSymbolsForUnitAnalysisRestore:
                     0,
                     0.0,
                     "",
+                    0,
                 ),
             ],
         )
@@ -1421,6 +2028,7 @@ class TestStoreSymbolsForUnitAnalysisRestore:
                     0,
                     0.0,
                     "",
+                    0,
                 ),
             ],
         )
@@ -3478,7 +4086,7 @@ class TestBuildRetention:
         The manifest used to be left behind.  Nothing reads an abandoned
         build's manifest since the reuse tier was removed, so it was pure
         accumulation — one file per dialect change, and 52 MB of it on
-        zbox-ecb-fw.  It also made ``manifest.load(db_dir)`` ambiguous: that
+        the Mbed project.  It also made ``manifest.load(db_dir)`` ambiguous: that
         form picks the most recently modified manifest in the directory.
         """
         db_path = _db_path_for_project(c_project)
@@ -3880,7 +4488,7 @@ class TestManifestRecordsEveryInclude:
     silently dropped every extensionless C++ standard header (``<algorithm>``,
     ``<bit>``) and every ``.tcc`` template body.  Two things broke.  The
     coverage purge deleted those files because the manifest did not list them:
-    measured on HA_Boiler, 29 files and 1810 symbols.  And nothing recorded a
+    measured on the ESP32 project, 29 files and 1810 symbols.  And nothing recorded a
     hash for them, so a toolchain or SDK upgrade could change any of them
     without marking a single TU stale.
 
@@ -3972,7 +4580,7 @@ class TestReindexKeepsTheGeneratedFlag:
     it wrote claimed "generated": False.  After the end of vendor trust
     ``generated`` is the only trust rule left, so a single reindex_file
     turned the next full index run into a complete reparse.  Measured on
-    zbox-ecb-fw-v5 variant nrf52840-dev: 27 generated headers went to 0.
+    the Zephyr project variant nrf52840-dev: 27 generated headers went to 0.
     """
 
     @staticmethod
@@ -4104,7 +4712,7 @@ class TestReindexKeepsTheGeneratedFlag:
         """An index written before the key existed must still get patterns.
 
         The probe for this whole class must run on a build whose manifest HAS
-        patterns: five of the nine zbox-v5 manifests carry none, and on those
+        patterns: five of the nine the Zephyr project manifests carry none, and on those
         "generated is 0 after reindex_file" holds before the fix as well.
         """
         (tmp_path / "west.yml").write_text("")
@@ -4118,4 +4726,12 @@ class TestReindexKeepsTheGeneratedFlag:
             monkeypatch=monkeypatch,
         )
 
-        assert seen == [["build/"]]
+        assert len(seen) == 1, "detection must run exactly once"
+        assert "build/" in seen[0], (
+            "the fallback has to reach the zephyr backend and take its pattern"
+        )
+        assert ".fw-context/" in seen[0], (
+            "and every set of build-output patterns carries the fw-context "
+            "directory, because an isolated build writes its generated "
+            "headers there — see utils.build_dir_patterns_with_fw_context"
+        )

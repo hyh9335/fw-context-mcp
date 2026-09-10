@@ -64,10 +64,12 @@ any call-path query that can reach ``main``.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from collections import deque
 
 from fw_context_mcp.utils import escape_like as _escape_like
+from fw_context_mcp.utils import format_number_ranges
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +79,7 @@ __all__ = [
     "find_callees_recursive",
     "find_dead_code",
     "find_hotspots",
+    "get_vector_table",
 ]
 
 # ---------------------------------------------------------------------------
@@ -249,6 +252,29 @@ def _build_alias_temp_table(
     )
 
 
+
+
+#: How many distinct paths ``find_call_path`` reports.
+_MAX_CALL_PATHS = 5
+
+
+def _record_path(
+    found: list[dict], seen_chains: set[str], depth: int, chain: str, to_usr: str
+) -> bool:
+    """Add one path to *found* when it is new.  Say whether the list is full.
+
+    WHY the set: a bidirectional BFS records a path at every node where the
+    two fronts meet, and several meeting nodes on ONE path reconstruct the
+    SAME text.  Measured on one project, three of four queries answered with
+    the same chain four times, and the limit of five paths was spent on
+    repeats instead of alternatives.  A caller that reads the answer as "the
+    ways to reach this function" then counts one way as four.
+    """
+    if chain in seen_chains:
+        return False
+    seen_chains.add(chain)
+    found.append({"depth": depth, "chain": chain, "target_usr": to_usr})
+    return len(found) >= _MAX_CALL_PATHS
 
 
 def find_call_path(
@@ -483,6 +509,7 @@ def find_call_path(
     f_queue: deque[str] = deque(f_dist.keys())
     r_queue: deque[str] = deque([to_usr])
     found: list[dict] = []
+    seen_chains: set[str] = set()
     depth = 0
     nodes_expanded = 0
 
@@ -504,8 +531,7 @@ def find_call_path(
                     r_parts = r_chain[v].split(" → ")
                     tail = " → ".join(r_parts[1:])  # skip meeting node (already in f_chain)
                     chain = f_chain[v] if not tail else f"{f_chain[v]} → {tail}"
-                    found.append({"depth": total_depth, "chain": chain, "target_usr": to_usr})
-                    if len(found) >= 5:
+                    if _record_path(found, seen_chains, total_depth, chain, to_usr):
                         return found
 
         # ── Expand reverse (incoming edges) ──
@@ -524,8 +550,7 @@ def find_call_path(
                     r_parts = r_chain[v].split(" → ")
                     tail = " → ".join(r_parts[1:])
                     chain = f_chain[v] if not tail else f"{f_chain[v]} → {tail}"
-                    found.append({"depth": total_depth, "chain": chain, "target_usr": to_usr})
-                    if len(found) >= 5:
+                    if _record_path(found, seen_chains, total_depth, chain, to_usr):
                         return found
 
     return found
@@ -935,3 +960,658 @@ def find_hotspots(
     ).fetchall()
 
     return [dict(r) for r in rows]
+
+
+def _callers_that_call_through_a_pointer(
+    conn: sqlite3.Connection,
+    config_hash: str,
+) -> set[str]:
+    """Return the USR of every function that holds an indirect call site.
+
+    Read in one query and answered from memory afterwards, because the
+    question is asked once for each slot and a generated table has hundreds.
+    Measured on a Zephyr index: 148 functions for one build, so the set is
+    small enough to hold.
+    """
+    rows = conn.execute(
+        """SELECT DISTINCT from_usr FROM indirect_call_sites
+           WHERE config_hash = ? AND from_usr IS NOT NULL""",
+        (config_hash,),
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _user_irq_offset(conn: sqlite3.Connection, config_hash: str) -> int | None:
+    """Return ``NVIC_USER_IRQ_OFFSET`` of this build, or None.
+
+    The offset is where the external interrupts start in the vector
+    table — 16 on Cortex-M, because the system exceptions come first.
+    It is read from the macro table of the same index rather than
+    written here, for two reasons: the value belongs to the target and
+    not to this tool, and the same macro is what the SDK function itself
+    uses to find the slot (``nrf_dispatch_vector[IRQn +
+    NVIC_USER_IRQ_OFFSET]``).
+
+    None means no answer, and a caller reports no run-time slot at all.
+    Adding an assumed 16 would place a handler in a slot no build
+    confirmed.
+    """
+    rows = conn.execute(
+        """SELECT expanded_value, value FROM macros
+           WHERE config_hash = ? AND name = 'NVIC_USER_IRQ_OFFSET'
+           LIMIT 8""",
+        (config_hash,),
+    ).fetchall()
+    for row in rows:
+        for text in (row["expanded_value"], row["value"]):
+            try:
+                return int(str(text).strip(), 0)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _runtime_registrations(
+    conn: sqlite3.Connection, config_hash: str
+) -> dict[int, list[dict]]:
+    """Return the vector slots a call installs at run time, by slot.
+
+    ``refs`` holds one ``runtime_vector`` row for each
+    ``NVIC_SetVector`` the indexer could read completely, with the IRQ
+    number in ``slot_index`` — see ``indexer.nvic``.  The slot is that
+    number plus the offset of the first external interrupt.
+
+    A slot can have more than one row, and both are kept.  Measured on
+    the Mbed project: the two I2C/SPI instances are registered from
+    ``spi_api.c`` and again from ``i2c_api.c``, with the same handler
+    both times.  Reporting one place would hide the other, and choosing
+    between them would be a guess; a reader that sees two call sites for
+    one slot learns something true about the driver.
+    """
+    offset = _user_irq_offset(conn, config_hash)
+    if offset is None:
+        return {}
+    rows = conn.execute(
+        """SELECT r.slot_index AS irq,
+                  r.from_file  AS at_file,
+                  r.from_line  AS at_line,
+                  s.name       AS name,
+                  s.file_path  AS file,
+                  s.line       AS line
+           FROM refs r
+           JOIN symbols s ON s.usr = r.to_usr AND s.config_hash = r.config_hash
+           WHERE r.config_hash = ? AND r.ref_kind = 'runtime_vector'
+             AND r.slot_index IS NOT NULL
+           ORDER BY r.slot_index, r.from_file, r.from_line""",
+        (config_hash,),
+    ).fetchall()
+    found: dict[int, list[dict]] = {}
+    for row in rows:
+        entry = {
+            "name": row["name"],
+            "file": row["file"],
+            "line": row["line"],
+            "at": f"{row['at_file']}:{row['at_line']}",
+        }
+        installed = found.setdefault(int(row["irq"]) + offset, [])
+        if entry not in installed:
+            installed.append(entry)
+    return found
+
+
+def _add_runtime_installation(
+    entry: dict, runtime: dict[int, list[dict]]
+) -> None:
+    """Say what a call installs into this slot once the code runs.
+
+    A target that moves its table into RAM fills it by calling
+    ``NVIC_SetVector``, and the image then holds an alias of the trap
+    loop for every such slot.  ``unhandled`` describes the flash
+    correctly and the running machine wrongly — measured on the Mbed
+    project, 11 of its 41 unhandled slots have a handler installed at
+    run time, among them the tick source and the console, and the count
+    of unhandled slots drops to 30.  ``runtime`` is that state: nothing
+    services the interrupt until the code that registers it has run.
+
+    The status changes ONLY where it was ``unhandled``.  A slot whose
+    static definition is real code stays ``c`` or ``assembly``, because
+    that code does run — up to the moment the registration replaces it —
+    and ``installed`` says what replaces it either way.
+
+    Only an assembly row is passed here.  The offset counts slots of the
+    table the hardware reads, which is the one an assembler wrote; a
+    generated table in C indexes its entries by IRQ number directly, and
+    adding the offset there would name the wrong slot.
+    """
+    installed = runtime.get(entry["slot"])
+    if not installed:
+        return
+    entry["installed"] = installed
+    if entry["status"] == "unhandled":
+        entry["status"] = "runtime"
+
+
+def get_vector_table(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    unhandled_only: bool = False,
+) -> list[dict]:
+    """Read the interrupt vector table, one row for each slot.
+
+    A slot is a position in the table, and the hardware reaches it
+    directly.  Nothing calls the handler, so the table is the only edge a
+    reader has.
+
+    Two sources hold slots, and ``source`` says which one a row came from:
+
+    * ``"assembly"`` — a table written as address words.  The indexer
+      writes one ``refs`` row for each with ``ref_kind='vector'``, or
+      ``'vector_data'`` where the slot holds an address computed from a
+      symbol instead of the symbol itself.
+    * ``"c"`` — an array whose elements are function addresses, which is
+      what a build that generates its table in C produces.  See
+      ``get_function_address_arrays``.  These rows also carry
+      ``table_name`` and ``table_usr``, because the array is a symbol.
+
+    **Slots are NOT renumbered across sources.**  Each row holds the index
+    inside its own table, so two tables both start at zero and the reader
+    must read ``table_name`` together with ``slot``.  Joining them into one
+    run of numbers would need to know where the second table starts, and
+    that is not in the index: the assembly table of a Zephyr ARM build
+    reports slots 1 to 15 with holes, so the count of rows is not the
+    length of the table.  A number derived from it would be silently wrong
+    for every entry of a 290-entry table on a build that leaves its last
+    exception slot unused.
+
+    Each row gets a ``status`` from where its target is defined:
+
+    * ``"c"`` — the target is defined outside assembly.  Code services
+      this interrupt.
+    * ``"assembly"`` — the target is a strong assembly definition.
+      Assembly services this interrupt.
+    * ``"dispatcher"`` — the target holds more than one slot of this table
+      AND calls through a pointer.  It cannot be servicing one particular
+      interrupt, and it decides at run time where to go, so a reader must
+      follow it further instead of stopping here.  Both conditions are
+      needed: ``z_irq_spurious`` fills 43 slots and calls nothing, and
+      ``POWER_CLOCK_IRQHandler`` holds one slot and calls 6 registered
+      callbacks.  Neither dispatches.
+    * ``"unhandled"`` — the target is an alias of another symbol, and
+      nothing overrode it.  A CMSIS startup file writes each unserviced
+      interrupt as an alias of ``Default_Handler``, which is an infinite
+      loop.  The row then holds ``aliases`` with the name, file and line
+      of what it really reaches.
+    * ``"data"`` — the slot holds an address BUILT from the symbol it
+      names, written as an expression.  Nothing jumps there: on
+      Cortex-M this is slot 0, the initial stack pointer, which Zephyr
+      writes as ``z_main_stack + CONFIG_MAIN_STACK_SIZE`` and a CMSIS
+      startup writes as the plain name ``__StackTop`` (status
+      ``linker``).  Do not follow it as code.
+    * ``"runtime"`` — the image holds that same alias, and a call to
+      ``NVIC_SetVector`` installs a handler into this slot once it runs.
+      A target with ``CMSIS_VECTAB_VIRTUAL`` keeps its table in RAM and
+      fills it that way, so the interrupt IS serviced, from the moment
+      the registering code has run and not before.  The row holds
+      ``installed``, a list of what each call site puts there.  Any row
+      can hold ``installed``; only a row that would otherwise read
+      ``unhandled`` takes this status — see
+      ``_add_runtime_installation``.
+
+    Weakness alone cannot say this, which is why the alias edge exists.
+    The same startup declares ``Reset_Handler`` weak WITH a body and
+    ``NMI_Handler`` weak with nothing but an alias.
+    * ``"linker"`` — the linker script gives the target its address, and no
+      compiled file defines it.  Slot 0 holds the initial stack pointer and
+      looks like this.  When the index read the script, ``file`` and
+      ``line`` name the assignment in it; otherwise the row carries the
+      name alone.  NOT code — a reader must not follow this row expecting
+      a function.
+
+    ``overridden`` holds the weak definition that a ``"c"`` row replaced,
+    when one is in the index.  This is the CMSIS pattern: the startup file
+    defines each handler weakly, and the project defines the same name
+    again.  The linker keeps the strong one.
+
+    Args:
+        conn: An open index database connection.
+        config_hash: The build configuration to read.
+        unhandled_only: When True, return only the ``"unhandled"`` rows.
+
+    Returns:
+        A list of dicts sorted by source, then table, then slot.  Each dict
+        has: slot, name, file, line, status, source, and table_file and
+        table_line for the position in the table itself.  A row from the C
+        source also has table_name and table_usr.  A ``"c"`` row can also
+        have overridden, a dict with file and line.
+    """
+    rows = conn.execute(
+        """SELECT r.slot_index AS slot,
+                  r.from_file  AS table_file,
+                  r.from_line  AS table_line,
+                  r.ref_kind   AS ref_kind,
+                  s.name       AS name,
+                  s.file_path  AS file,
+                  s.line       AS line,
+                  s.kind       AS kind,
+                  s.is_weak    AS is_weak,
+                  s.usr        AS usr
+           FROM refs r
+           JOIN symbols s ON s.usr = r.to_usr AND s.config_hash = r.config_hash
+           WHERE r.config_hash = ? AND r.ref_kind IN ('vector', 'vector_data')
+             AND r.slot_index IS NOT NULL
+           ORDER BY r.from_file, r.slot_index""",
+        (config_hash,),
+    ).fetchall()
+
+    # A slot of an array in C is the same fact as a slot of an address word
+    # in assembly, so both sources go through one status ladder.
+    slots: list[tuple[dict, str]] = [
+        (dict(row) | {"source": "assembly"}, str(row["table_file"]))
+        for row in rows
+    ]
+    slots += [
+        (row | {"source": "c"}, str(row["table_usr"]))
+        for row in get_function_address_arrays(conn, config_hash)
+    ]
+
+    # A target that holds more than one slot of one table cannot be serving
+    # a particular interrupt — it is the entry for every one of them — and a
+    # target that calls through a pointer decides at run time where to go.
+    # Both together are a dispatcher.  Neither alone is enough, and this was
+    # measured on two projects: `_isr_wrapper` fills 48 slots and calls
+    # through a pointer, while `z_irq_spurious` fills 43 slots of
+    # `_sw_isr_table` and calls nothing, and `POWER_CLOCK_IRQHandler` holds
+    # one slot but calls 6 registered callbacks.  Only the first dispatches.
+    filled: dict[tuple[str, str], int] = {}
+    for entry, table_key in slots:
+        filled[(table_key, str(entry["usr"]))] = (
+            filled.get((table_key, str(entry["usr"])), 0) + 1
+        )
+    through_pointer = _callers_that_call_through_a_pointer(conn, config_hash)
+    # What a call installs into the table once the code runs.  Read once
+    # for the whole table: the map is keyed by slot, and every row asks it.
+    runtime = _runtime_registrations(conn, config_hash)
+
+    out: list[dict] = []
+    for entry, table_key in slots:
+        entry_usr = str(entry.pop("usr"))
+        from_assembly = entry_usr.startswith("asm:")
+        # Popped so every row has the same keys whichever source it came
+        # from; the C reader has no equivalent and would leave it absent.
+        holds_data = entry.pop("ref_kind", None) == "vector_data"
+        weak = bool(entry.pop("is_weak"))
+        kind = entry.pop("kind")
+        # Dropped so every row has the same keys whichever source it came
+        # from.  The C reader uses it to move a row off a declaration and
+        # onto the definition, and by here that work is done.
+        entry.pop("is_definition", None)
+        dispatches = (
+            filled[(table_key, entry_usr)] > 1
+            and entry_usr in through_pointer
+        )
+
+        # `linker` covers both shapes of the same fact: the slot reaches a
+        # name the linker script gives an address to.
+        #
+        # `kind == "undefined"` is the older shape — the assembly reader saw
+        # the name in a vector slot and nothing in the build defined it.
+        # The `ld:` namespace is the newer one: the linker-script pass now
+        # reads that script and stores a real definition with a file and a
+        # line, so slot 0 of a CMSIS table went from `undefined` to a
+        # `varglobal` in `.link_script.ld`.
+        #
+        # It must NOT fall through to "c".  That status means "a definition
+        # outside assembly, code runs", and slot 0 holds the initial stack
+        # pointer, not code.  Measured on the Mbed project: with the fall-through
+        # the tool reported `__StackTop` as code that runs.
+        if kind == "undefined" or entry_usr.startswith("ld:"):
+            entry["status"] = "linker"
+        elif holds_data:
+            # The slot holds an address BUILT from this symbol, so the
+            # symbol is a base and not a destination.  Asked before the
+            # rest for the same reason `linker` is: `z_main_stack` has a
+            # definition in C, and the ladder below would call that "code
+            # runs here" about the initial stack pointer.
+            entry["status"] = "data"
+        elif not from_assembly:
+            entry["status"] = "dispatcher" if dispatches else "c"
+        else:
+            # An alias edge, not weakness, says the target is only
+            # another name for something else.  The startup declares
+            # Reset_Handler weak WITH a body and NMI_Handler weak with
+            # nothing but an alias, so weakness would report the reset
+            # vector as unserviced.
+            #
+            # This is asked before `dispatcher` on purpose.  A CMSIS
+            # `Default_Handler` also fills many slots, and calling it a
+            # dispatcher would hide the thing a reader most needs to know:
+            # nothing services that interrupt.
+            reaches = conn.execute(
+                """SELECT t.name, t.file_path AS file, t.line FROM refs r
+                   JOIN symbols t ON t.usr = r.to_usr
+                                 AND t.config_hash = r.config_hash
+                   WHERE r.config_hash = ? AND r.ref_kind = 'alias'
+                     AND r.from_usr = ?
+                   LIMIT 1""",
+                (config_hash, entry_usr),
+            ).fetchone()
+            if reaches is not None:
+                entry["status"] = "unhandled"
+                entry["aliases"] = dict(reaches)
+            elif dispatches:
+                entry["status"] = "dispatcher"
+            elif not from_assembly:
+                entry["status"] = "c"
+            else:
+                entry["status"] = "assembly"
+        del weak
+
+        if from_assembly:
+            _add_runtime_installation(entry, runtime)
+
+        if entry["status"] == "c":
+            # The weak definition this one replaced, when the index holds
+            # it.  A reader asking "who really services this" wants both:
+            # the code that runs, and the stub it took the place of.
+            replaced = conn.execute(
+                """SELECT file_path AS file, line FROM symbols
+                   WHERE config_hash = ? AND name = ? AND is_weak = 1
+                   LIMIT 1""",
+                (config_hash, entry["name"]),
+            ).fetchone()
+            if replaced is not None:
+                entry["overridden"] = dict(replaced)
+
+        if unhandled_only and entry["status"] != "unhandled":
+            continue
+        out.append(entry)
+
+    # Slots are numbered inside their own table, so the table has to lead
+    # the order — two tables both start at zero.
+    out.sort(key=lambda e: (
+        e["source"], str(e.get("table_name") or ""), e["table_file"], e["slot"],
+    ))
+    return out
+
+
+def get_function_address_arrays(
+    conn: sqlite3.Connection,
+    config_hash: str,
+) -> list[dict]:
+    """Read every array in C whose elements are addresses of functions.
+
+    This is the second place a vector table can live.  The assembly reader
+    finds a table written as address words; a build that generates its
+    table in C writes the same thing as an array initializer::
+
+        /* build/zephyr/isr_tables.c, generated */
+        const uintptr_t __irq_vector_table _irq_vector_table[290] = {
+            ((uintptr_t)&_isr_wrapper),
+            ((uintptr_t)&_isr_wrapper),
+            ...
+
+    The recognition is the same in both: an array of function addresses,
+    and the index of the element is the number of the slot.  No name is
+    matched and no count is weighed.  A build that puts its table in C is
+    read because the shape is there, not because the reader knows Zephyr.
+
+    The owning array comes from a range join.  A ``refs`` row names the
+    file and the line of an element, and the array is the ``varglobal``
+    whose extent holds that line.  Two arrays at file scope cannot overlap,
+    so the array that answers is unambiguous.  ``end_line`` is measured to
+    cover a whole initializer: ``_irq_vector_table`` in a real index spans
+    lines 10 to 301.
+
+    Every array of function addresses is reported, and each row names the
+    array it came from.  A table of interrupt handlers and a table of state
+    machine steps are the same construct, and the index cannot tell them
+    apart without knowing the platform — which is the thing this reader
+    exists to avoid.  The caller decides what the table means.
+
+    Args:
+        conn: An open index database connection.
+        config_hash: The build configuration to read.
+
+    Returns:
+        A list of dicts sorted by array and then by slot.  Each dict has:
+        slot, name, file, line, kind, is_weak, usr and is_definition for the
+        target, plus table_name, table_usr, table_file and table_line for
+        the array and the element inside it.  Empty when no array was
+        recognised, which is also what an index written before slots were
+        recorded returns.
+
+        ``file`` and ``line`` name the definition of the target wherever the
+        index holds exactly one — an initializer in C names the DECLARATION
+        of a symbol defined in assembly, and that is a header with nothing
+        to read.  ``is_definition`` is 0 on the rows where no single
+        definition was found and the declaration had to stand.  See
+        ``_follow_declarations_to_definitions``.
+    """
+    rows = conn.execute(
+        """SELECT r.slot_index AS slot,
+                  r.from_file  AS table_file,
+                  r.from_line  AS table_line,
+                  t.name       AS table_name,
+                  t.usr        AS table_usr,
+                  s.name       AS name,
+                  s.file_path  AS file,
+                  s.line       AS line,
+                  s.kind       AS kind,
+                  s.is_weak    AS is_weak,
+                  s.usr        AS usr,
+                  s.is_definition AS is_definition
+           FROM refs r
+           JOIN symbols s ON s.usr = r.to_usr
+                         AND s.config_hash = r.config_hash
+           JOIN symbols t ON t.config_hash = r.config_hash
+                         AND t.file_path = r.from_file
+                         AND t.kind = 'varglobal'
+                         AND r.from_line BETWEEN t.line
+                                            AND MAX(t.line, t.end_line)
+           WHERE r.config_hash = ? AND r.ref_kind = 'indirect'
+             AND r.slot_index IS NOT NULL
+           ORDER BY t.usr, r.slot_index""",
+        (config_hash,),
+    ).fetchall()
+
+    # The target join answers once — ``symbols`` is UNIQUE on
+    # (config_hash, usr) — so a second row for one element means two arrays
+    # claim the same line.  Only a file that declares both on one line does
+    # that, and then which array owns the element is not knowable from a
+    # line number.  Such an element is dropped: naming the wrong array is
+    # the same class of error as reporting the wrong slot.
+    owners: dict[tuple, set[str]] = {}
+    for row in rows:
+        element = (row["table_file"], row["table_line"], row["usr"])
+        owners.setdefault(element, set()).add(str(row["table_usr"]))
+
+    out: list[dict] = []
+    for row in rows:
+        element = (row["table_file"], row["table_line"], row["usr"])
+        if len(owners[element]) > 1:
+            continue
+        out.append(dict(row))
+    _follow_declarations_to_definitions(conn, config_hash, out)
+    return out
+
+
+_DECLARED_LENGTH = re.compile(r"\[(\d+)\]")
+
+
+def _declared_length(signature: str) -> int | None:
+    """Read the element count out of an array type, or None.
+
+    ``symbols.signature`` holds the resolved type, so the count is a literal
+    even where the source wrote a macro: measured
+    ``const struct _isr_table_entry[290] _sw_isr_table`` and
+    ``const uintptr_t[290] _irq_vector_table``.
+
+    Answers only when the signature holds EXACTLY ONE bracketed number.
+    Two of them mean the count is ambiguous — an array of arrays, or a
+    function pointer whose parameter is an array — and a wrong length would
+    turn into a wrong list of missing slots.
+    """
+    found = _DECLARED_LENGTH.findall(signature or "")
+    if len(found) != 1:
+        return None
+    return int(found[0])
+
+
+def get_table_coverage(
+    conn: sqlite3.Connection,
+    config_hash: str,
+) -> list[dict]:
+    """Report the slots of each recognised array that hold no named function.
+
+    An array can be longer than the number of slots the index can name, and
+    the difference is worth reporting because it is where the interesting
+    entries often are.  Measured on the Zephyr image of the Zephyr project:
+    ``_sw_isr_table`` is declared ``[290]``, 284 slots name
+    ``z_irq_spurious``, and the 6 that name nothing — 89, 198, 219, 228,
+    269, 270 — are the interrupts the firmware actually services.
+    ``gen_isr_tables.py`` wrote a resolved ADDRESS into those, so there is
+    no name to make a reference from.
+
+    **A missing slot does not mean unserviced, and it does not mean
+    serviced.**  It means the element is not the address of a function the
+    index can name: a zero, a resolved address, a data pointer, or a
+    position that could not be trusted.  Which of those it is depends on
+    the table, and the two real cases point opposite ways — a hole in a
+    table of handlers is an unused vector, while a hole in Zephyr's
+    ``_sw_isr_table`` is a vector in use.  The reader decides; this only
+    says where to look.
+
+    The length comes from the declared type, so no platform knowledge is
+    involved.  A table whose length cannot be read, or that has no missing
+    slot, is not reported.
+
+    Args:
+        conn: An open index database connection.
+        config_hash: The build configuration to read.
+
+    Returns:
+        A list of dicts, one for each array with missing slots, sorted by
+        table name.  Each has table_name, table_usr, table_file, declared
+        (the element count), named (how many slots name a function),
+        missing (a compact range string such as ``"89, 198, 219"``) and
+        missing_slots (the same numbers, for a caller that has to match
+        them against another source).
+    """
+    rows = get_function_address_arrays(conn, config_hash)
+    if not rows:
+        return []
+
+    present: dict[str, set] = {}
+    where: dict[str, dict] = {}
+    for row in rows:
+        table_usr = str(row["table_usr"])
+        present.setdefault(table_usr, set()).add(row["slot"])
+        where.setdefault(table_usr, {
+            "table_name": row["table_name"],
+            "table_usr": table_usr,
+            "table_file": row["table_file"],
+        })
+
+    lengths: dict[str, int | None] = {}
+    for table_usr in present:
+        found = conn.execute(
+            """SELECT signature FROM symbols
+               WHERE config_hash = ? AND usr = ? LIMIT 1""",
+            (config_hash, table_usr),
+        ).fetchone()
+        lengths[table_usr] = (
+            _declared_length(str(found["signature"])) if found else None
+        )
+
+    out: list[dict] = []
+    for table_usr, slots in present.items():
+        declared = lengths[table_usr]
+        if declared is None:
+            continue
+        gaps = sorted(set(range(declared)) - slots)
+        if not gaps:
+            continue
+        out.append({
+            **where[table_usr],
+            "declared": declared,
+            "named": len(slots),
+            "missing": format_number_ranges(gaps),
+            # The numbers as well as the display form, because a caller that
+            # has another source for those slots has to match them by value.
+            "missing_slots": tuple(gaps),
+        })
+    out.sort(key=lambda entry: str(entry["table_name"]))
+    return out
+
+
+def _follow_declarations_to_definitions(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    rows: list[dict],
+) -> None:
+    """Move a row from a declaration of its target onto the definition.
+
+    An initializer in C names whatever the compiler saw, and for a symbol
+    defined in assembly that is the C DECLARATION in a header.  Measured on
+    the RISC-V image of the Zephyr project: every one of the 571 slots pointed
+    at ``_isr_wrapper`` in ``sw_isr_table.h:29``, ``is_definition = 0``,
+    while the definition is ``arch/riscv/core/isr.S:137``.  The row was
+    wrong twice over — ``file`` and ``line`` named a header with nothing to
+    read, and the status came out ``"c"``, which asserts that code outside
+    assembly services the interrupt.
+
+    The definition is found by NAME, because a C declaration and an
+    assembly definition of one symbol do not share a USR: they live in the
+    ``c:@F@`` and ``asm:`` namespaces.
+
+    Matching by name is exactly the kind of rule that fails quietly — two
+    static functions in different files may share a name — so it applies
+    only when the config holds EXACTLY ONE definition of that name.  With
+    two or more the declaration stays, because a row pointing at the wrong
+    definition would be worse than one pointing at a header.
+
+    Rewrites *rows* in place, and leaves a row that already names a
+    definition untouched.
+    """
+    wanted = {
+        str(row["name"]) for row in rows if not row.get("is_definition")
+    }
+    if not wanted:
+        return
+
+    definitions: dict[str, dict] = {}
+    ambiguous: set[str] = set()
+    names = sorted(wanted)
+    # SQLite caps the number of bound parameters (999 by default), and this
+    # list is one name per target that resolved to a declaration.  Real data
+    # measured at most 1, but a table whose handlers are all declared in a
+    # header and defined in assembly would make it as long as the table, so
+    # the query is chunked rather than trusted to stay small.
+    chunk = 500
+    for start in range(0, len(names), chunk):
+        batch = names[start:start + chunk]
+        placeholders = ",".join("?" * len(batch))
+        for found in conn.execute(
+            f"""SELECT name, usr, file_path AS file, line, kind, is_weak
+                FROM symbols
+                WHERE config_hash = ? AND is_definition = 1
+                  AND name IN ({placeholders})""",
+            (config_hash, *batch),
+        ).fetchall():
+            name = str(found["name"])
+            if name in definitions:
+                ambiguous.add(name)
+                continue
+            definitions[name] = dict(found)
+
+    for row in rows:
+        if row.get("is_definition"):
+            continue
+        name = str(row["name"])
+        if name in ambiguous:
+            continue
+        definition = definitions.get(name)
+        if definition is None:
+            continue
+        row.update(definition)
+        row["is_definition"] = 1

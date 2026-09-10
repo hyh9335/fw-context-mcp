@@ -78,6 +78,7 @@ from .models import (
     Reference,
     Symbol,
 )
+from .nvic import runtime_vector_reference
 
 _log = logging.getLogger(__name__)
 
@@ -322,7 +323,7 @@ def _qualified_name(
 
     When *anon_map* is provided and *cursor* is an anonymous struct/union
     with a recorded field name, the field name is used in place of the
-    anonymous marker (e.g. ``"_ble_cmd"`` instead of
+    anonymous marker (e.g. ``"_radio_cmd"`` instead of
     ``"struct (unnamed at ...)"``).
 
     Returns a string like ``"namespace::Class::method"``, or an empty
@@ -736,8 +737,8 @@ def _class_match_score(hint: str, class_part: str) -> int:
     """Score how well a field-name hint matches a class name.
 
     Multi-level matching designed for the fallback path where field
-    names use snake_case (``_ble_msg_manager``) but class names use
-    CamelCase (``BleMsgManager``), or where the field name is a
+    names use snake_case (``_radio_msg_manager``) but class names use
+    CamelCase (``RadioMsgManager``), or where the field name is a
     superset of the class name (``_uart_driver`` → ``UART_DRIVER``).
 
     Returns 0 = no match, 1 = weak (token-level), 2 = good.
@@ -799,7 +800,7 @@ def _resolve_method_usr(
        the caller's class.
     4. Caller-class match — bare ``method()`` calls inside a class method
        resolve to sibling methods of the enclosing class (fixes
-       ``zbox_reset()`` inside ``WDT::swdt_check``).
+       ``wdt_reset()`` inside ``WDT::swdt_check``).
     5. Ambiguous → ``None``.  Never emit a possibly-wrong edge: previously
        an arbitrary first candidate was returned, which mis-resolved
        ``_timeout.attach(...)`` to ``mbed::SerialBase::attach``.
@@ -834,6 +835,36 @@ def _resolve_method_usr(
     return None
 
 
+def _record_indirect(seen_ref: set, key: tuple, slot_index: int | None) -> bool:
+    """Claim one indirect reference, and report whether it is new.
+
+    *key* is the reference without its slot.  Two rules meet here:
+
+    * Two slots of one table can hold the same function on the same line, as
+      in ``{ reset, reset }``.  Those are two facts, so the slot joins the
+      identity and both are kept.
+    * The same reference can be reached twice — once by an enclosing array
+      list that knows the slot, and again by the nested list inside it,
+      which does not.  Those are one fact, and the slotted view is the
+      better one.
+
+    A slotted claim therefore marks the slotless key as well, which is what
+    makes the later slotless claim for the same reference stand down.  The
+    AST walk is preorder, so the enclosing list always claims first.
+    """
+    if slot_index is None:
+        if key in seen_ref:
+            return False
+        seen_ref.add(key)
+        return True
+    slotted = (*key, slot_index)
+    if slotted in seen_ref:
+        return False
+    seen_ref.add(slotted)
+    seen_ref.add(key)
+    return True
+
+
 def _emit_fn_ptr_targets(
     expr_cursor: cx.Cursor,
     caller_usr: str | None,
@@ -845,8 +876,13 @@ def _emit_fn_ptr_targets(
     lhs_name: str = "",
     method: str = "assignment",
     qn_to_usr: dict[str, str] | None = None,
+    slot_index: int | None = None,
 ) -> None:
     """Emit indirect refs and FnPointerAssignment records for function pointer assignments.
+
+    *slot_index* is the position of *expr_cursor* inside a positional init
+    list, and reaches the stored reference unchanged.  Only the init-list
+    caller sets it; every other caller has no position to give.
 
     Walks the children of *expr_cursor* looking for function declarations
     (including those nested inside unary operators and casts), then records:
@@ -886,14 +922,14 @@ def _emit_fn_ptr_targets(
             target_loc = target.location
             if target_loc.file:
                 key = (target_usr, loc.file.name, loc.line, caller_usr, "indirect")
-                if key not in seen_ref:
-                    seen_ref.add(key)
+                if _record_indirect(seen_ref, key, slot_index):
                     refs.append(Reference(
                         to_usr=target_usr,
                         from_file=loc.file.name,
                         from_line=loc.line,
                         from_usr=caller_usr,
                         ref_kind="indirect",
+                        slot_index=slot_index,
                     ))
                 if (lhs_usr and lhs_usr != target_usr) or lhs_name:
                     try:
@@ -935,14 +971,14 @@ def _emit_fn_ptr_targets(
                 if target_usr == skip_usr:
                     continue
                 key = (target_usr, loc.file.name, loc.line, caller_usr, "indirect")
-                if key not in seen_ref:
-                    seen_ref.add(key)
+                if _record_indirect(seen_ref, key, slot_index):
                     refs.append(Reference(
                         to_usr=target_usr,
                         from_file=loc.file.name,
                         from_line=loc.line,
                         from_usr=caller_usr,
                         ref_kind="indirect",
+                        slot_index=slot_index,
                     ))
                 if (lhs_usr and lhs_usr != target_usr) or lhs_name:
                     fp_assignments.append(FnPointerAssignment(
@@ -1329,6 +1365,31 @@ def _handle_direct_refs(cursor: cx.Cursor, cur_fn: str | None, refs: list[Refere
         if cursor.kind == cx.CursorKind.CALL_EXPR:
             _handle_field_call_fallback(cursor, cur_fn, refs, seen_ref, tu_path_str)
             _handle_constructor_fallback(cursor, cur_fn, refs, seen_ref, tu_path_str, resolve_fn)
+            _handle_runtime_vector(cursor, referenced, cur_fn, refs, seen_ref)
+
+
+def _handle_runtime_vector(cursor: cx.Cursor, referenced: cx.Cursor | None,
+                           cur_fn: str | None, refs: list[Reference],
+                           seen_ref: set[tuple]) -> None:
+    """Record a vector table entry this call installs at run time.
+
+    A CMSIS target that moves its table into RAM fills it with
+    ``NVIC_SetVector``, and the static table then says nothing about
+    which handler services the interrupt.  See ``nvic`` for what makes a
+    call qualify and why the IRQ number is stored unshifted.
+
+    Deduplicated on the same key as every other reference, so one call
+    site emitted twice by the preprocessor stays one edge.
+    """
+    found = runtime_vector_reference(cursor, referenced, cur_fn)
+    if found is None:
+        return
+    key = (found.to_usr, found.from_file, found.from_line, found.from_usr,
+           found.ref_kind)
+    if key in seen_ref:
+        return
+    seen_ref.add(key)
+    refs.append(found)
 
 
 def _handle_field_call_fallback(cursor: cx.Cursor, cur_fn: str | None,
@@ -1658,6 +1719,98 @@ def _handle_fn_ptr_as_argument(cursor: cx.Cursor, cur_fn: str | None,
     _emit_fn_ptr_targets(cursor, cur_fn, seen_ref, refs, fp_assignments, direct_callee_usr, qn_to_usr=qn_to_usr)
 
 
+def _init_list_is_positional(cursor: cx.Cursor) -> bool:
+    """Report whether every element of an init list is given by position.
+
+    A POSITIONAL list writes its elements in the order of the array, so the
+    position of an element IS its index::
+
+        void (*table[])(void) = { reset, nmi, hard_fault };   // 0, 1, 2
+
+    A DESIGNATED list names the destination of each element, so the source
+    order tells you nothing about the index::
+
+        void (*table[])(void) = { [11] = svc, [3] = hard_fault };
+
+    Only a positional list can give a slot number.  One designated element
+    makes the whole list unsafe to count, because the elements after it
+    continue from the index it named — not from their own position.
+
+    The test reads the first token of each element: an array designator
+    starts with ``[`` and a field designator with ``.``.  Two notes on why
+    this is a token test and not an AST test:
+
+    * The AST cannot tell the two apart here.  A designator ``[5] = &fn``
+      exposes an INTEGER_LITERAL with two children as its first child — and
+      so does the plain value ``1 + 2``.  A measurement over 12 lists put
+      the AST rule wrong on 1 of them and this rule wrong on none.
+    * A float element such as ``{ .5, &fn }`` does NOT read as a designator,
+      because clang emits ``.5`` as one FLOATING_LITERAL token, not as ``.``
+      followed by ``5``.  This was measured, not assumed.
+
+    Returns False when the tokens cannot be read.  A slot number that is
+    wrong is worse for a reader than a slot number that is absent, so an
+    unreadable list gives up its positions instead of guessing them.
+    """
+    try:
+        for element in cursor.get_children():
+            tokens = list(element.get_tokens())
+            if tokens and tokens[0].spelling in ("[", "."):
+                return False
+    except (ValueError, TypeError, RuntimeError, AttributeError):
+        return False
+    return True
+
+
+# Every way libclang spells an array type.  A slot number is an array index,
+# so a list that initialises anything else has no slot to give.
+_ARRAY_TYPE_KINDS = frozenset({
+    cx.TypeKind.CONSTANTARRAY,
+    cx.TypeKind.INCOMPLETEARRAY,
+    cx.TypeKind.VARIABLEARRAY,
+    cx.TypeKind.DEPENDENTSIZEDARRAY,
+})
+
+
+def _init_list_gives_slots(cursor: cx.Cursor) -> bool:
+    """Report whether the positions in this init list are array indices.
+
+    A position is only a slot number when all four hold:
+
+    1. **The list is the outermost one.**  libclang reports a
+       ``semantic_parent`` for the list that belongs to a declaration and
+       None for a list nested inside another list.  This matters because an
+       enclosing list already covers the whole subtree: for the Zephyr shape
+       ``struct entry table[] = { {0, isr_a}, {0, isr_b} }`` the outer pass
+       finds ``isr_a`` at outer position 0, which is the true slot, while
+       the inner list would offer position 1 — the position of the ``fn``
+       FIELD.  Recording both leaves two contradicting slots for one
+       reference.  Measured over 18 lists in C and C++: the None test agreed
+       with the true nesting every time.
+    2. **The list initialises an array.**  A struct list numbers fields.
+    3. **The array is one-dimensional.**  A table such as
+       ``void (*fsm[2][2])(void)`` has a row and a column, and no single
+       number is its slot.  The element type is read through
+       ``get_canonical`` so a typedef cannot hide the second dimension.
+    4. **The elements are positional** — see ``_init_list_is_positional``.
+
+    Returns False when any type or parent query fails, on the same ground as
+    the positional test: an absent slot beats a wrong one.
+    """
+    try:
+        if cursor.semantic_parent is None:
+            return False
+        list_type = cursor.type
+        if list_type.kind not in _ARRAY_TYPE_KINDS:
+            return False
+        element = list_type.get_array_element_type().get_canonical()
+        if element.kind in _ARRAY_TYPE_KINDS:
+            return False
+    except (ValueError, TypeError, RuntimeError, AttributeError):
+        return False
+    return _init_list_is_positional(cursor)
+
+
 def _handle_fn_ptr_cases(cursor: cx.Cursor, cur_fn: str | None,
                         refs: list[Reference],
                         fp_assignments: list[FnPointerAssignment],
@@ -1692,10 +1845,16 @@ def _handle_fn_ptr_cases(cursor: cx.Cursor, cur_fn: str | None,
         _emit_fn_ptr_targets(cursor, cur_fn, seen_ref, refs, fp_assignments,
                              lhs_usr=cursor.get_usr(), lhs_name=cursor.spelling, method="var_init")
     elif cursor.kind == cx.CursorKind.INIT_LIST_EXPR:
-        for child in cursor.get_children():
+        # libclang gives the children in source order, and for a positional
+        # array list that order is the array index — so the enumeration
+        # counter is the slot number.  A hole keeps its child (`{ a, 0, c }`
+        # has three), which is what keeps the count aligned with the array.
+        gives_slots = _init_list_gives_slots(cursor)
+        for position, child in enumerate(cursor.get_children()):
             child_usr, child_name = _extract_lhs_field(child)
             _emit_fn_ptr_targets(child, cur_fn, seen_ref, refs, fp_assignments,
-                                 lhs_usr=child_usr, lhs_name=child_name, method="init_list")
+                                 lhs_usr=child_usr, lhs_name=child_name, method="init_list",
+                                 slot_index=position if gives_slots else None)
 
 
 def _handle_implicit_constructors(cursor: cx.Cursor, cur_fn: str | None,
@@ -1895,7 +2054,7 @@ def _run_source_line_fallback(
     # Map each function's definition start line → its USR.  Used to suppress
     # the false self-reference created when the bare-call regex matches the
     # function's OWN name in its definition signature (e.g. ``void WDT::
-    # zbox_reset(`` → a self-caller edge at the definition line).
+    # wdt_reset(`` → a self-caller edge at the definition line).
     _fn_def_lines: dict[int, str] = {
         _fn_start: _fn_usr for _fn_usr, _fn_start, _fn_end in _fn_spans
     }
@@ -1974,7 +2133,7 @@ def _run_source_line_fallback(
         # function ``if``).  Suppresses the self-reference false-positive:
         # a bare match of the enclosing function's own name on its
         # definition line is the declaration signature, not a recursive
-        # call (e.g. ``void zbox_reset(void)`` matches ``zbox_reset(``).
+        # call (e.g. ``void wdt_reset(void)`` matches ``wdt_reset(``).
         # Bare call fallback: function(args) or function<T>(args)
         for _m in _re.finditer(r'(?<![.\w])(\w+)(<[^>]+>)?\s*\(', _line):
             _method_name = _m.group(1)
@@ -2170,7 +2329,7 @@ def extract_all(
     class_cursors: list[cx.Cursor] = []  # class/struct def cursors for inheritance extraction
 
     # Pre-scan: map anonymous struct/union USRs to their field names
-    # (e.g. struct { ... } _ble_cmd;  →  anon_usr → "_ble_cmd")
+    # (e.g. struct { ... } _radio_cmd;  →  anon_usr → "_radio_cmd")
     anon_usr_to_field = _build_anon_usr_to_field(
         tu.cursor, skip_files=_skip_frozen, resolve_fn=_resolve,
     )

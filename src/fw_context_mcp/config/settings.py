@@ -54,8 +54,8 @@ log = logging.getLogger(__name__)
 __all__ = [
     "CacheServerConfig",
     "Config",
-    "LLMConfig",
     "IndexConfig",
+    "LLMConfig",
     "ProjectMeta",
     "ProjectNotInitializedError",
     "derive_project_id",
@@ -171,7 +171,7 @@ _PROJECT_DEFAULTS_TEMPLATE = """\
 # Most values are auto-detected from .mbed and custom_targets.json.
 # Override them here when auto-detection is wrong or incomplete.
 #
-# target = "P_ECB_BOARD"
+# target = "BOARD_V2_BOARD"
 # toolchain = "GCC_ARM"
 # profile = "develop"
 # app_config = "mbed_app.json"
@@ -194,7 +194,7 @@ _PROJECT_DEFAULTS_TEMPLATE = """\
 # name   = "nrf52840-dev"                     # unique key, referenced by tools
 # board  = "nrf52840dk/nrf52840"              # build-system-specific label
 # build_dir = "build/nrf52840_sysbuild"       # per-variant output (default build/<name>)
-# env    = { ZBOX_ENV = "DEV" }               # build env vars (folded into config_hash)
+# env    = { BOARD_ENV = "DEV" }               # build env vars (folded into config_hash)
 # images = [                                  # sysbuild images (Zephyr only)
 #   { name = "app",      dir = "proj/app",      type = "project" },
 #   { name = "mcuboot",  dir = "${NCS}/bootloader/mcuboot", type = "sdk" },
@@ -481,7 +481,7 @@ class IndexConfig:
         min_dense_count: Minimum number of embedding results required to
             trust dense-only routing in ``AdaptiveFusionPhase``.  Below this
             threshold FTS5 is used as fallback.  Set higher for projects
-            with immature embedding quality (default 3, tuned on zbox-ecb-fw).
+            with immature embedding quality (default 3, tuned on the Mbed project).
         max_symbol_body_lines: Maximum number of source lines stored per
             function/method body in the index.  Bodies longer than this are
             truncated.  Default 1000.

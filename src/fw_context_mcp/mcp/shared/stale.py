@@ -31,10 +31,27 @@ from pathlib import Path
 
 from ...config import derive_project_id
 from ...indexer.db import get_active_config
-from ...utils import MTIME_TOLERANCE_S, abs_path
+from ...indexer.manifest import load_tu_extensions
+from ...utils import (
+    MTIME_TOLERANCE_S,
+    TU_EXTENSIONS,
+    abs_path,
+    build_dir_patterns_with_fw_context,
+    compute_source_hash,
+)
 from .context import _quick_open_readonly, get_executor
 
 log = logging.getLogger(__name__)
+
+# How close two timestamps must be to count as the same one.  NOT a
+# tolerance for clock skew — that is MTIME_TOLERANCE_S, and it is a whole
+# second.  This is only wide enough to absorb the float round trip through
+# SQLite REAL and a filesystem that does not return a stat bit-exactly.
+#
+# It must stay small.  The rule it serves reads "an exact match is the file
+# the index hashed"; widen it and every file inside the band reads as
+# unchanged again, which is the behaviour this replaced.
+_MTIME_MATCH_EPS_S: float = 0.001
 
 # ── Mtime cache ──
 # Cache for _count_modified_files results with a 30-second TTL.
@@ -52,7 +69,13 @@ _CACHE_TTL_S: float = 30.0  # shared TTL for mtime cache and header staleness ca
 
 
 def _invalidate_modified_cache(config_hash: str | None = None) -> None:
-    """Invalidate the mtime cache.  If *config_hash* is None, clear all entries."""
+    """Invalidate the mtime cache.  If *config_hash* is None, clear all entries.
+
+    NOTE on who calls this: reindex_file_impl and reset_index, both in
+    mcp/handlers/maintenance.py.  The file watcher does NOT and cannot — it
+    reindexes in a subprocess, as the module docstring says — so the TTL is
+    the only bound on an edit the daemon picked up.
+    """
     if config_hash:
         _modified_cache.pop(config_hash, None)
     else:
@@ -76,7 +99,7 @@ def check_structural_staleness(
     cfg: dict,
     root: Path,
 ) -> list[str]:
-    """Check structural staleness — compile_commands.json, schema, refs.
+    """Check structural staleness — compile_commands.json, schema, row format, refs.
 
     Returns a list of human-readable reasons the index needs a reindex.
     These are the checks that both the background reindex trigger and the
@@ -86,7 +109,11 @@ def check_structural_staleness(
     All imports are lazy to avoid circular dependencies at module level.
     """
     from ...config import load as load_config
-    from ...indexer.db import CURRENT_SCHEMA_VERSION, get_db_schema_version
+    from ...indexer.db import (
+        CURRENT_ROW_FORMAT,
+        CURRENT_SCHEMA_VERSION,
+        get_db_schema_version,
+    )
     from .context import _is_stale
 
     reasons: list[str] = []
@@ -101,7 +128,21 @@ def check_structural_staleness(
     if schema_ver < CURRENT_SCHEMA_VERSION:
         reasons.append(f"schema {schema_ver} < {CURRENT_SCHEMA_VERSION}")
 
-    # 3. Missing refs (and indirect call sites when refs are missing)?
+    # 3. Does the stored text still mean what this version reads it to mean?
+    # The columns can keep every name while their content changes — the text
+    # of files.content and symbols.source became ifdef-filtered, and the
+    # schema version above could not see it, thus an index went on answering
+    # with dead code.  One column read, no recomputation.
+    # .get() and not [...]: a caller builds *cfg* with SELECT *, thus the
+    # key is there for any database that open_db() migrated.  An absent key
+    # reads as "no format", which asks for the reindex — the safe direction.
+    stored_format = str(cfg.get("row_format") or "")
+    if stored_format != CURRENT_ROW_FORMAT:
+        reasons.append(
+            f"row format {stored_format or '(none)'} != {CURRENT_ROW_FORMAT}"
+        )
+
+    # 4. Missing refs (and indirect call sites when refs are missing)?
     proj_cfg = load_config(root)
     if proj_cfg.index.index_refs:
         ref_count = conn.execute(
@@ -152,27 +193,34 @@ def _stale_files(conn, config_hash: str, file_paths: list[str], root: Path) -> l
     keys = [db_key for _, db_key in normalized]
     placeholders = ",".join("?" * len(keys))
     rows = conn.execute(
-        f"SELECT path, mtime FROM files WHERE config_hash = ? AND path IN ({placeholders})",
+        f"SELECT path, mtime, source_hash FROM files WHERE config_hash = ? AND path IN ({placeholders})",  # noqa: S608 — placeholders only
         (config_hash, *keys),
     ).fetchall()
-    stored_map: dict[str, float] = {r["path"]: r["mtime"] for r in rows}
+    stored_map: dict[str, tuple[float, str]] = {
+        r["path"]: (r["mtime"], r["source_hash"] or "") for r in rows
+    }
 
-    # Build work items with resolved mtimes
-    work_items: list[tuple[str, str, float]] = []  # (abs_path, db_key, stored_mtime)
+    # Build work items with the stored mtime and hash
+    work_items: list[tuple[str, float, str]] = []  # (abs_path, mtime, hash)
     for file_path, db_key in normalized:
         stored = stored_map.get(db_key)
         if stored is not None:
-            work_items.append((file_path, db_key, stored))
+            work_items.append((file_path, stored[0], stored[1]))
 
     if not work_items:
         return []
 
-    # Parallel stat() — beneficial for NFS/CIFS where each stat() is high-latency
+    # This path checks the files that a result names, and a result names at
+    # most `limit` of them — 50 by default, 200 at the ceiling.  Hashing all
+    # of them costs 0.67 ms at 50 files, thus the timestamp is not consulted
+    # at all: it is wrong after a git checkout, and it misses a write that
+    # kept the old stamp.  The project-wide counter cannot afford the same
+    # and filters by mtime first.
     stale: list[str] = []
     with ThreadPoolExecutor(max_workers=min(8, len(work_items))) as ex:
         futures = {
-            ex.submit(_check_file_stale, path, stored): path
-            for path, _db_key, stored in work_items
+            ex.submit(_file_differs, path, mtime, digest): path
+            for path, mtime, digest in work_items
         }
         for f in as_completed(futures):
             try:
@@ -183,17 +231,60 @@ def _stale_files(conn, config_hash: str, file_paths: list[str], root: Path) -> l
     return stale
 
 
-def _check_file_stale(path: str, stored_mtime: float) -> bool:
-    """Return True if *path* on-disk mtime is newer than *stored_mtime*.
+def _file_differs(path: str, stored_mtime: float, stored_hash: str = "") -> bool:
+    """Tell whether *path* no longer matches what the index holds.
 
-    A missing file is treated as stale — it was deleted since indexing.
+    The content decides whenever a hash exists.  It is the only signal that
+    survives git: ``checkout``, ``pull`` and ``stash pop`` rewrite the mtime
+    of every file they touch without regard to content, and a write that
+    lands in the same second as the index run leaves the stamp alone
+    altogether.
+
+    Without a stored hash the timestamp is all there is, and only one
+    direction is readable from it: newer than the index means changed.  A
+    stamp that moved backwards cannot be told from one the index never saw,
+    and a write that kept the old stamp leaves nothing to see.  The caller
+    that scans every indexed file handles both by comparing the stamps for
+    equality first — see ``_count_modified_files``.
+
+    A missing file is a change: it was deleted since indexing.
+
+    This used to be three functions in a row.  ``_check_file_stale`` gated
+    on the timestamp and read the content only for a file the stamp called
+    suspect, and ``_in_racy_window`` widened that gate.  Once the batch path
+    stopped using them, the gate had one caller left — this one — which
+    never passed it a hash, so the branch the gate protected was
+    unreachable and the widening changed no answer at all.
     """
+    differs = _content_differs(path, stored_hash)
+    if differs is not None:
+        return differs
     try:
         return os.path.getmtime(path) > stored_mtime + MTIME_TOLERANCE_S
     except FileNotFoundError:
         return True
     except OSError:
         return False
+
+
+def _content_differs(path: str, stored_hash: str) -> bool | None:
+    """Compare the file at *path* against *stored_hash*.
+
+    Returns True when the bytes differ, False when they match, and None when
+    the question cannot be answered — no stored hash, or the file cannot be
+    read.  The caller then falls back to the timestamp.
+
+    This is the only signal that survives git.  ``checkout``, ``pull`` and
+    ``stash pop`` rewrite the mtime of every file they touch, without regard
+    to content, thus a checkout back to the original branch restores the same
+    bytes with a fresh time.
+    """
+    if not stored_hash:
+        return None
+    current = compute_source_hash(Path(path))
+    if not current:
+        return None  # unreadable — compute_source_hash swallows the OSError
+    return current != stored_hash
 
 
 def _count_modified_files(
@@ -244,8 +335,10 @@ def _count_modified_files(
     # Duplicate rows arise when the same file was indexed under different
     # path formats (absolute vs relative) — e.g. after a reindex with a
     # different working directory or compile_commands.json format.
-    best_mtime: dict[str, float] = {}
-    rows = conn.execute("SELECT path, mtime FROM files WHERE config_hash=?", (config_hash,)).fetchall()
+    best_mtime: dict[str, tuple[float, str]] = {}
+    rows = conn.execute(
+        "SELECT path, mtime, source_hash FROM files WHERE config_hash=?", (config_hash,)
+    ).fetchall()
     for r in rows:
         path = r["path"]
         stored = r["mtime"]
@@ -255,8 +348,8 @@ def _count_modified_files(
         if not p.is_absolute():
             p = (root / path).resolve()
         key = str(p)
-        if key not in best_mtime or stored > best_mtime[key]:
-            best_mtime[key] = stored
+        if key not in best_mtime or stored > best_mtime[key][0]:
+            best_mtime[key] = (stored, r["source_hash"] or "")
 
     # Load build_dir_patterns from manifest to skip build-generated files
     from ...indexer.manifest import load_build_dir_patterns
@@ -267,14 +360,43 @@ def _count_modified_files(
     # NOTE: TOCTOU — file may change between DB read and stat() below.
     # Not a security issue: worst case is missed detection until next query.
     modified = 0
-    for key, stored_mtime in best_mtime.items():
+    for key, (stored_mtime, stored_hash) in best_mtime.items():
         if build_patterns and _path_matches_patterns(key, build_patterns):
             continue  # build-generated file — skip
         try:
             # NOTE: individual stat() calls — O(n) for n files. On modern NVMe
             # filesystems this is <10ms for 10K files. If slow, consider
             # os.scandir() batch processing or caching more aggressively.
-            if os.path.getmtime(key) > stored_mtime + MTIME_TOLERANCE_S:
+            #
+            # The index stores the mtime it read together with the hash it
+            # computed, thus an exact match means "this is the file we
+            # hashed" and nothing needs reading.  Anything else is suspect
+            # in BOTH directions: newer is the ordinary edit, older means
+            # the file was replaced by an older copy — a restore from a
+            # backup, or a tar that kept its times.
+            #
+            # The previous rule was "newer, or inside the racy window", and
+            # that window is symmetric around the stored stamp.  An
+            # unchanged file carries exactly that stamp, so it fell inside
+            # and reached the hash: measured on the Mbed project, 1910 of 1911
+            # rows did.  The gate filtered nothing while get_active_build —
+            # the mandatory first call — hashed the whole project every
+            # time.  The one set it did exclude was the backwards stamp,
+            # which is the one case that needed reading.
+            #
+            # What this cannot see: a write that restores the stamp to the
+            # exact float the index holds.  _stale_files has no gate at
+            # all, so a query about that file still reports it.
+            file_mtime = os.path.getmtime(key)
+            if abs(file_mtime - stored_mtime) <= _MTIME_MATCH_EPS_S:
+                continue
+            differs = _content_differs(key, stored_hash)
+            if differs is None:
+                # No stored hash: the timestamp is all there is, and only
+                # one direction is readable from it.
+                if file_mtime > stored_mtime + MTIME_TOLERANCE_S:
+                    modified += 1
+            elif differs:
                 modified += 1
         except FileNotFoundError:
             modified += 1
@@ -282,9 +404,338 @@ def _count_modified_files(
             pass
 
     if use_cache:
-        max_stored = max(best_mtime.values(), default=0.0)
+        max_stored = max((mtime for mtime, _ in best_mtime.values()), default=0.0)
         _modified_cache[config_hash] = (time.monotonic(), modified, max_stored)
     return modified
+
+
+# ── New source files ──
+# A file that the build system never saw has no translation unit, thus a
+# reindex cannot pick it up: it is absent from compile_commands.json, and
+# only a build puts it there.  Detection therefore needs the file tree, not
+# the mtimes of the rows the index already holds.
+
+# Which suffixes count as a candidate is a question about THIS project, not
+# about the compiler: a build that compiles `.S` should have `.S` looked
+# for, and one that never does should not.  The answer comes from the
+# manifest, which derives it from compile_commands.json; utils.TU_EXTENSIONS
+# is the fallback for a project that has no manifest yet.
+#
+# A new header is deliberately out of scope either way: one that nothing
+# includes stays out of the index even after a build, thus reporting it
+# would give a warning with no cure, and one that some unit includes
+# reaches the index on its own.
+
+# Cap on the number of reported paths.  The count is what matters to the
+# caller; a full list of a hundred paths would only crowd the message.
+_UNINDEXED_REPORT_LIMIT = 20
+
+
+def db_dir_of(conn) -> Path:
+    """Return the directory that holds the database this connection opened.
+
+    The manifest lives beside it, and the staleness helpers reach it the
+    same way everywhere — through PRAGMA database_list rather than a path
+    threaded down from the caller.
+    """
+    return Path(conn.execute("PRAGMA database_list").fetchone()["file"]).parent
+
+
+def _project_scan_roots(scan_roots: set[str], build_patterns: list[str]) -> set[str]:
+    """Drop the build-output directories from the scan roots.
+
+    ``_indexed_paths`` collects the roots from the index, because the layouts
+    differ: the Mbed project keeps code in ``lib``, ``src`` and ``targets_custom``,
+    the second Mbed project adds ``mbed_target_stm`` and ``components``.  A fixed
+    list of ``src``/``lib``/``include`` would miss those.
+
+    A build directory can hold a project file — a generated config header —
+    and thus reach the set.  Walking it would cost a lot and find only build
+    output, so it goes out here.
+
+    ``"."`` means that the project holds source files in its root directory,
+    and it never matches a build pattern.
+
+    The trailing separator is necessary.  ``load_build_dir_patterns`` gives
+    directory patterns with one — ``"BUILD/"``, ``".pio/build/"`` — and
+    ``_path_matches_patterns`` does a substring test, thus a bare ``"BUILD"``
+    matched nothing and the walk descended into the build output.
+    """
+    return {
+        root
+        for root in scan_roots
+        if root == "." or not _path_matches_patterns(f"{root}/", build_patterns)
+    }
+
+
+# How long git may take to list the files of the project.  It is a local
+# read of the index file; a project big enough to need longer than this has
+# something else wrong, and the walk below is the answer either way.
+_GIT_LS_TIMEOUT_S: float = 30.0
+
+
+def _git_tu_candidates(root: Path, tu_exts: frozenset[str]) -> list[str] | None:
+    """Return the source files of the project, or None when git cannot say.
+
+    ``git ls-files -co --exclude-standard`` gives the tracked files plus the
+    untracked ones that .gitignore does not cover — which is the code of the
+    user and nothing else.  A gitignored vendor tree drops out on its own:
+    measured, that is ``ncs/`` on the Zephyr project, where the directory walk
+    found 109,687 candidates in 4.0 s and this finds 12 in 1 ms, and
+    ``.pio/`` on the ESP32 project.
+
+    It also answers what the walk could not.  ``scan_roots`` comes from
+    files the index already holds, so a whole new top-level directory named
+    no root, and the walk from "." does not descend — a new module arriving
+    as ``tests/`` or ``components/`` was reported by nothing at all.  An
+    untracked file in a new directory is in this listing.
+
+    Returns None when git cannot answer: no repository, no git binary, a
+    non-zero exit, a timeout.  The caller then walks, which is what a
+    project without a repository needs.
+
+    A vendored SDK that IS committed stays in the listing — mbed-os/ on
+    the Mbed project is 6,215 source files in git — so the caller still applies
+    the vendor roots it takes from the index.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-co", "--exclude-standard"],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_LS_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return [
+        rel for rel in result.stdout.splitlines()
+        if Path(rel).suffix in tu_exts
+    ]
+
+
+def _vendor_roots(conn, config_hash: str) -> set[str]:
+    """Return the top-level directories that hold vendor code only.
+
+    Taken from ``files.is_project``: a root that carries non-project rows
+    and no project row is the SDK.  The manifest's own vendor patterns are
+    not enough — measured, the Zephyr project has none at all — and this
+    question has an answer in the index for every project that indexed the
+    vendor tree.
+
+    Only relative paths count.  An absolute one names a file outside the
+    project, which has no top-level directory inside it.
+    """
+    project: set[str] = set()
+    vendor: set[str] = set()
+    for row in conn.execute(
+        "SELECT path, is_project FROM files WHERE config_hash=?", (config_hash,)
+    ):
+        stored = row["path"]
+        if os.path.isabs(stored):
+            continue
+        parts = Path(stored).parts
+        first = parts[0] if len(parts) > 1 else "."
+        (project if row["is_project"] else vendor).add(first)
+    return vendor - project
+
+
+def find_unindexed_sources(
+    conn,
+    config_hash: str,
+    root: Path,
+    cc_path: Path,
+    *,
+    limit: int | None = _UNINDEXED_REPORT_LIMIT,
+    apply_exclusions: bool = True,
+) -> list[str]:
+    """Return source files that ``compile_commands.json`` does not cover.
+
+    A file qualifies when BOTH conditions hold:
+
+    1. The index holds no row for it.
+    2. Its mtime is newer than ``compile_commands.json``.
+
+    Both are necessary.  Condition 1 alone is useless: a project keeps many
+    source files out of the build on purpose — library headers that nothing
+    includes, tests outside the build, ``secrets.example.h``.  On
+    the second Mbed project that is 726 files, and every one of them is correct.
+
+    Condition 2 must compare against ``compile_commands.json``, never against
+    the index timestamp.  A reindex moves the index timestamp even when it
+    ignores the new file, thus the file would look old on the next run and
+    stay invisible forever.  Only a build writes compile_commands.json.
+
+    The same property stops a loop: after a successful build the file is
+    older than the regenerated compile_commands.json, thus a file that the
+    build system never accepts is reported once, not forever.
+
+    Args:
+        conn: Open connection to the index database.
+        config_hash: Active build configuration.
+        root: Project root.
+        cc_path: Path of the compile_commands.json of this build.
+        limit: Maximum number of paths to return, or None for all of them.
+            The cap serves the caller that REPORTS the count — a list of a
+            hundred paths only crowds the message.  The caller that RECORDS
+            the set must pass None: record_excluded replaces the marker
+            wholesale, thus a truncated list silently drops every entry past
+            the cap and those files are reported again on every edit.
+        apply_exclusions: When True (default), leave out the files that a
+            build already ran for and still did not cover — see
+            ``indexer.autobuild.load_excluded``.  The caller that writes
+            that marker passes False, or it would filter out the very files
+            it is about to record.
+
+    Returns:
+        list[str]: Paths relative to *root*, sorted, at most *limit* long.
+        Empty when compile_commands.json is absent — without a reference
+        point every file would look new, and a warning on every query is
+        worse than none.
+    """
+    from ...indexer.autobuild import load_excluded
+    from ...indexer.manifest import load_build_dir_patterns
+    from ...indexer.ops import _normalize_file_path
+
+    try:
+        cc_mtime = os.path.getmtime(cc_path)
+    except OSError:
+        return []
+
+    known, scan_roots = _indexed_paths(conn, config_hash)
+    tu_exts = load_tu_extensions(db_dir_of(conn), config_hash) or TU_EXTENSIONS
+    db_path = Path(conn.execute("PRAGMA database_list").fetchone()["file"])
+    # The directory fw-context writes into is not a place to look for the
+    # source files of the user: it holds the generated compile_commands.json
+    # and the output of the automatic build.  The shared helper adds it,
+    # because the same gap bites _is_generated_header — see its docstring
+    # for the measurement.
+    build_patterns = build_dir_patterns_with_fw_context(
+        load_build_dir_patterns(db_path.parent, config_hash)
+    )
+    # Read once, before the walk.  The caller that WRITES the marker passes
+    # apply_exclusions=False, or it would filter out the very files it is
+    # about to record.
+    excluded = load_excluded(db_path.parent) if apply_exclusions else {}
+
+    found: list[str] = []
+    for candidate in _tu_candidates(
+        conn, config_hash, root, scan_roots, build_patterns, tu_exts
+    ):
+        # _normalize_file_path decides the one spelling that every
+        # path-keyed lookup uses, thus the comparison must go through it.
+        # It runs on the candidates only — resolving every indexed path
+        # instead cost one syscall per row and made the scan 7x slower.
+        key = _normalize_file_path(candidate, root)
+        if key in known:
+            continue
+        try:
+            if os.path.getmtime(candidate) <= cc_mtime:
+                continue
+        except OSError:
+            continue  # vanished between the listing and the stat
+        # A build already ran for this file and the build system still
+        # did not take it.  Reporting it again only tells the caller to
+        # run a command that changes nothing, and it would hold
+        # get_active_build on "reindex_needed" for ever.  The hash is
+        # what expires the record: an edit means the user may have just
+        # added the file to the build, thus it earns one more report.
+        recorded = excluded.get(key)
+        if recorded and recorded == compute_source_hash(Path(candidate)):
+            continue
+        found.append(key)
+
+    return sorted(found) if limit is None else sorted(found)[:limit]
+
+
+def _tu_candidates(
+    conn,
+    config_hash: str,
+    root: Path,
+    scan_roots: set[str],
+    build_patterns: list[str],
+    tu_exts: frozenset[str],
+):
+    """Yield the absolute path of every source file that could need a build.
+
+    Git first, the directory walk as the fallback.  See _git_tu_candidates
+    for why git is the better question and _walk_tu_candidates for what the
+    walk cannot reach.
+    """
+    listed = _git_tu_candidates(root, tu_exts)
+    if listed is not None:
+        vendor = _vendor_roots(conn, config_hash)
+        for rel in listed:
+            top = rel.split("/")[0] if "/" in rel else "."
+            if top in vendor:
+                continue  # a vendored SDK that is committed to the repository
+            if _path_matches_patterns(rel, build_patterns):
+                continue
+            yield str((root / rel).resolve())
+        return
+
+    # No repository, or git could not answer.  The walk sees only the roots
+    # the index already knows, thus a new top-level directory stays
+    # invisible here — that is the cost of having no git to ask.
+    for scan_root in sorted(_project_scan_roots(scan_roots, build_patterns)):
+        start = root if scan_root == "." else root / scan_root
+        yield from _walk_tu_candidates(start, scan_root == ".", build_patterns, tu_exts)
+
+
+def _indexed_paths(conn, config_hash: str) -> tuple[set[str], set[str]]:
+    """Return what the index knows, as ``(paths, scan_roots)``.
+
+    *paths* holds the ``files.path`` column verbatim.  The indexer writes it
+    through ``_normalize_file_path``, thus a caller that normalises its own
+    candidate the same way can compare the two directly, with no syscall per
+    row.
+
+    *scan_roots* holds the first path component of every project file, which
+    seeds the directory walk.  A vendor file adds nothing: a new file lands
+    beside the code of the team, not inside the SDK.
+    """
+    paths: set[str] = set()
+    scan_roots: set[str] = set()
+    for row in conn.execute(
+        "SELECT path, is_project FROM files WHERE config_hash=?", (config_hash,)
+    ):
+        stored = row["path"]
+        paths.add(stored)
+        if row["is_project"] and not os.path.isabs(stored):
+            parts = Path(stored).parts
+            scan_roots.add(parts[0] if len(parts) > 1 else ".")
+    return paths, scan_roots
+
+
+def _walk_tu_candidates(
+    start: Path, root_only: bool, build_patterns: list[str], tu_exts: frozenset[str]
+):
+    """Yield the absolute path of every translation-unit candidate under *start*.
+
+    With *root_only* the walk covers the directory itself and no child: the
+    named scan roots already cover the subtrees, and a recursive walk from
+    the project root would cross the vendor tree.
+    """
+    if not start.is_dir():
+        return
+
+    if root_only:
+        for entry in start.iterdir():
+            if entry.is_file() and entry.suffix in tu_exts:
+                yield str(entry.resolve())
+        return
+
+    for dirpath, dirnames, filenames in os.walk(start):
+        if build_patterns and _path_matches_patterns(dirpath, build_patterns):
+            dirnames[:] = []  # build output — do not descend
+            continue
+        for filename in filenames:
+            if Path(filename).suffix in tu_exts:
+                yield str(Path(dirpath, filename).resolve())
 
 
 
@@ -427,23 +878,241 @@ def _with_stale_recovery(
         result_rows = query_fn(db_conn, cfg_hash)
         # Ensure plain dicts — rows must be materialised before returning.
         safe_rows: list[dict] = [dict(r) for r in result_rows]
-        stale_f = _stale_files(
-            db_conn,
-            cfg_hash,
-            [abs_path(root, r["file"]) for r in result_rows if "file" in r],
-            root,
-        )
-        return safe_rows, stale_f
+        paths = collect_result_paths(safe_rows, root)
+        if paths:
+            return safe_rows, _stale_files(db_conn, cfg_hash, paths, root), 0, []
+        # An empty search result is the case the caller most easily reads as
+        # "does not exist".
+        dirty, new_sources = diagnose_empty_result(db_conn, cfg_hash, root)
+        return safe_rows, [], dirty, new_sources
 
-    safe_rows, stale_f = executor.execute_sync(_query, config_hash)
+    safe_rows, stale_f, dirty, new_sources = executor.execute_sync(_query, config_hash)
 
-    results: list[dict] = []
-    if stale_f:
+    if stale_f or dirty:
+        # Kept here, not in annotate_stale: this path knows that the project
+        # has a database, thus _db_path cannot raise.  A new source file does
+        # not start the daemon: only a build repairs that, and the daemon
+        # does not build.
         _ensure_daemon_running(root)
-        results.append(
-            {
-                "warning": f"Results may be stale — {len(stale_f)} file(s) changed. Background reindex in progress. Run 'fw-context index' to force full update."
-            }
+    return annotate_stale(
+        safe_rows, stale_f, empty_dirty_count=dirty, empty_new_sources=new_sources
+    )
+
+
+# ── shared stale annotation ──
+# _with_stale_recovery above serves the search handlers, which always give a
+# list of records.  The call-graph, inheritance, and source handlers give
+# either a list or a single dict, thus they need a shape-tolerant form.  Both
+# use the same detection: compare the mtime of every file that the result
+# names against the mtime that the index holds.
+
+STALE_RESULT_MESSAGE = (
+    "Results may be stale — {count} file(s) changed. Background reindex in "
+    "progress. Run 'fw-context index' to force full update."
+)
+
+# An empty result names no file, thus the per-record check has nothing to
+# compare.  Without this second message the caller reads "nothing found" as
+# "does not exist", and the empty-result playbook makes that worse: the model
+# tries four or five tools, gets nothing every time, and the repetition reads
+# as proof.
+EMPTY_RESULT_STALE_MESSAGE = (
+    "No result, and {count} indexed file(s) changed after the last index run. "
+    "What you look for can be in one of them, thus an empty result is not "
+    "proof that it does not exist. Run 'fw-context index'."
+)
+
+# A file that compile_commands.json does not cover is a stronger case than a
+# changed file, and it needs a different command: only a build writes that
+# file, thus a plain reindex leaves the caller in a circle.
+EMPTY_RESULT_NEW_SOURCE_MESSAGE = (
+    "No result, and {count} source file(s) are not in compile_commands.json "
+    "(first: {first}). A plain reindex cannot see them, because they have no "
+    "translation unit. Run `fw-context index --build`."
+)
+
+# The handlers do not agree on one name for the path of a record, thus a
+# check for a single key silently skips whole tools.  The names below were
+# collected from the actual output of every call-graph, inheritance, and
+# source tool against an indexed project.
+#
+# Aliases for the one file that a record is about — the first one present
+# wins, because a record that holds two of them names the same file twice.
+_PRIMARY_PATH_KEYS = ("file", "file_path", "source_file")
+# Keys of records that name more than one file.  ``find_indirect_targets``
+# gives the assignment site and the call site, and they are different files,
+# thus both must be checked.
+_EXTRA_PATH_KEYS = ("assign_file", "call_file")
+
+
+def collect_result_paths(result, root: Path, *, _nested: bool = False) -> list[str]:
+    """Give the absolute path of every file that *result* names.
+
+    Accepts both result shapes that the handlers use: a list of records, and
+    a single record.  A record with no path key adds nothing, thus an error
+    dict or a summary dict passes through without a stat() call.
+
+    Which tool uses which key:
+
+    * ``file`` — ``find_callers``, ``find_references``, the search tools,
+      ``get_file_map``, ``read_file``, and the ``methods`` of
+      ``find_wrapper_callers``
+    * ``file_path`` — ``find_dead_code``, ``find_hotspots``,
+      ``find_all_callers_recursive``, ``find_callees_recursive``
+    * ``source_file`` — ``trace_data_flow``
+    * ``assign_file`` + ``call_file`` — ``find_indirect_targets``
+
+    Args:
+        result: A record, or a list of records.
+        root: Project root, for the relative paths that the index stores.
+        _nested: Internal.  True while the function reads a nested list, and
+            it stops a second descent.
+
+    Returns:
+        list[str]: The absolute paths, with duplicates.  ``_stale_files``
+        removes them before it calls stat().
+    """
+    records = result if isinstance(result, list) else [result]
+    paths: list[str] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        for key in _PRIMARY_PATH_KEYS:
+            value = record.get(key)
+            if value:
+                paths.append(abs_path(root, value))
+                break
+        for key in _EXTRA_PATH_KEYS:
+            value = record.get(key)
+            if value:
+                paths.append(abs_path(root, value))
+        if _nested:
+            continue
+        # One level down, no more.  ``find_wrapper_callers`` holds its paths
+        # in ``methods``, thus a check of the top level alone covers none of
+        # its files.  The depth stops at one because no handler nests deeper,
+        # and an open recursion would walk large results for nothing.
+        for value in record.values():
+            if isinstance(value, list) and any(isinstance(v, dict) for v in value):
+                paths.extend(collect_result_paths(value, root, _nested=True))
+    return paths
+
+
+def annotate_stale(
+    result,
+    stale_files: list[str],
+    *,
+    empty_dirty_count: int = 0,
+    empty_new_sources: list[str] | None = None,
+):
+    """Add a stale warning to *result*.
+
+    Three conditions produce a warning, in this order of precedence:
+
+    * *stale_files* — the result names files, and some of them changed.
+    * *empty_new_sources* — the result names no file, and these source files
+      are absent from compile_commands.json.  Named first among the empty
+      cases, because it is the only one that needs ``--build``.
+    * *empty_dirty_count* — the result names no file, and this many indexed
+      files changed.
+
+    The last two exist because an empty result gives per-record detection
+    nothing to compare, and the caller reads silence as absence.
+
+    A list gets the warning as its first record, which matches the shape that
+    ``_with_stale_recovery`` gives.  A dict gets ``stale_warning`` and
+    ``stale`` keys instead — a leading record would break the dict contract
+    of the source handlers.
+
+    Returns *result* unchanged when no condition holds.
+
+    WHY no daemon start here: ``server.main`` starts the watcher daemon and
+    its ping loop keeps it alive, thus a query does not have to.  A side
+    effect in this function would also break every caller whose project has
+    no database — ``_db_path`` raises there, and a warning must never fail
+    the query it describes.
+    """
+    if stale_files:
+        message = STALE_RESULT_MESSAGE.format(count=len(stale_files))
+    elif empty_new_sources:
+        message = EMPTY_RESULT_NEW_SOURCE_MESSAGE.format(
+            count=len(empty_new_sources), first=empty_new_sources[0]
         )
-    results += safe_rows
-    return results
+    elif empty_dirty_count:
+        message = EMPTY_RESULT_STALE_MESSAGE.format(count=empty_dirty_count)
+    else:
+        return result
+
+    if isinstance(result, list):
+        return [{"warning": message}, *result]
+    if isinstance(result, dict):
+        annotated = dict(result)
+        annotated["stale_warning"] = message
+        annotated["stale"] = True
+        return annotated
+    return result
+
+
+def diagnose_empty_result(conn, config_hash: str, root: Path) -> tuple[int, list[str]]:
+    """Explain an empty result: ``(changed_file_count, unindexed_sources)``.
+
+    Runs only when the result names no file, thus its cost falls on the
+    queries that returned nothing anyway.
+
+    ``use_cache=False`` on purpose: the cache of ``_count_modified_files``
+    validates itself against ``MAX(mtime)`` of the files table, which only a
+    reindex changes.  An edit on disk leaves that cache valid, thus a cached
+    answer would miss the very edit this check exists for.
+
+    NOT cached either, for the same reason.  A cache on this answer was
+    tried and dropped: after the mtime gate was fixed the scan costs 23 ms
+    on the largest test project, and a cached diagnosis outlives the edit
+    it describes for as long as its TTL.
+    """
+    dirty = _count_modified_files(conn, config_hash, root, use_cache=False)
+    row = conn.execute(
+        "SELECT compile_commands_path FROM build_configs WHERE config_hash=?",
+        (config_hash,),
+    ).fetchone()
+    if row is None or not row["compile_commands_path"]:
+        return dirty, []
+    return dirty, find_unindexed_sources(
+        conn, config_hash, root, Path(row["compile_commands_path"])
+    )
+
+
+def with_stale_annotation(
+    root: Path, executor, query_fn, config_hash: str, *, diagnose_empty: bool = True
+):
+    """Run *query_fn* on *executor* and annotate a stale result.
+
+    The staleness check must share the connection with the query, thus it
+    runs inside the same ``execute_sync`` call.  A separate call would take
+    the executor lock twice and could see a different index state.
+
+    A result that names files is checked file by file.  A result that names
+    none goes to ``diagnose_empty_result``: an empty answer is the case where
+    the caller most needs to know that the index is behind, and it is the one
+    case where per-record detection has nothing to work with.
+
+    *diagnose_empty* is for the multi-scope caller.  The diagnosis describes
+    the project, not one build of it, and every scope would reach the same
+    conclusion — ``execute_scoped`` then throws the duplicates away.  Nine
+    configs on the Zephyr project meant nine scans of the whole index for one
+    message.
+    """
+
+    def _query(conn, cfg_hash):
+        result = query_fn(conn, cfg_hash)
+        paths = collect_result_paths(result, root)
+        if paths:
+            return result, _stale_files(conn, cfg_hash, paths, root), 0, []
+        if not diagnose_empty:
+            return result, [], 0, []
+        dirty, new_sources = diagnose_empty_result(conn, cfg_hash, root)
+        return result, [], dirty, new_sources
+
+    result, stale, dirty, new_sources = executor.execute_sync(_query, config_hash)
+    return annotate_stale(
+        result, stale, empty_dirty_count=dirty, empty_new_sources=new_sources
+    )

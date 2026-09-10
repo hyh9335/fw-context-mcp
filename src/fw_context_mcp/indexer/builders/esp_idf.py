@@ -8,9 +8,15 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fw_context_mcp.utils import cc_output_path, resolve_real_binary, run_build_command
+from fw_context_mcp.utils import (
+    AUTOBUILD_REL,
+    cc_output_path,
+    resolve_build_dir,
+    resolve_real_binary,
+    run_build_command,
+)
 
-from . import registry
+from . import _linker, registry
 from .protocol import BuildIssue
 
 if TYPE_CHECKING:
@@ -70,11 +76,26 @@ class ESPIDFBuildSystem:
                 "  cd esp-idf && ./install.sh && source export.sh"
             )
 
-        cmd: list[str] = [idf_py, "build"]
+        # ONE value for every use below: the directory idf.py writes into,
+        # the gate that asks whether it is configured, and the read of the
+        # compilation database.  Three spellings of the same thing is how
+        # they came apart — `-B` moved and neither of the other two
+        # followed, so an isolated build either failed outright or copied
+        # the stale compile_commands.json of the build of the user.
+        #
+        # Without an isolated directory this resolves to project_root/"build",
+        # which is the default of idf.py, thus one value serves both modes.
+        build_dir = resolve_build_dir(project_root, cfg, "build")
+        # -B is a global flag of idf.py, thus it comes before the command.
+        # Passed only when the directory is not the default, so an explicit
+        # build keeps the plain command line it always had.
+        build_dir_flag: list[str] = ["-B", str(build_dir)] if cfg.isolated_build_dir else []
+
+        cmd: list[str] = [idf_py, *build_dir_flag, "build"]
 
         if cfg.clean:
             # idf.py fullclean removes all build artifacts
-            clean_cmd = [idf_py, "fullclean"]
+            clean_cmd = [idf_py, *build_dir_flag, "fullclean"]
             log.info("esp-idf clean: %s", " ".join(clean_cmd))
             try:
                 run_build_command(clean_cmd, cwd=project_root, description="idf.py fullclean", build_cfg=cfg)
@@ -130,28 +151,37 @@ class ESPIDFBuildSystem:
         if "-MMD" not in env["EXTRA_CXXFLAGS"]:
             env["EXTRA_CXXFLAGS"] += " -MMD" if env["EXTRA_CXXFLAGS"] else "-MMD"
 
-        # Ensure the target is configured — idf.py build without a prior
-        # set-target fails when the cmake cache is missing (e.g. after fullclean
-        # or a fresh clone).  set-target reads the target from sdkconfig.
-        build_dir = project_root / "build"
-        if not build_dir.exists():
+        # Configure the build directory when it holds no cmake cache.
+        #
+        # The gate asks about the directory THIS build writes to, not about
+        # project_root/"build": with `-B` those are different, and asking
+        # about the wrong one left the isolated directory unconfigured while
+        # the build of the user made it look ready.
+        #
+        # `set-target` runs only when there is no sdkconfig, and that is a
+        # correctness rule, not a saving.  It renames <project>/sdkconfig to
+        # sdkconfig.old — `-B` does not move that, because
+        # tools/cmake/project.cmake takes ${CMAKE_SOURCE_DIR}/sdkconfig and
+        # renames it whenever _IDF_PY_SET_TARGET_ACTION is set — and that
+        # file is usually committed.  An automatic build would have deleted
+        # it, and the target it passed comes from the guess below, read out
+        # of that same file with esp32 as the fallback, so it could also
+        # regenerate the configuration for a different chip.
+        #
+        # Nothing is lost by skipping it: ensure_build_directory() in
+        # idf_py_actions/tools.py creates the directory and runs cmake on
+        # its own, and project.cmake takes the target from the sdkconfig
+        # that is already there.  set-target is needed only when that file
+        # does not exist — and then it renames nothing.
+        sdkconfig = project_root / "sdkconfig"
+        if not build_dir.exists() and not sdkconfig.exists():
             target = "esp32"
-            sdkconfig = project_root / "sdkconfig"
-            if sdkconfig.exists():
-                import re
-                try:
-                    content = sdkconfig.read_text(encoding="utf-8")
-                    m = re.search(r'CONFIG_IDF_TARGET="(\w+)"', content)
-                    if m:
-                        target = m.group(1)
-                except OSError:
-                    pass
-            if target == "esp32":
-                log.warning(
-                    "Could not detect ESP-IDF target from sdkconfig — defaulting to esp32. "
-                    "Set target explicitly with 'idf.py set-target <chip>' if using a different variant."
-                )
-            set_target_cmd = [idf_py, "set-target", target]
+            log.warning(
+                "No sdkconfig in %s — defaulting the ESP-IDF target to esp32. "
+                "Run 'idf.py set-target <chip>' yourself if this project uses "
+                "a different variant.", project_root,
+            )
+            set_target_cmd = [idf_py, *build_dir_flag, "set-target", target]
             log.info("esp-idf set-target: %s", " ".join(set_target_cmd))
             try:
                 run_build_command(set_target_cmd, cwd=project_root, description="idf.py set-target", build_cfg=cfg)
@@ -161,11 +191,14 @@ class ESPIDFBuildSystem:
         log.info("esp-idf build: %s", " ".join(cmd))
         run_build_command(cmd, cwd=project_root, description="idf.py build", env=env, build_cfg=cfg)
 
-        # ESP-IDF puts compile_commands.json in the build directory
-        cc_in_build = project_root / "build" / "compile_commands.json"
+        # ESP-IDF puts compile_commands.json in the build directory — the
+        # one `-B` named, which is why this reads build_dir and not a second
+        # spelling of it.  The message names the directory it looked in;
+        # saying "build/" while looking elsewhere is what hid this.
+        cc_in_build = build_dir / "compile_commands.json"
         if not cc_in_build.exists():
             raise RuntimeError(
-                "compile_commands.json not found in build/ directory. "
+                f"compile_commands.json not found in {build_dir}. "
                 "Ensure the ESP-IDF project was configured correctly."
             )
 
@@ -176,7 +209,29 @@ class ESPIDFBuildSystem:
 
         return target_cc
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — ``idf.py -B <dir>`` puts every artifact there."""
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return the scripts that `build/build.ninja` names with `-T`.
+
+        ESP-IDF does not use one script.  It passes about ten — the ROM
+        symbol files of the chip, `memory.ld`, and `sections.ld` — so the
+        caller reads them all and each one adds what it holds.
+        """
+        if compile_commands is None:
+            return []
+        return _linker.from_ninja(compile_commands.parent)
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""
@@ -203,14 +258,28 @@ class ESPIDFBuildSystem:
     # ── Validation ──
 
     def validate_artifacts(self, compile_commands: Path, project_root: Path) -> list[BuildIssue]:
+        """Report a project that was never built.
+
+        Either directory answers the question, because the build may have
+        gone to an isolated one: `-B` sends a build that fw-context started
+        under AUTOBUILD_REL, and this method has no BuildConfig to tell it
+        which run produced the artifacts.  Asking only about `build/` made
+        an isolated build fail validation right after it succeeded, and the
+        error aborts the index run — the automatic build then recorded a
+        failure and backed off for half an hour.
+
+        The signature carries no config on purpose: it is the shared
+        protocol of thirteen backends, and widening it for this would cost
+        far more than the one extra test here.
+        """
         issues: list[BuildIssue] = []
-        build_dir = project_root / "build"
-        if not build_dir.exists():
+        built = (project_root / "build").exists() or (project_root / AUTOBUILD_REL).is_dir()
+        if not built:
             issues.append(
                 BuildIssue(
                     severity="error",
                     category="missing_build_dir",
-                    message="ESP-IDF build/ directory not found",
+                    message="ESP-IDF build directory not found",
                     auto_fixable=False,
                     fix_hint="Run 'fw-context index --build' to compile the project.",
                 )

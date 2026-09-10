@@ -10,9 +10,9 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fw_context_mcp.utils import cc_output_path, run_build_command
+from fw_context_mcp.utils import cc_output_path, resolve_build_dir, run_build_command
 
-from . import registry
+from . import _linker, registry
 from .protocol import BuildIssue
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ class GenericCMakeBuildSystem:
         if not shutil.which("cmake"):
             raise RuntimeError("cmake is required.  Install it:  sudo pacman -S cmake")
 
-        build_dir = project_root / "build"
+        build_dir = resolve_build_dir(project_root, cfg, "build")
 
         # Configure
         configure_cmd: list[str] = [
@@ -99,7 +99,31 @@ class GenericCMakeBuildSystem:
 
         return target_cc
 
+    def background_build_safe(self, cfg: BuildConfig) -> bool:
+        """Safe — configure and build both take the chosen directory."""
+        return True
+
     # ── Build dir patterns ──
+
+    def get_linker_scripts(
+        self,
+        project_root: Path,
+        *,
+        compile_commands: Path | None = None,
+        variant: str = "",
+        units: list | None = None,
+    ) -> list[Path]:
+        """Return the scripts that the ninja file names with `-T`.
+
+        A CMake project with the ninja generator records the whole link
+        command in `build.ninja`, thus the flag is authoritative here as
+        well.  A project built with the Makefile generator writes no ninja
+        file and gets an empty list — the answer is nothing rather than a
+        path built from a pattern.
+        """
+        if compile_commands is None:
+            return []
+        return _linker.from_ninja(compile_commands.parent)
 
     def get_build_dir_patterns(self, project_root: Path) -> list[str]:
         """Return build-output directory patterns for staleness filtering."""

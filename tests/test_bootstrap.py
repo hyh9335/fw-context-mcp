@@ -44,8 +44,20 @@ def _make_project_root(tmp_path: Path, project_id: str | None = None) -> Path:
 
 
 def _create_index_db(db_path: Path, project_id: str, root: Path) -> None:
-    """Create a minimal index DB with one project and one build config."""
-    from fw_context_mcp.indexer.db import open_db, transaction, upsert_build_config, upsert_project
+    """Create a minimal index DB with one project and one build config.
+
+    Stamps ``CURRENT_ROW_FORMAT`` because this stands in for a COMPLETED
+    index run.  ``_run_postprocess`` writes that stamp at the end of a real
+    run, and without it every build here reports ``reindex_needed`` over an
+    index that these tests mean to be current.
+    """
+    from fw_context_mcp.indexer.db import (
+        CURRENT_ROW_FORMAT,
+        open_db,
+        transaction,
+        upsert_build_config,
+        upsert_project,
+    )
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # Create a dummy compile_commands.json so _is_stale returns (False, None)
@@ -55,7 +67,10 @@ def _create_index_db(db_path: Path, project_id: str, root: Path) -> None:
     try:
         with transaction(conn):
             upsert_project(conn, project_id, "test-proj", str(root))
-            upsert_build_config(conn, "hash-test", project_id, str(cc_path))
+            upsert_build_config(
+                conn, "hash-test", project_id, str(cc_path),
+                row_format=CURRENT_ROW_FORMAT,
+            )
     finally:
         conn.close()
 
@@ -213,3 +228,136 @@ class TestSentinelBypass:
             from fw_context_mcp.mcp.handlers.maintenance import reset_index
 
             reset_index(project_root=str(root))
+
+
+# ── Modified files in fast mode ────────────────────────────────────
+
+
+class TestModifiedCountInFastMode:
+    """``fast=True`` must still count the files that changed on disk.
+
+    Before this, fast mode returned 0 unconditionally, thus the tool said
+    "fully up to date" while the search tools warned about the same file.
+    The caller then had two contradictory readings and no rule to pick one.
+    """
+
+    @staticmethod
+    def _project_with_one_indexed_file(tmp_path: Path) -> tuple[Path, Path]:
+        """Return (root, source) for a project whose index knows *source*."""
+        from fw_context_mcp.indexer.db import open_db, transaction, upsert_file
+        from fw_context_mcp.utils import compute_source_hash
+
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        db_path = _load_cfg(root).index.db_dir / pid / "index.db"
+        _create_index_db(db_path, pid, root)
+
+        source = root / "main.c"
+        source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
+
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                upsert_file(
+                    conn,
+                    "hash-test",
+                    str(source),
+                    "c",
+                    mtime=source.stat().st_mtime,
+                    source_hash=compute_source_hash(source),
+                )
+        finally:
+            conn.close()
+        return root, source
+
+    def test_unchanged_file_is_not_counted(self, tmp_path: Path):
+        root, _ = self._project_with_one_indexed_file(tmp_path)
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "ready"
+        assert result["modified_files_count"] == 0
+        assert "fully up to date" in result["index_message"]
+
+    def test_an_uncovered_source_reads_as_reindexing_when_it_builds_itself(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """A file fw-context will build on its own is work under way.
+
+        "reindex_needed" would ask the caller for a command that only
+        duplicates the build the daemon is about to run.
+        """
+        from fw_context_mcp.indexer.autobuild import AutobuildState
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        root, _ = self._project_with_one_indexed_file(tmp_path)
+        monkeypatch.setattr(
+            maintenance, "find_unindexed_sources", lambda *a, **k: ["src/added.c"]
+        )
+        monkeypatch.setattr(
+            maintenance, "_autobuild_state", lambda *a, **k: AutobuildState.WILL_BUILD
+        )
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "reindexing"
+        assert "src/added.c" in result["index_message"]
+        assert "no command is needed" in result["index_message"]
+
+    def test_an_uncovered_source_reads_as_reindex_needed_when_it_cannot(
+        self, tmp_path: Path, monkeypatch
+    ):
+        from fw_context_mcp.indexer.autobuild import AutobuildState
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        root, _ = self._project_with_one_indexed_file(tmp_path)
+        monkeypatch.setattr(
+            maintenance, "find_unindexed_sources", lambda *a, **k: ["src/added.c"]
+        )
+        monkeypatch.setattr(
+            maintenance, "_autobuild_state", lambda *a, **k: AutobuildState.UNSUPPORTED
+        )
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "reindex_needed"
+        assert "fw-context index --build" in result["index_message"]
+
+    def test_a_failed_automatic_build_says_to_read_the_error(
+        self, tmp_path: Path, monkeypatch
+    ):
+        from fw_context_mcp.indexer.autobuild import AutobuildState
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        root, _ = self._project_with_one_indexed_file(tmp_path)
+        monkeypatch.setattr(
+            maintenance, "find_unindexed_sources", lambda *a, **k: ["src/added.c"]
+        )
+        monkeypatch.setattr(
+            maintenance, "_autobuild_state", lambda *a, **k: AutobuildState.BACKOFF
+        )
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "reindex_needed"
+        assert "failed recently" in result["index_message"]
+
+    def test_changed_file_is_counted_in_fast_mode(self, tmp_path: Path):
+        import os
+
+        root, source = self._project_with_one_indexed_file(tmp_path)
+        source.write_text("int main(void) { return 42; }\n", encoding="utf-8")
+        # Move the stamp well past the index, out of the racy window, so the
+        # hash — not the tolerance — is what makes the decision.
+        stamp = os.path.getmtime(source) + 200
+        os.utime(source, (stamp, stamp))
+
+        fast = get_active_build(project_root=str(root))
+        slow = get_active_build(project_root=str(root), fast=False)
+
+        assert fast["modified_files_count"] == 1
+        assert slow["modified_files_count"] == 1
+        # The index still answers every query, thus the status stays "ready".
+        assert fast["status"] == "ready"
+        assert "fully up to date" not in fast["index_message"]
+        assert "1 file(s) changed" in fast["index_message"]

@@ -50,11 +50,13 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field
 
 from ...indexer import db as index_db
+from ...indexer.compile_commands import compile_directory
 from ...indexer.db import (
     count_fp_assignments,
     count_indirect_call_sites,
@@ -70,8 +72,10 @@ from ...indexer.db import (
 from ...indexer.db import (
     find_indirect_targets as query_indirect_targets,
 )
+from ...indexer.intlist import read_isr_registrations
 from ...utils import abs_path
 from ...utils import escape_like as _escape_like
+from ...utils import format_number_ranges as _as_ranges
 from ._base import BaseHandler, DbContext
 from .source import _lookup_definition
 
@@ -676,6 +680,31 @@ def _refs_guard(project_root: str | None, variant: str | None = None, image: str
 
     return db, None
 
+
+def _with_absolute_file(rows: list[dict], root: Path) -> list[dict]:
+    """Rename the ``file_path`` of each row to an absolute ``file``.
+
+    WHY: the index stores a path relative to the project root, and four
+    graph tools handed that row to the caller as it came from the database.
+    Their documents promised ``file``, thus ``result["file"]`` raised a
+    KeyError, and the ``file_path`` that was really there held a relative
+    path where every other tool gives an absolute one.  A caller cannot
+    cite ``file:line`` from a path whose root it must guess.
+
+    A row that carries neither key passes through untouched: an ``info`` or
+    an ``error`` element is a row as well.
+    """
+    out: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict) or "file_path" not in row:
+            out.append(row)
+            continue
+        moved = dict(row)
+        moved["file"] = abs_path(root, moved.pop("file_path"))
+        out.append(moved)
+    return out
+
+
 # ── moved from server.py ──
 def find_call_path(
     from_name: Annotated[str, Field(description="Starting symbol for path search.")],
@@ -748,8 +777,10 @@ def find_call_path(
 
     Returns:
         list of dicts, each with: depth (edge count, int), chain (str —
-        e.g. ``"main → app_run → modem_init"``). When no path exists
-        within the depth limit, the list holds one ``info`` dict.
+        e.g. ``"main → app_run → modem_init"``), target_usr (str — the USR
+        of the symbol the path ends at, which tells two overloads apart).
+        When no path exists within the depth limit, the list holds one
+        ``info`` dict.
 
         Never empty: one dict with ``error`` (cannot resolve) or ``info``
         (no results) replaces the results.  Check both keys first.
@@ -826,9 +857,13 @@ def find_all_callers_recursive(
         image: Sysbuild image in the variant. Omit for all images.
 
     Returns:
-        list of dicts, each with: caller (str — caller name),
-        caller_qualified_name (str), depth (int — distance from target),
-        file (str), line (int), ref_kind (``"call"`` or ``"indirect"``).
+        list of dicts, each with: name (str — the caller),
+        qualified_name (str), kind (str), signature (str),
+        depth (int — distance from the target), file (str — absolute).
+
+        This tool gives no line, because one caller can hold several call
+        sites.  For the line of each call use ``find_callers`` on the name
+        that this tool reports.
 
         Never empty: one dict with ``error`` (cannot resolve) or ``info``
         (no results) replaces the results.  Check both keys first.
@@ -847,7 +882,7 @@ def find_all_callers_recursive(
         rows = index_db.find_all_callers_recursive(conn, config_hash, name, max_depth=max_depth, limit=limit)
         if not rows:
             return [{"info": f"No callers found for '{name}'."}]
-        return rows
+        return _with_absolute_file(rows, db.root)
 
     return db.execute_scoped(_query)
 
@@ -898,9 +933,13 @@ def find_callees_recursive(
         image: Sysbuild image in the variant. Omit for all images.
 
     Returns:
-        list of dicts, each with: callee (str — callee name),
-        callee_qualified_name (str), depth (int — distance from source),
-        file (str), line (int), ref_kind (``"call"`` or ``"indirect"``).
+        list of dicts, each with: name (str — the callee),
+        qualified_name (str), kind (str), signature (str),
+        depth (int — distance from the source), file (str — absolute).
+
+        This tool gives no line, because one function can call the same
+        callee several times.  For the line of each call use
+        ``find_callers`` on the name that this tool reports.
 
         Never empty: one dict with ``error`` (cannot resolve) or ``info``
         (no results) replaces the results.  Check both keys first.
@@ -919,7 +958,7 @@ def find_callees_recursive(
         rows = index_db.find_callees_recursive(conn, config_hash, name, max_depth=max_depth, limit=limit)
         if not rows:
             return [{"info": f"No callees found for '{name}'."}]
-        return rows
+        return _with_absolute_file(rows, db.root)
 
     return db.execute_scoped(_query)
 
@@ -981,9 +1020,10 @@ def find_dead_code(
         image: Sysbuild image in the variant. Omit for all images.
 
     Returns:
-        list of dicts, each with: name, qualified_name, kind, file, line,
-        status (``"dead"`` or ``"possibly_dead"``), and reason (str —
-        explains why the function is classified as dead or possibly dead).
+        list of dicts, each with: name, qualified_name, kind, signature,
+        file (str — absolute), line, status (``"dead"`` or
+        ``"possibly_dead"``), and reason (str — explains why the function
+        is classified as dead or possibly dead).
 
         Never empty: one dict with ``info`` replaces an empty result.
         Check that key first.
@@ -1005,7 +1045,7 @@ def find_dead_code(
         )
         if not rows:
             return [{"info": "No dead or possibly-dead functions found — every defined function has at least one caller."}]
-        return rows
+        return _with_absolute_file(rows, db.root)
 
     return db.execute_scoped(_query)
 
@@ -1047,8 +1087,12 @@ def find_wrapper_callers(
         list of dicts, each with: wrapper_class (str — ``"(global)"`` for a
         free function), method_count (int),
         methods (list of dicts — each with method, qualified_name, kind,
-        and calls (list of dicts — ``driver_method`` (str) and ``line``
-        (int) of each call into the driver))).
+        file (str — absolute path of the file that holds the body of that
+        method), and calls (list of dicts — ``driver_method`` (str) and
+        ``line`` (int) of each call into the driver))).
+
+        The path sits on the method, not on the class, because one wrapper
+        class often spans several files.
 
         Never empty: one dict with ``error`` (cannot resolve) or ``info``
         (no results) replaces the results.  Check both keys first.
@@ -1148,19 +1192,26 @@ def find_wrapper_callers(
         wrapped: dict[str, dict] = {}
         for r in rows:
             caller_qn = r["caller_qname"] or r["caller_name"] or "?"
-            # Extract class from qualified name: "zbox::ZMODEM::start" → "zbox::ZMODEM"
+            # Extract class from qualified name: "the Mbed project::ZMODEM::start" → "the Mbed project::ZMODEM"
             if "::" in caller_qn:
                 wrapper_class = caller_qn.rsplit("::", 1)[0]
             else:
                 wrapper_class = "(global)"
             if wrapper_class not in wrapped:
-                wrapped[wrapper_class] = {"class": wrapper_class, "methods": {}, "_file": r["from_file"]}
+                wrapped[wrapper_class] = {"class": wrapper_class, "methods": {}}
             cm = wrapped[wrapper_class]["methods"]
             if caller_qn not in cm:
                 cm[caller_qn] = {
                     "method": r["caller_name"],
                     "qualified_name": caller_qn,
                     "kind": r["caller_kind"],
+                    # The file that holds the call, thus the file that holds
+                    # the body of this wrapper method.  A per-method path is
+                    # necessary: one wrapper class can span many files (18%
+                    # of the classes in the Mbed project do, up to 49 files), thus
+                    # a single path on the class would cover only one of
+                    # them, and the staleness check would miss the rest.
+                    "file": abs_path(db.root, r["from_file"]),
                     "calls": [],
                 }
             target = driver_usr_map.get(r["to_usr"])
@@ -1382,8 +1433,9 @@ def find_hotspots(
         image: Sysbuild image in the variant. Omit for all images.
 
     Returns:
-        list of dicts, each with: name, qualified_name, kind, file, line,
-        caller_count (int — total number of call sites), signature.
+        list of dicts, each with: name, qualified_name, kind, signature,
+        file (str — absolute), line,
+        caller_count (int — total number of call sites).
 
         Never empty: one dict with ``info`` replaces an empty result.
         Check that key first.
@@ -1407,7 +1459,479 @@ def find_hotspots(
             return [{"info": "No project hotspots found. Try project_only=False to include vendor code."}]
         if not rows:
             return [{"info": "No references indexed — enable index_refs and re-index."}]
-        return rows
+        return _with_absolute_file(rows, db.root)
 
     return db.execute_scoped(_query)
 
+
+
+def _interrupt_summary(table) -> dict | None:
+    """Say which interrupts are connected, and so which are not.
+
+    ``unhandled_only`` used to answer nothing at all on a build that
+    generates its table — measured, zero rows on all eleven images of a
+    Zephyr project, against 39 to 72 on four CMSIS and Mbed ones.  That
+    answer is read from an alias edge, which CMSIS writes and a generator
+    does not.
+
+    The registrations settle it from the other side.  They are the whole
+    list of what the build connected, so the interrupts NOT in it have
+    nothing servicing them, and no handler has to be recognised by name for
+    that to hold.
+
+    The complement is taken over the declared length and NOT over the named
+    slots of a table, which would be wrong.  Measured on mcuboot: its
+    software table names 44 of 48 slots, but slot 2 holds
+    ``uarte_0_direct_isr`` — an interrupt wired straight into the vector
+    table, bypassing the software one.  Counting named slots calls that
+    unserviced; counting registrations does not.  The two sources were
+    measured to partition every table exactly, on all eleven images.
+    """
+    if not table.declared:
+        return None
+    connected = sorted({item.slot for item in table.registrations})
+    if not connected:
+        return None
+    idle = sorted(set(range(table.declared)) - set(connected))
+
+    text = (
+        f"{table.declared} interrupts in the table, {len(connected)} "
+        f"connected by the build: {_as_ranges(connected)}."
+    )
+    if not idle:
+        return {"interrupts": text}
+    if table.dynamic:
+        # The list is not the whole story, so the complement cannot be
+        # asserted — only the part that is known.
+        text += (
+            f" The other {len(idle)} have nothing connected in the build, but "
+            f"this build also enables CONFIG_DYNAMIC_INTERRUPTS, so some of "
+            f"them may be connected at run time instead."
+        )
+    else:
+        text += (
+            f" Nothing is connected to the other {len(idle)}: "
+            f"{_as_ranges(idle)}."
+        )
+    return {"interrupts": text}
+
+
+def _from_the_build(conn, config_hash: str, coverage: list[dict], table) -> list[dict]:
+    """Name the slots the index could not, from what the build recorded.
+
+    A generated table holds a resolved ADDRESS in every slot that is in
+    use, so those slots have no name for the index to read — measured, 6 of
+    290 on an nRF54L application, and they are the interrupts the firmware
+    actually services.  The build recorded the registrations that produced
+    them, and ``intlist.read_isr_registrations`` reads them back.
+
+    A registration is reported only where it fills a gap the index found in
+    a real table.  That keeps the two sources honest about each other: a
+    registration for a slot the index already named would be a
+    contradiction worth noticing rather than a row to add, and one for a
+    table the index never saw has nothing to attach to.
+
+    Each row carries ``source="build"``, and ``argument`` where the build
+    named one.  The argument is NOT a second handler: measured, it is
+    ``nrfx_power_clock_irq_handler`` behind the ``nrfx_isr`` shim in one
+    driver and the device ``__device_dts_ord_116`` in another.
+    """
+    gaps = {
+        slot: entry
+        for entry in coverage
+        for slot in entry.get("missing_slots", ())
+    }
+    if not gaps:
+        return []
+
+    out: list[dict] = []
+    for registration in table.registrations:
+        entry = gaps.get(registration.slot)
+        if entry is None:
+            continue
+        row = {
+            "slot": registration.slot,
+            "name": registration.handler,
+            "status": "c",
+            "source": "build",
+            "table_name": entry["table_name"],
+            "table_usr": entry["table_usr"],
+            "table_file": entry["table_file"],
+            "table_line": 0,
+            "file": "",
+            "line": 0,
+        }
+        if registration.argument:
+            row["argument"] = registration.argument
+        found = conn.execute(
+            """SELECT file_path AS file, line, kind, usr FROM symbols
+               WHERE config_hash = ? AND name = ? AND is_definition = 1
+               LIMIT 2""",
+            (config_hash, registration.handler),
+        ).fetchall()
+        # Only one definition may answer.  Two mean the name is ambiguous,
+        # and pointing at the wrong file is worse than pointing at none.
+        if len(found) == 1:
+            row["file"] = found[0]["file"]
+            row["line"] = found[0]["line"]
+            if str(found[0]["usr"]).startswith("asm:"):
+                row["status"] = "assembly"
+        out.append(row)
+
+    out.sort(key=lambda entry: (str(entry["table_name"]), entry["slot"]))
+    # The caveat about run-time registration is said once, by
+    # _interrupt_summary, which reports it whether or not any gap was
+    # filled here.
+    return out
+
+
+def _build_directory(conn, config_hash: str):
+    """Return the build tree of this configuration, or None.
+
+    The tree is what holds the artifacts a build records, and it is NOT
+    the directory of compile_commands.json.  fw-context generates its own
+    copy of that file under `.fw-context/build/`, so the parent of the
+    path in the database is a directory with no artifact in it.  The
+    build itself names the tree, in the `directory` field of every entry,
+    which `compile_directory` reads.
+
+    Measured on the Zephyr project before this read the field: every one
+    of the nine images answered "no registrations", because
+    `read_isr_registrations` looked for `zephyr/zephyr_pre0.elf` under
+    `.fw-context/build`.  The artifact was there all along, two
+    directories away, with its `.intList` section intact.
+
+    The parent is still the answer when the file names no directory.  A
+    build system that writes compile_commands.json into its own tree —
+    which is where CMake puts it — is right either way.
+    """
+    found = conn.execute(
+        """SELECT compile_commands_path FROM build_configs
+           WHERE config_hash = ? LIMIT 1""",
+        (config_hash,),
+    ).fetchone()
+    if found is None or not found["compile_commands_path"]:
+        return None
+    path = Path(str(found["compile_commands_path"]))
+    return compile_directory(path) or path.parent
+
+
+def _slots_within_limit(
+    slots: list[dict], trailers: list[dict], limit: int
+) -> list[dict]:
+    """Cut *slots* to *limit*, keep every *trailer*, and say what was cut.
+
+    A generated table on its own can be longer than the default: 290
+    entries plus the assembly exceptions measured 301 rows.  A silent cut
+    would let a part of a table read as a whole one, and a reader counting
+    serviced interrupts would be wrong with no way to notice.  The notice
+    is a trailing dict, which is how this tool already reports ``info``
+    and ``error``.
+
+    A trailer is not a slot, and the limit does not apply to it.
+    ``coverage`` and ``interrupts`` describe the WHOLE table, and they used
+    to be appended to the slots, so the cut took them first — measured on
+    the nRF54L application: 573 generated slots plus 11 assembly ones
+    against a default limit of 400, and the two lines that summarize 290
+    interrupts were exactly the two the reader never saw.  The longer the
+    table, the more the summary is the answer, so it sits outside the cut.
+
+    ``truncated`` comes before the other trailers because it is about the
+    slots above it, not about the table.
+    """
+    if len(slots) <= limit:
+        return slots + trailers
+    return [
+        *slots[:limit],
+        {"truncated": (
+            f"{len(slots) - limit} of {len(slots)} slots are not shown. "
+            f"Raise limit (max 1000), or narrow with unhandled_only."
+        )},
+        *trailers,
+    ]
+
+
+def _vector_rows(
+    conn, config_hash: str, *, unhandled_only: bool, limit: int
+) -> list[dict]:
+    """Assemble the answer of ``get_vector_table`` for one build config.
+
+    Separate from the tool so a test can hand it a connection.  The tool
+    itself only resolves the project and the config; everything that
+    decides WHAT is reported is here.
+
+    Two sources answer, and either one can answer alone:
+
+    * the index, which holds the slots of the table, and
+    * the build artifact, which holds the registrations that produced the
+      slots the index cannot name.
+
+    The artifact is read before deciding that there is nothing to report,
+    because on a build that generates its table it is the ONLY source
+    that answers ``unhandled_only`` — that filter reads an alias edge,
+    which a CMSIS startup writes and a generator does not.
+    """
+    slots = index_db.get_vector_table(
+        conn, config_hash, unhandled_only=unhandled_only,
+    )
+    # Read once and share: both the rows that name a gap and the summary
+    # of what is connected come out of the same artifact.
+    build_dir = _build_directory(conn, config_hash)
+    recorded = read_isr_registrations(build_dir) if build_dir else None
+
+    # A trailer describes the whole table rather than one slot, so it is
+    # kept apart: the limit applies to slots only, and a long table must
+    # not lose its summary.  See _slots_within_limit.
+    trailers: list[dict] = []
+
+    if not unhandled_only:
+        coverage = index_db.get_table_coverage(conn, config_hash)
+        if recorded is not None:
+            slots = slots + _from_the_build(
+                conn, config_hash, coverage, recorded,
+            )
+        # Coverage is reported only where a table still has gaps a name
+        # could not be found for.  A table the index read completely has
+        # nothing to add.  It is left out under unhandled_only, where the
+        # caller asked for one kind of row and a summary of every table
+        # would not be it.
+        trailers += [
+            {"coverage": (
+                f"{entry['table_name']}: {entry['named']} of "
+                f"{entry['declared']} slots name a function. No name in "
+                f"slots {entry['missing']} — the element there is a zero, "
+                f"an address the linker resolved, or not a function. "
+                f"Whether that means the vector is unused or in use "
+                f"depends on the table."
+            )}
+            for entry in coverage
+        ]
+
+    # The summary is reported in BOTH modes, for the reason in the
+    # docstring above.
+    if recorded is not None:
+        summary = _interrupt_summary(recorded)
+        if summary is not None:
+            trailers.append(summary)
+
+    if not slots and not trailers:
+        return [{"info": (
+            "No vector table in this build. Neither source found one: "
+            "the assembly holds no table of address words, and no array "
+            "of function addresses was recognised. arm64, Xtensa and "
+            "MIPS build their tables from branch instructions, which "
+            "this tool does not read. An index written before slots "
+            "were recorded also answers this way — reindex to read the "
+            "C source. Use find_references on a handler name instead."
+        )}]
+    if not slots:
+        # There IS an answer, it just does not have the shape of a slot
+        # row.  Saying "no vector table" here would contradict the lines
+        # that follow — measured, that is what all nine images of the
+        # Zephyr project used to answer under unhandled_only.
+        trailers.insert(0, {"info": (
+            "No slot row to report, and the lines below are the answer. "
+            "A build that generates its table names each unserviced "
+            "vector with a dispatcher rather than an alias of a default "
+            "handler, and the alias is what a slot row is read from."
+            if unhandled_only else
+            "The index recorded no slot for this build; what follows "
+            "comes from the build artifact instead."
+        )})
+
+    return _slots_within_limit(slots, trailers, limit)
+
+
+def get_vector_table(
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    unhandled_only: Annotated[bool, Field(description="Return only the slots that reach the default handler.")] = False,
+    limit: Annotated[int, Field(description="Maximum slots (default 400).")] = 400,
+    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+) -> list[dict]:
+    """Read the interrupt vector table, and say what services each interrupt.
+
+    The vector table is how an interrupt reaches code.  Nothing CALLS a
+    handler — the hardware reads a slot and jumps — so a handler has no
+    caller, and every other tool shows it as unreferenced.  This tool
+    reads the table itself, from the assembly the build compiles.
+
+    Use it to answer "which interrupts does this firmware service", to
+    find the handler for one interrupt, or to find the interrupts that
+    reach the trap loop.
+
+    **The slot number is the position in the table.**  What that position
+    means belongs to the architecture, not to the index.  On Cortex-M
+    slots 0 to 15 are the system exceptions and slot 16 + n is external
+    interrupt n, so ``TIM2_IRQHandler`` in slot 44 is ``TIM2_IRQn = 28``.
+    On other architectures the same position means something else.
+
+    The ``status`` field says what services the interrupt:
+
+    * ``"c"`` — a definition outside assembly.  Code runs.  When the
+      index also holds the weak definition that this one replaced, the
+      row has ``overridden`` with its file and line.
+    * ``"assembly"`` — a strong assembly definition.  Assembly services
+      the interrupt.
+    * ``"unhandled"`` — a weak assembly definition that nothing
+      overrode.  A CMSIS startup file makes this an alias of
+      ``Default_Handler``, which is an infinite loop.  If the interrupt
+      fires, the device stops.
+    * ``"runtime"`` — the image holds that same alias, and the code
+      installs a real handler into this slot by calling
+      ``NVIC_SetVector``.  A target that defines
+      ``CMSIS_VECTAB_VIRTUAL`` keeps its vector table in RAM and fills
+      it that way, so the interrupt IS serviced once the registering
+      code has run — and not before it.  The row holds ``installed``,
+      one entry per call site with the handler name, its file and line,
+      and ``at``, where the registration happens.  Follow ``at`` to see
+      WHEN it happens: on the Mbed project ``us_ticker_irq_handler``
+      reaches slot 25 from ``us_ticker_init``, so the tick source is
+      unserviced until the ticker starts.  A row with a real static
+      definition keeps its own status and still carries ``installed``.
+    * ``"data"`` — the slot holds an address BUILT from the symbol it
+      names (``.word z_main_stack + CONFIG_MAIN_STACK_SIZE``), so the
+      symbol is a base and nothing jumps to it.  On Cortex-M this is
+      slot 0 of a Zephyr table: the initial stack pointer.  Do not read
+      it as code.
+    * ``"linker"`` — the linker script gives the address and no compiled
+      file defines the name.  Slot 0 holds the initial stack pointer, not
+      a handler, and looks like this.  When the index read the script,
+      ``file`` and ``line`` name the assignment in it — on the Mbed project,
+      `__StackTop` at `.link_script.ld:148`.  Do not read this row as
+      code: there is no function to follow.
+    * ``"dispatcher"`` — the slot reaches a function that holds more than
+      one slot of this table AND calls through a pointer.  It cannot be
+      servicing one particular interrupt; it decides at run time where to
+      go.  Zephyr fills every external IRQ slot with ``_isr_wrapper``,
+      which reads the interrupt number and jumps through
+      ``_sw_isr_table``.  Follow it: ``get_symbol_context`` on the name,
+      then ``find_references`` on the table it uses.  A handler that
+      merely calls one registered callback is NOT this — it holds a
+      single slot and keeps ``"c"``.
+
+    A ``"c"`` row with ``overridden`` is the CMSIS pattern: the startup
+    file defines each handler weakly, the project defines the same name
+    again, and the linker keeps the strong one.
+
+    **Two sources are read**, and ``source`` says which one a row came
+    from:
+
+    * ``"assembly"`` — a table of address words, ``.word`` or ``.long``
+      in a vector section, which is what a CMSIS startup file writes.
+    * ``"c"`` — an array whose elements are addresses of functions, which
+      is what a build that generates its table produces.  Zephyr writes
+      its external interrupts this way, with ``gen_isr_tables.py``.  These
+      rows also carry ``table_name``, the array the slot belongs to.
+    * ``"build"`` — the registration the build itself recorded, for a slot
+      the other two could not name.  A generator writes a resolved ADDRESS
+      into every slot that is in use, so those slots have no name in the
+      source at all — and they are the interrupts the firmware actually
+      services.  Measured on an nRF54L application: 284 of 290 slots name
+      the spurious stub, and the 6 without a name are IRQ 89, 198, 219,
+      228, 269 and 270, which these rows fill in.
+
+      Such a row can carry ``argument``, the symbol the build passes to
+      the handler.  Read it as an argument and not as a second handler:
+      behind the ``nrfx_isr`` shim it is the real worker
+      (``nrfx_power_clock_irq_handler``), while for another driver it is
+      the device (``__device_dts_ord_116``).  When the build enables
+      run-time registration, a dict with ``info`` says so, because an
+      interrupt connected at run time leaves nothing to read and the rows
+      are then not all of them.
+
+    Recognition is by shape, never by name, so any array of function
+    addresses is reported and the row names its table.  A table of
+    interrupt handlers and a table of state machine steps are the same
+    construct, and ``table_name`` is how they are told apart.
+
+    **Slot numbers are not joined across tables.**  Each slot is the index
+    inside its own table, so two tables both start at 0 — read ``slot``
+    together with ``table_name`` and ``source``.  They are not renumbered
+    into one run because the index does not hold the length of the
+    assembly table, only its occupied slots, and an offset derived from
+    that would be silently wrong for every entry of a 290-entry table.
+
+    **A ``coverage`` row follows the slots** for each table longer than the
+    number of slots that name a function.  It says how many of the declared
+    elements were named and which slot numbers were not, because a name is
+    not always there to be read: an element can be a zero, or an address
+    the linker resolved before the table was written.
+
+    Read it in both directions.  A hole in a table of handlers is a vector
+    nothing services.  A hole in Zephyr's ``_sw_isr_table`` is the
+    opposite — measured on an nRF54L application, 284 of 290 slots name the
+    spurious stub and the 6 without a name are the interrupts in use.  The
+    tool reports where to look; which meaning applies depends on the table.
+
+    **An ``interrupts`` row answers "which are unserviced"** wherever the
+    build recorded its registrations, and it is the answer under
+    ``unhandled_only`` too.  The row-level ``unhandled`` status is read
+    from an alias edge, which a CMSIS startup writes and a generator does
+    not — measured, zero unhandled rows on all eleven images of a Zephyr
+    project against 39 to 72 on four CMSIS and Mbed ones.  The
+    registrations settle it from the other side: what the build connected
+    is the whole list, so anything else has nothing servicing it, and no
+    handler has to be recognised by name.
+
+    The complement is taken over the length of the table, NOT over the
+    slots that hold a stub.  Measured on an mcuboot image: its software
+    table names 44 of 48 slots, and one of those 44 is
+    ``uarte_0_direct_isr``, an interrupt wired straight into the vector
+    table.  It IS serviced, and counting stubs would report it as not.
+
+    What is still not covered: an architecture that builds its table from
+    branch instructions (arm64, Xtensa, MIPS) writes no table of
+    addresses in either form.  A handler whose address the build resolved
+    at link time has no name to report either — ``coverage`` names its slot
+    but not the function.  For an interrupt this tool cannot show,
+    ``find_references`` on the handler name still gives every reference
+    the index holds.
+
+    Read-only. No side effects. Requires an index of the assembly
+    (``fw-context index``).
+
+    Args:
+        project_root: Project root. Auto-detected if omitted.
+        unhandled_only: When True, return only the ``"unhandled"`` slots.
+        limit: Maximum slots (default 400, max 1000).
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+
+    Returns:
+        list of dicts sorted by source, then table, then slot.  Each holds:
+        slot (int), name, file, line, source (``"assembly"``, ``"c"`` or
+        ``"build"``),
+        status (``"c"``, ``"assembly"``, ``"unhandled"``, ``"runtime"``,
+        ``"data"``, ``"linker"`` or ``"dispatcher"``), and table_file and table_line
+        (where the slot is written).  A ``"c"`` source row also holds
+        table_name and table_usr.  A ``"c"`` status row can hold
+        overridden, a dict with file and line.  Any assembly row can hold
+        installed, a list of dicts with name, file, line and at.
+
+        Never empty: one dict with ``error`` (no index) or ``info`` (no
+        vector table in this build).  Check both keys first.  A dict with
+        ``coverage`` follows the slots for each table that has unnamed
+        elements, and a dict with ``interrupts`` says which are connected
+        and which are not — the latter in both modes.  Neither is subject
+        to ``limit``: they describe the whole table, and the longest table
+        is where they matter most.  When more slots exist than ``limit``,
+        a dict with ``truncated`` sits between the slots and those two,
+        saying how many slots are not shown.
+    """
+    limit = max(0, min(limit, 1000))
+    db, err = _refs_guard(project_root, variant=variant, image=image)
+    if err:
+        return err
+    assert db is not None  # narrowed: err is None only on success
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        return _vector_rows(
+            conn, config_hash, unhandled_only=unhandled_only, limit=limit,
+        )
+
+    return db.execute_scoped(_query)

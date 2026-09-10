@@ -30,7 +30,12 @@ from typing import Annotated
 from pydantic import Field
 
 from ...utils import abs_path
-from ..shared.stale import _stale_files
+from ..shared.stale import (
+    _stale_files,
+    annotate_stale,
+    collect_result_paths,
+    diagnose_empty_result,
+)
 from ._base import BaseHandler
 
 log = logging.getLogger(__name__)
@@ -68,6 +73,11 @@ def find_variables(
     from loop counters.  For general symbol search use ``search_code`` or
     ``lookup_symbol``.  For all references to a specific variable
     (including reads in expressions), use ``find_references``.
+
+    This tool is the way to a LOCAL variable: ``search_code`` drops the
+    ``varlocal`` kind, because a local matches every topic query aimed at
+    the function around it.  ``search_code(..., kind="varlocal")`` reaches
+    them as well.
 
     Legacy indexes with ``kind="variable"`` (pre-split) are detected and
     included in results — reindex to fully benefit from the split.
@@ -221,16 +231,18 @@ def find_variables(
         # must not open its own connection.  Timeout is enforced by
         # _wrap_tool (300 s + interrupt), not here.
         results = _do_find(conn, config_hash)
-        file_paths = [abs_path(root, r["file"]) for r in results if "file" in r]
-        stale = _stale_files(conn, config_hash, file_paths, root) if file_paths else []
-        return results, stale
+        file_paths = collect_result_paths(results, root)
+        if file_paths:
+            return results, _stale_files(conn, config_hash, file_paths, root), 0, []
+        # No variable found: diagnose the whole index instead, so an empty
+        # answer over a changed tree does not read as proof of absence.
+        dirty, new_sources = diagnose_empty_result(conn, config_hash, root)
+        return results, [], dirty, new_sources
 
-    results, stale = db.executor.execute_sync(_query, db.config_hash)
-    if stale:
+    results, stale, dirty, new_sources = db.executor.execute_sync(_query, db.config_hash)
+    if stale or dirty:
         from fw_context_mcp.mcp.background import _ensure_daemon_running
         _ensure_daemon_running(root)
-        return [{"warning": (
-            f"Results may be stale — {len(stale)} file(s) changed. "
-            "Background reindex in progress. Run 'fw-context index' to force full update."
-        )}] + results
-    return results
+    return annotate_stale(
+        results, stale, empty_dirty_count=dirty, empty_new_sources=new_sources
+    )

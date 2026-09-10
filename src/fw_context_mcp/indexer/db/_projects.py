@@ -74,7 +74,8 @@ def compute_analysis_coverage(conn: sqlite3.Connection, config_hash: str) -> dic
     * ``analyzed`` — symbols with a real analysis row.
     * ``skipped`` — symbols with a ``skip:*`` sentinel row.  The pipeline
       tried these symbols and cannot analyze them (the body is larger than
-      the model context, or the model gave an unparseable answer).
+      the model context, the model gave an unparseable answer, or the body
+      was not readable at all).
     * ``total`` — all symbols of the analyzable kinds.
 
     ``total - analyzed - skipped`` gives the symbols that the pipeline can
@@ -198,6 +199,7 @@ def delete_build_data(conn: sqlite3.Connection, config_hash: str) -> None:
     conn.execute("DELETE FROM inheritance WHERE config_hash = ?", (config_hash,))
     conn.execute("DELETE FROM overrides WHERE config_hash = ?", (config_hash,))
     conn.execute("DELETE FROM hotspot_cache WHERE config_hash = ?", (config_hash,))
+    conn.execute("DELETE FROM memory_regions WHERE config_hash = ?", (config_hash,))
     conn.execute("DELETE FROM files WHERE config_hash = ?", (config_hash,))
     conn.execute("DELETE FROM build_configs WHERE config_hash = ?", (config_hash,))
     # vec0 virtual table — not covered by ON DELETE CASCADE.
@@ -233,11 +235,12 @@ def upsert_build_config(
     compile_commands_path: str,
     embedding_dim: int | None = None,
     manifest_verification: str = "none",
-    description: str = "",
+    description: str | None = "",
     analyze_vendor: int = 0,
     variant: str = "",
     image: str = "",
     board: str = "",
+    row_format: str | None = None,
 ) -> None:
     """Insert or update a build configuration record.
 
@@ -256,9 +259,32 @@ def upsert_build_config(
         manifest_verification: ``"full"`` or ``"none"`` —
             indicates whether manifest.json was available during indexing.
         description: Human-readable build description (git branch + tag).
-            Updated on every index to reflect current git context.
+            ``None`` keeps whatever the row already holds.
+
+            WHY None exists: this description says which branch the CONTENT
+            of the index came from, and a run stamps the row twice — once
+            before the translation units and once after.  The first write
+            used to overwrite it with the current git context, so a run
+            that FAILED left the new branch recorded over the old content.
+            Anything comparing the two to notice a branch switch would then
+            see agreement that is not there.  ``runner.run`` passes None on
+            the first write for that reason; ``_postprocess`` passes the
+            real value on the last one, when the content matches it.
         variant: Build variant name (``''`` for single-project builds).
         image: Sysbuild image name (``''`` for non-sysbuild builds).
+        row_format: Which meaning the stored text of this build carries —
+            pass ``CURRENT_ROW_FORMAT``.  ``None`` keeps whatever the row
+            already holds, and it is the default.
+
+            WHY None is the default: only the step that WROTE the text may
+            say what the text means.  ``_run_postprocess`` is that step, and
+            it runs after the last translation unit.  Two callers must not
+            stamp: ``runner.run`` writes this row before it reads a single
+            unit, thus a run that fails would leave the new format over the
+            old rows; ``cmd_analyze`` only updates ``analyze_vendor`` on an
+            index that another version built.  A missed stamp costs one
+            reindex that was not needed — a wrong stamp costs silence over
+            an index that answers with dead code.
         board: Concrete board string per-(variant, image) — captures per-image
             board overrides (e.g. FLPR ``cpuflpr`` vs ``cpuapp``).
 
@@ -266,13 +292,35 @@ def upsert_build_config(
         None.
     """
 
+    if description is None:
+        # Read it rather than express "keep the old one" in SQL: the column
+        # is NOT NULL, so a NULL cannot travel through the INSERT arm to a
+        # coalesce in the UPDATE arm.  One row by primary key.
+        row = conn.execute(
+            "SELECT description FROM build_configs WHERE config_hash = ?",
+            (config_hash,),
+        ).fetchone()
+        description = str(row["description"]) if row is not None else ""
+
+    if row_format is None:
+        # Read it for the reason the description above gives: the column is
+        # NOT NULL, thus "keep the old one" cannot travel through SQL.  An
+        # absent row gives '', which reports the build as an older format
+        # until the postprocess step stamps it — the safe direction.
+        fmt_row = conn.execute(
+            "SELECT row_format FROM build_configs WHERE config_hash = ?",
+            (config_hash,),
+        ).fetchone()
+        row_format = str(fmt_row["row_format"]) if fmt_row is not None else ""
+
     # Columns guaranteed by open_db() → _ensure_migrated_columns()
     conn.execute(
         """INSERT INTO build_configs(config_hash, project_id, compile_commands_path,
                                      embedding_dim, manifest_verification,
                                      description, first_indexed_at,
-                                     analyze_vendor, variant, image, board)
-           VALUES (?,?,?,?,?,?, datetime('now'), ?, ?, ?, ?)
+                                     analyze_vendor, variant, image, board,
+                                     row_format)
+           VALUES (?,?,?,?,?,?, datetime('now'), ?, ?, ?, ?, ?)
            ON CONFLICT(config_hash) DO UPDATE SET
                created_at = datetime('now'),
                description = excluded.description,
@@ -286,8 +334,9 @@ def upsert_build_config(
                analyze_vendor = excluded.analyze_vendor,
                variant = excluded.variant,
                image = excluded.image,
-               board = excluded.board""",
-        (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board),
+               board = excluded.board,
+               row_format = excluded.row_format""",
+        (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board, row_format),
     )
 
 

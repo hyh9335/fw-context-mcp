@@ -20,7 +20,7 @@ import subprocess
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from fw_context_mcp.utils import cc_output_path
+from fw_context_mcp.utils import build_env, cc_output_path, ignore_autobuild_dir
 
 # Import builders package so the registry is populated with all registered
 # build system backends before ``detect_build_system()`` is called.
@@ -43,7 +43,7 @@ class BuildConfig:
             or None (auto-detect from project markers).
         clean: Always clean-build before generating compile_commands.json.
         command: Full shell command override — bypasses all detection when set.
-        target: Mbed OS target board name (e.g. ``"P_ECB_BOARD"``).
+        target: Mbed OS target board name (e.g. ``"BOARD_V2_BOARD"``).
         toolchain: Mbed OS toolchain (e.g. ``"GCC_ARM"``).
         profile: Mbed OS build profile (default ``"develop"``).
         app_config: Path to Mbed OS app config JSON (default ``"mbed_app.json"``).
@@ -121,6 +121,22 @@ class BuildConfig:
     make_target: str = "all"  # build target
     make_vars: dict[str, str] = field(default_factory=dict)  # extra vars for make
     make_dry_run: bool = True  # use compiledb -n (dry-run, no real build)
+
+    # ── Isolated build directory ──
+    # Set only for a build that fw-context starts on its own, after it finds
+    # a source file that compile_commands.json does not cover.  The build
+    # then writes to this directory instead of the usual one, thus it cannot
+    # corrupt the object files of a build that the user runs in an IDE at the
+    # same time.  fw-context cannot lock that build: the IDE knows nothing
+    # about fw-context, so separation is the only defence.
+    #
+    # A relative path resolves against the project root.  None keeps the
+    # default directory of the build system.
+    #
+    # The price is one more set of artifacts (192 MB on the Mbed project) and a
+    # first build with no shared object cache.  Measured at 15-30 s there,
+    # which is nothing against an index run of over an hour.
+    isolated_build_dir: str | None = None
 
     # ── Toolchain (shared by Keil, IAR, Makefile) ──
     toolchain_path: str | None = None  # path to toolchain bin directory
@@ -414,7 +430,12 @@ def _run_pre_build(cfg: BuildConfig, cwd: Path) -> None:
         cfg.pre_build,
     )
     import shlex
-    result = subprocess.run(shlex.split(cfg.pre_build), shell=False, cwd=cwd, timeout=cfg.timeout)
+    # build_env, not the raw inherited environment: a hook the harness put in
+    # BASH_ENV hijacks any `bash -c` the user configures here — see utils.
+    result = subprocess.run(
+        shlex.split(cfg.pre_build), shell=False, cwd=cwd,
+        timeout=cfg.timeout, env=build_env(),
+    )
     if result.returncode != 0:
         raise RuntimeError(f"Pre-build command failed with exit code {result.returncode}")
 
@@ -447,7 +468,11 @@ def generate_compile_commands(
         _run_pre_build(cfg, root)
         log.info("Running custom build command: %s", cfg.command)
         import shlex
-        result = subprocess.run(shlex.split(cfg.command), shell=False, cwd=root)
+        # Same reason as the pre-build hook: `command = "bash -c ..."` is a
+        # documented override, and BASH_ENV would hijack it.
+        result = subprocess.run(
+            shlex.split(cfg.command), shell=False, cwd=root, env=build_env(),
+        )
         if result.returncode != 0:
             raise RuntimeError(f"Build command failed with exit code {result.returncode}")
         # A custom command runs an arbitrary build tool in the project root;
@@ -479,6 +504,13 @@ def generate_compile_commands(
     log.info("Detected build system: %s (clean=%s)", system, cfg.clean)
     builder = builder_cls()
 
+    # Every path below can write into the autobuild directory, and a builder
+    # creates it itself, so the rule that keeps it out of git has to be in
+    # place before any of them runs.  One point covers convert, generate and
+    # build alike.
+    if cfg.isolated_build_dir:
+        ignore_autobuild_dir(root)
+
     # Run pre-build hook before any generation path
     _run_pre_build(cfg, root)
 
@@ -507,7 +539,7 @@ def resolve_reuse_compile_commands(project_root: Path, configured: Path) -> Path
     at the project root — a file ``--build`` no longer produces.  Reusing that
     stale root file instead of the freshly generated one changes the
     config_hash and silently drops the injected ``-D`` defines (e.g.
-    ``SKEY_INIT_BASE64``) and any newly listed translation units.
+    ``KEY_INIT_BASE64``) and any newly listed translation units.
 
     When the configured path is exactly the legacy root file and the canonical
     file exists, prefer the canonical file.  All other configured paths

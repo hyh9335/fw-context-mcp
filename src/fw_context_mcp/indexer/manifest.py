@@ -36,7 +36,7 @@ from fw_context_mcp.utils import compute_source_hash
 log = logging.getLogger(__name__)
 
 # Bumped from /1, which repeated every header's hash and every TU's argument
-# list inside each entry.  On zbox that was 86 686 header records for 1 037
+# list inside each entry.  On the Mbed project that was 86 686 header records for 1 037
 # distinct files and 876 argument lists for 2 distinct ones — 52.45 MB, of
 # which 74% was duplication.  /2 keeps one ``headers`` map and one
 # ``arg_sets`` table and has each entry reference them.
@@ -123,7 +123,7 @@ def _intern_arguments(arguments: list[str], arg_sets: list[list[str]]) -> int:
     """Return the index of *arguments* in *arg_sets*, appending it if new.
 
     Linear search is deliberate: a project has a handful of distinct argument
-    lists (2 on zbox, 14 on HA_Boiler), so the scan is shorter than the cost
+    lists (2 on the Mbed project, 14 on the ESP32 project), so the scan is shorter than the cost
     of hashing a 410-token list to key a dict.
     """
     for index, existing in enumerate(arg_sets):
@@ -131,6 +131,49 @@ def _intern_arguments(arguments: list[str], arg_sets: list[list[str]]) -> int:
             return index
     arg_sets.append(arguments)
     return len(arg_sets) - 1
+
+
+def derive_extension_sets(
+    compile_commands_path: Path, header_table
+) -> tuple[list[str], list[str]]:
+    """Return ``(tu_extensions, header_extensions)`` of THIS project.
+
+    The compiler rules in ``utils`` say which suffix means C or C++.  This
+    says something else: which suffixes this particular build actually
+    touches.  No list can answer that in advance — measured across the test
+    projects, five of seven compile ``.S`` units, and their headers include
+    ``.tcc`` and extension-less libstdc++ ones that no hand-written set had.
+
+    Taken from the manifest itself, so it cannot drift from what was
+    indexed.  Stored rather than derived on read, because a reader on the
+    query path must not parse a 52 MB manifest to learn two short lists —
+    see ``load_build_dir_patterns`` for the same reasoning.
+
+    An empty suffix is kept.  ``<string>`` and ``<vector>`` have none, and
+    dropping them would make the watcher blind to a header the project
+    really includes.
+
+    The units come from compile_commands.json and NOT from the manifest
+    entries, and that is the whole point.  An entry exists only for a unit
+    libclang read, because the assembly pass writes no entry.  Deriving
+    from the entries would say that a project never compiles assembly.
+    The truth is that its assembly went to a different reader, and the
+    new-file scan would then stay blind to the files that need reporting.
+
+    Reading the file again costs a plain json.load of a few hundred
+    kilobytes, once per index run.  It is not on the query path.
+    """
+    try:
+        raw = json.loads(compile_commands_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = []
+    tu = {
+        Path(e["file"]).suffix
+        for e in raw
+        if isinstance(e, dict) and e.get("file")
+    }
+    headers = {Path(h).suffix for h in (header_table or ())}
+    return sorted(tu), sorted(headers)
 
 
 def _is_generated_header(header_path: str, build_dir_patterns: list[str] | None = None) -> bool:
@@ -158,7 +201,7 @@ def _collect_headers_from_tokens(
     Returns the paths as stored in the manifest.  The hash and the
     ``generated`` flag go into *header_table*, keyed by path — a file included
     by 300 TUs is hashed on the first TU that reaches it and looked up by the
-    other 299.  On zbox that is 1 037 hashes instead of 86 686.
+    other 299.  On the Mbed project that is 1 037 hashes instead of 86 686.
 
     Pass a fresh dict per manifest, not per TU; the table is the manifest's
     ``headers`` section and must span every entry.  When *header_table* is
@@ -212,7 +255,7 @@ def _collect_headers_from_tokens(
         # whitelist here ({.h .hpp .hxx .hh .inl}), and it silently dropped
         # every extensionless C++ standard header (<algorithm>, <bit>) and
         # every .tcc template body.  Two consequences, both measured on
-        # HA_Boiler: the coverage purge deleted 29 such files and 1810 symbols
+        # The ESP32 project: the coverage purge deleted 29 such files and 1810 symbols
         # because the manifest did not list them, and a toolchain upgrade
         # could change any of them without marking a single TU stale, because
         # no hash was recorded to compare.  A whitelist of "what counts as a
@@ -300,6 +343,9 @@ def generate(
         "headers": header_table,
         "entries": entries,
     }
+    tu_exts, header_exts = derive_extension_sets(compile_commands_path, header_table)
+    manifest["tu_extensions"] = tu_exts
+    manifest["header_extensions"] = header_exts
     if macros:
         manifest["macros"] = macros
     if build_dir_patterns:
@@ -353,7 +399,62 @@ def _manifest_path(db_dir: Path, config_hash: str) -> Path:
 # small list is retained — never the parsed manifest, which is 150 MB+ of
 # Python objects for a large project and would sit in the MCP server for its
 # whole life.
-_BUILD_PATTERNS_CACHE: dict[tuple[str, int], list[str]] = {}
+_BUILD_PATTERNS_CACHE: dict[tuple[str, int], dict] = {}
+
+# The top-level keys a reader on the query path may need.  All short, all
+# read from one parse — adding a second cache would mean a second parse of
+# the same 52 MB file.
+_CHEAP_KEYS = ("build_dir_patterns", "tu_extensions", "header_extensions")
+
+
+def _load_cheap_keys(db_dir: Path, config_hash: str) -> dict:
+    """Return the short top-level manifest keys, cached across calls.
+
+    WHY this exists rather than ``load(...)[key]``: the staleness helpers on
+    the MCP query path need nothing else from the manifest, and parsing the
+    whole file to reach one short list is the most expensive thing they do.
+    Measured on the Mbed project (876 TUs), the manifest is 52 MB and takes 109 ms
+    to read and parse — paid on EVERY query routed through
+    ``_with_stale_recovery``.
+
+    The first call after an index still parses once; every later one is a
+    dict lookup.  Only the short lists are kept, so the cost is bytes rather
+    than the hundreds of megabytes a parsed manifest occupies.
+    """
+    path = _manifest_path(db_dir, config_hash)
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return {}
+    cached = _BUILD_PATTERNS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    manifest = load(db_dir, config_hash)
+    cheap = {k: list(manifest.get(k, [])) for k in _CHEAP_KEYS} if manifest else {}
+    # One project has one active manifest; bound the dict so a long-running
+    # server that reindexes repeatedly cannot accumulate entries.
+    if len(_BUILD_PATTERNS_CACHE) > 32:
+        _BUILD_PATTERNS_CACHE.clear()
+    _BUILD_PATTERNS_CACHE[key] = cheap
+    return cheap
+
+
+def load_tu_extensions(db_dir: Path, config_hash: str) -> frozenset[str] | None:
+    """Return the suffixes this build compiles, or None when unknown.
+
+    None means the manifest predates the key or does not exist.  The caller
+    then falls back to the compiler rules in ``utils.TU_EXTENSIONS``, which
+    is what a project without a manifest — manual mode, a first run — needs
+    anyway.
+    """
+    exts = _load_cheap_keys(db_dir, config_hash).get("tu_extensions")
+    return frozenset(exts) if exts else None
+
+
+def load_header_extensions(db_dir: Path, config_hash: str) -> frozenset[str] | None:
+    """Return the suffixes of the headers this build includes, or None."""
+    exts = _load_cheap_keys(db_dir, config_hash).get("header_extensions")
+    return frozenset(exts) if exts else None
 
 
 def load_build_dir_patterns(db_dir: Path, config_hash: str) -> list[str]:
@@ -362,31 +463,14 @@ def load_build_dir_patterns(db_dir: Path, config_hash: str) -> list[str]:
     WHY this exists rather than ``load(...)["build_dir_patterns"]``: the
     staleness helpers on the MCP query path need nothing else from the
     manifest, and parsing the whole file to reach one short list is the most
-    expensive thing they do.  Measured on zbox-ecb-fw (876 TUs), the manifest
+    expensive thing they do.  Measured on the Mbed project (876 TUs), the manifest
     is 52 MB and takes 109 ms to read and parse — paid on EVERY query routed
     through ``_with_stale_recovery``, to obtain a list of two or three
     strings.
 
-    The first call after an index still parses once; every later one is a
-    dict lookup.  Only the list is kept, so the cost is bytes rather than the
-    hundreds of megabytes a parsed manifest occupies.
+    Shares one parse with the other cheap keys — see ``_load_cheap_keys``.
     """
-    path = _manifest_path(db_dir, config_hash)
-    try:
-        key = (str(path), path.stat().st_mtime_ns)
-    except OSError:
-        return []
-    cached = _BUILD_PATTERNS_CACHE.get(key)
-    if cached is not None:
-        return cached
-    manifest = load(db_dir, config_hash)
-    patterns = list(manifest.get("build_dir_patterns", [])) if manifest else []
-    # One project has one active manifest; bound the dict so a long-running
-    # server that reindexes repeatedly cannot accumulate entries.
-    if len(_BUILD_PATTERNS_CACHE) > 32:
-        _BUILD_PATTERNS_CACHE.clear()
-    _BUILD_PATTERNS_CACHE[key] = patterns
-    return patterns
+    return _load_cheap_keys(db_dir, config_hash).get("build_dir_patterns", [])
 
 
 def _read_manifest_file(manifest_path: Path) -> dict | None:
@@ -553,6 +637,11 @@ def build_preliminary(
     }
     if build_dir_patterns:
         manifest["build_dir_patterns"] = build_dir_patterns
+    # The units are known even in a preliminary manifest; the headers are
+    # not, and an empty list there is the honest answer rather than a guess.
+    tu_exts, _ = derive_extension_sets(compile_commands_path, None)
+    manifest["tu_extensions"] = tu_exts
+    manifest["header_extensions"] = []
 
     manifest["config_hash"] = config_hash
     manifest_json = json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False)
@@ -636,8 +725,8 @@ def compute_config_hash(
       header stayed under the old hash and retention deleted them.
     - **Include search paths INSIDE the project** (``-I``, ``-isystem``,
       ``-include``, …).  This is where per-directory variance lives —
-      HA_Boiler has 14 distinct flag-sets but 208 distinct include paths, and
-      zbox-ecb-fw has 268 in-project ones.  A directory that moves inside the
+      the ESP32 project has 14 distinct flag-sets but 208 distinct include paths, and
+      the Mbed project has 268 in-project ones.  A directory that moves inside the
       project does not change what the compiler reads.
 
     An include path OUTSIDE the project is KEPT, because it names the
@@ -723,8 +812,8 @@ def compute_config_hash(
         a stray value.  The pre-pass joins every separated flag with its
         value, so a bare token that arrives here belongs to no flag.
 
-        This test compared the token SUFFIX against _SOURCE_EXTS and
-        _OUTPUT_EXTS before.  A whitelist of "what counts as a source file"
+        This test compared the token SUFFIX against a source-extension
+        whitelist and an output-extension one before.  A whitelist of "what counts as a source file"
         cannot stay complete, and a suffix outside the list put a filename
         into the hash — the translation-unit coupling that this function
         exists to remove.  The rule above needs no list.
@@ -745,15 +834,15 @@ def compute_config_hash(
 
     # Accumulated across ALL translation units, deduplicated: a macro or
     # dialect flag anywhere in the build is part of that build's identity,
-    # and it counts once no matter how many TUs carry it.  (Measured: FM has
-    # an identical -D set on all 216 TUs; HA_Boiler has exactly one macro
+    # and it counts once no matter how many TUs carry it.  (Measured: the STM32 project has
+    # an identical -D set on all 216 TUs; the ESP32 project has exactly one macro
     # that varies, ARDUINO_CORE_BUILD on 46 of 114.)
     defines: set[str] = set()
     dialect: set[str] = set()
     # Out-of-project include paths go in as the INTERSECTION over translation
     # units, not as the union.  A path that only some units carry is per-unit
     # state, and to put it in would put the translation-unit list back into
-    # the hash: on zbox-ecb-fw-v5 one generated unit,
+    # the hash: on the Zephyr project one generated unit,
     # validate_binding_headers.c, carries 11 devicetree binding headers, so
     # the union moves each time the board overlay changes.  The intersection
     # does not move.  Measured over 2 052 translation units in 7 real builds:
@@ -810,13 +899,13 @@ def compute_config_hash(
             # Join ANY flag with a following non-flag token, before the sort.
             # The path pass below pairs a flag with its neighbour BY POSITION,
             # and the sort has already moved each value away from its flag.
-            # Measured on zbox-ecb-fw-v5, one build of 257 translation units:
+            # Measured on the Zephyr project, one build of 257 translation units:
             # a sorted -isystem consumed -mabi=aapcs 230 times, and it left
             # its own directory in the set as a token with no flag.
             #
             # WHY no list of "flags that take a value": such a list cannot
             # stay complete, and _is_dialect_token() drops what it forgets.
-            # Measured on FM, the forgotten ones were
+            # Measured on the STM32 project, the forgotten ones were
             # "--param max-inline-insns-single=500" and the separated
             # --sysroot form, which carries the toolchain root.
             #
@@ -857,7 +946,7 @@ def compute_config_hash(
             # Include search paths INSIDE the project are dropped.  Paths
             # outside it are kept.  The two answer different questions.
             #
-            # An in-project path is per-unit state.  zbox-ecb-fw has 268 of
+            # An in-project path is per-unit state.  The Mbed project has 268 of
             # them, and they move when a directory moves.  A moved directory
             # does not change what the compiler reads.
             #
@@ -933,10 +1022,23 @@ def compute_config_hash(
         dialect |= external
 
     canonical: dict = {
-        # Bumped from /1, which keyed the hash on the per-TU {file, arguments}
-        # list.  Every existing index therefore gets one final reindex, which
-        # is intended: the old hashes describe a different question.
-        "_format": "fw-context-cc/2",
+        # /1 keyed the hash on the per-TU {file, arguments} list.  /2 removed
+        # that list.  /3 marks the change of the STORED ROWS, not of the
+        # question this function asks: from /3 on, ``files.content`` and
+        # ``symbols.source`` hold only the lines that the preprocessor took.
+        # Before it, an inactive #ifdef branch stayed in both, and a dead
+        # block inside a function body was invisible as dead.
+        #
+        # WHY the format version belongs in THIS hash: a new config_hash
+        # leaves no row for the build, thus a plain `fw-context index` writes
+        # every file and every body again.  A bump of the schema version
+        # cannot do the same job — the migration keeps the rows, and the
+        # content pass skips a file that already holds text, thus the stale
+        # text survives until `index --force`.
+        #
+        # Every existing index therefore gets one final reindex, which is
+        # intended.
+        "_format": "fw-context-cc/3",
         "project_root": str(project_root),
         # WHY only these two: config_hash answers "could the same source text
         # compile to something different now?"  Macros flip #ifdef, and the
