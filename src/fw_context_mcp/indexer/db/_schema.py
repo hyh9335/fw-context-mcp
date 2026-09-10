@@ -56,6 +56,8 @@ __all__ = [
     "ROW_FORMAT_PAIRED_WITH",
     "_ensure_column",
     "drop_fts_triggers",
+    "row_format_is_newer",
+    "row_format_is_older",
 ]
 
 # Which MEANING the stored text of a build carries.  Bump it when the same
@@ -68,7 +70,12 @@ __all__ = [
 # /1 — files.content and symbols.source hold only the lines that the
 #      preprocessor took.  Before it, both held every #ifdef branch, thus
 #      dead code reached every tool as live code.
-CURRENT_ROW_FORMAT = "fw-context-rows/1"
+# /2 — files.content holds the comments and the preprocessor directives of
+#      every file.  Before it, one line was kept for each token — the line
+#      the token starts on — and a header carried no token at all.  A block
+#      comment thus lost its closing marker, and a reader took the live code
+#      below it as commented out.
+CURRENT_ROW_FORMAT = "fw-context-rows/2"
 
 # The config-hash format that was current when CURRENT_ROW_FORMAT last moved.
 #
@@ -83,7 +90,52 @@ CURRENT_ROW_FORMAT = "fw-context-rows/1"
 # the build, thus a plain `fw-context index` writes every file and every
 # body again.  The two must therefore move together, and
 # `test_row_format_invalidation.py` fails when only one of them does.
-ROW_FORMAT_PAIRED_WITH = "fw-context-cc/3"
+ROW_FORMAT_PAIRED_WITH = "fw-context-cc/4"
+
+
+def _row_format_number(value: str) -> int | None:
+    """Give the ordinal of a row format, or None when it has no readable one."""
+    prefix, _, number = value.rpartition("/")
+    if prefix != "fw-context-rows" or not number.isdigit():
+        return None
+    return int(number)
+
+
+def row_format_is_older(stored: str) -> bool:
+    """Say whether *stored* text carries an OLDER meaning than this version reads.
+
+    Only this direction asks for a reindex, and the index run repairs it: the
+    indexer writes the current format over the old rows.
+
+    An absent format and a format this version cannot read both answer True.
+    That is the safe direction — a reindex costs one run, and text of an
+    unknown meaning costs every answer that quotes it.
+    """
+    stored_number = _row_format_number(stored)
+    current_number = _row_format_number(CURRENT_ROW_FORMAT)
+    if stored_number is None or current_number is None:
+        return stored != CURRENT_ROW_FORMAT
+    return stored_number < current_number
+
+
+def row_format_is_newer(stored: str) -> bool:
+    """Say whether *stored* text carries a NEWER meaning than this version reads.
+
+    WHY this direction needs an answer of its own: a reindex cannot repair
+    it.  The index is the correct one and the READER is the old one, thus the
+    indexer writes the same new format again and the mismatch stays.  A
+    staleness check that asked for a reindex here put a daemon into a loop:
+    reindex, mismatch, reindex.
+
+    The repair is to restart the LLM client — Claude Code, opencode, and
+    every other one.  The MCP server is a child process of that client, thus
+    it cannot restart alone.
+    """
+    stored_number = _row_format_number(stored)
+    current_number = _row_format_number(CURRENT_ROW_FORMAT)
+    if stored_number is None or current_number is None:
+        return False
+    return stored_number > current_number
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, type_def: str) -> None:

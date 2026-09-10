@@ -170,6 +170,80 @@ class TestReady:
         assert result["config_hash"] == "hash-test"
 
 
+class TestAnIndexNewerThanThisProcess:
+    """An index of a NEWER row format asks for a restart, and not a reindex.
+
+    A session that started before a row-format bump keeps reading the old
+    format.  Its index is the correct one, thus a reindex writes the same new
+    format again and the complaint never clears.  Measured on a real project:
+    ``get_active_build`` reported ``reindex_needed`` straight after a
+    finished reindex, and after every reindex that followed.
+
+    The repair is to restart the LLM client, because the MCP server is a
+    child process of it.
+    """
+
+    @staticmethod
+    def _project_with_a_newer_format(tmp_path: Path) -> Path:
+        from fw_context_mcp.indexer.db import open_db, transaction
+
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        db_path = cfg.index.db_dir / pid / "index.db"
+        _create_index_db(db_path, pid, root)
+
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE build_configs SET row_format='fw-context-rows/999' "
+                    "WHERE config_hash='hash-test'"
+                )
+        finally:
+            conn.close()
+        return root
+
+    def test_the_status_stays_ready(self, tmp_path: Path):
+        root = self._project_with_a_newer_format(tmp_path)
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "ready", (
+            "the index is the correct one, thus every query keeps working"
+        )
+        assert result["reindex_needed"] is False
+        assert not [r for r in result["reindex_reasons"] if "row_format" in r], (
+            "a reindex cannot repair this, thus it must not be advised"
+        )
+
+    def test_it_asks_for_a_client_restart(self, tmp_path: Path):
+        root = self._project_with_a_newer_format(tmp_path)
+        result = get_active_build(project_root=str(root))
+
+        assert result["client_restart_required"] is True
+        reason = result["client_restart_reason"]
+        assert "restart the LLM client" in reason
+        assert "child process" in reason, (
+            "the operator has to know that the server cannot restart alone"
+        )
+        assert "do not reindex" in reason.lower(), (
+            "the wording must forbid the one command that cannot help"
+        )
+        assert result["index_message"].startswith("Restart the LLM client"), (
+            "index_message is read first, thus the action belongs at its front"
+        )
+
+    def test_a_current_format_asks_for_nothing(self, tmp_path: Path):
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        _create_index_db(cfg.index.db_dir / pid / "index.db", pid, root)
+
+        result = get_active_build(project_root=str(root))
+        assert "client_restart_required" not in result
+        assert "client_restart_reason" not in result
+
+
 def _load_cfg(root: Path):
     from fw_context_mcp.config import load as load_config
 

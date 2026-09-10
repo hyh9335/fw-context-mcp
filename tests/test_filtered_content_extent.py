@@ -1,14 +1,13 @@
 """``files.content`` must span the whole file and hold only live code.
 
 ``files.content`` backs ``read_file`` and ``search_content``, and both
-promise the code that compiles for the active build.  Two defects broke that
-promise, and each class below pins one of them.
+promise the code that compiles for the active build.  Three defects broke
+that promise, and each class below pins one of them.
 
 **The extent of the text.**  The assembly loop used to stop at
-``max(active_lines)``.  Conditional preprocessor directives carry no token,
-thus a file whose last line is ``#endif`` — every include guard — lost its
-tail: the stored text ended early and ``read_file`` reported a line count
-smaller than the file.
+``max(active_lines)``.  The last line of a file is often inactive — a blank
+line, or a line of a branch the build does not take — thus the stored text
+ended early and ``read_file`` reported a line count smaller than the file.
 
 **Inactive branches.**  The active lines came from the tokens of the TU and
 from the extent of every cursor.  Tokens come from a raw lexer, which gives
@@ -16,6 +15,12 @@ tokens for a dead ``#if`` branch also, and an extent is one continuous range
 of lines, thus it carries a dead block inside a function body.  Dead code
 therefore reached both tools as live code, and an audit could approve code
 that the compiler never sees.  ``collect_skipped_lines`` now decides.
+
+**Comments and directives.**  A token contributed one line — the line it
+starts on — and a header carried no token at all.  A block comment thus
+kept its ``/*`` and lost its ``*/``, and a reader took the live code below
+it as commented out.  Every comment of every header was gone with it.
+``_token_lines_of_files`` now adds the lines of each token in full.
 """
 
 from __future__ import annotations
@@ -695,3 +700,187 @@ class TestContentHashMatchesTheStoredBody:
 
         lines = ["a\n", "b\n", "c\n", "d\n"]
         assert _read_body(lines, 1, 3, frozenset()) == "a\nb\nc\n"
+
+
+class TestMultiLineTokensKeepEveryLine:
+    """A token that spans lines must keep all of them, and not only its first.
+
+    The active lines came from ``tok.location.line``, which is the line the
+    token STARTS on.  A block comment is one token whose extent spans its
+    whole range, thus the stored text held the ``/*`` and lost every line
+    after it — the closing ``*/`` included.
+
+    That answer is worse than no answer.  A reader saw a comment that no
+    line closes, took the live code below it as commented out, and reported
+    a defect against code that the build compiles.  Measured on real
+    firmware: five fault handlers read as dead this way.
+    """
+
+    def test_a_block_comment_keeps_its_closing_marker(self, tmp_path: Path) -> None:
+        """The defect that this class exists for."""
+        root = tmp_path / "proj"
+        source = (
+            "int before(void);\n"        # 1
+            "/*\n"                       # 2
+            "void commented(void) {}\n"  # 3
+            "*/\n"                       # 4
+            "int after(void) { return 0; }\n"  # 5
+        )
+        stored = _fill_content(
+            root, tmp_path / "index.db", {"src/main.c": source}, main="src/main.c"
+        )
+
+        _assert_lines(stored["src/main.c"], source, blank=set())
+        assert "*/" in stored["src/main.c"], (
+            "the closing marker must survive: without it the reader cannot "
+            "tell where the comment ends, and reads live code as commented out"
+        )
+
+    def test_a_line_continuation_string_keeps_its_tail(self, tmp_path: Path) -> None:
+        """A backslash at the end of a line makes one token of two lines."""
+        root = tmp_path / "proj"
+        source = (
+            'const char *s = "abc\\\n'   # 1
+            'def";\n'                    # 2
+            "int after(void) { return 0; }\n"  # 3
+        )
+        stored = _fill_content(
+            root, tmp_path / "index.db", {"src/main.c": source}, main="src/main.c"
+        )
+
+        _assert_lines(stored["src/main.c"], source, blank=set())
+
+    def test_a_raw_string_literal_keeps_its_tail(self, tmp_path: Path) -> None:
+        """A raw string literal spans lines without a continuation marker."""
+        root = tmp_path / "proj"
+        source = (
+            'const char *r = R"(raw\n'   # 1
+            'multi)";\n'                 # 2
+            "int after(void) { return 0; }\n"  # 3
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {"src/main.cpp": source},
+            main="src/main.cpp",
+        )
+
+        _assert_lines(stored["src/main.cpp"], source, blank=set())
+
+    def test_a_comment_in_a_dead_branch_stays_blank(self, tmp_path: Path) -> None:
+        """The opposite error must not appear with the fix.
+
+        Tokenization is a raw lexer, thus it answers for a dead ``#if``
+        branch also.  ``collect_skipped_lines`` is what removes that answer,
+        and a comment inside a dead branch must stay as blank as the code
+        beside it.
+        """
+        root = tmp_path / "proj"
+        source = (
+            "int live(void);\n"          # 1
+            "#ifdef FEATURE_OFF\n"       # 2
+            "/*\n"                       # 3
+            " * dead comment\n"          # 4
+            " */\n"                      # 5
+            "int dead(void);\n"          # 6
+            "#endif\n"                   # 7
+            "int main(void) { return 0; }\n"  # 8
+        )
+        stored = _fill_content(
+            root, tmp_path / "index.db", {"src/main.c": source}, main="src/main.c"
+        )
+
+        _assert_lines(stored["src/main.c"], source, blank={2, 3, 4, 5, 6, 7})
+        assert "dead comment" not in stored["src/main.c"], (
+            "a comment of an inactive branch is dead text — the build reads "
+            "none of it, thus search_content must not match it"
+        )
+
+
+class TestHeadersKeepTheirComments:
+    """A header must keep its comments and its directives.
+
+    ``tu.cursor.get_tokens()`` answers for the MAIN file only, thus the
+    active lines of a header came from cursor extents alone.  A comment
+    belongs to no cursor, and neither does a conditional directive, thus
+    both were absent from the stored text of every header.
+
+    The loss is largest where it costs most: a vendor SDK keeps the
+    description of each register and each bit in those comments, and
+    ``read_file`` is the only way an agent can reach a C header.
+    """
+
+    def test_a_header_comment_survives(self, tmp_path: Path) -> None:
+        root = tmp_path / "proj"
+        header = (
+            "#ifndef API_H_\n"           # 1
+            "#define API_H_\n"           # 2
+            "/*\n"                       # 3
+            " * RESET_REASON_POWER_ON: the board got power.\n"  # 4
+            " */\n"                      # 5
+            "int kept(void);\n"          # 6
+            "#endif\n"                   # 7
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/api.h": header,
+                "src/main.c": '#include "api.h"\nint main(void) { return kept(); }\n',
+            },
+            main="src/main.c",
+        )
+
+        _assert_lines(stored["src/api.h"], header, blank=set())
+        assert "RESET_REASON_POWER_ON" in stored["src/api.h"], (
+            "the text of a header comment must reach read_file and "
+            "search_content — for a vendor register it is the only "
+            "description that exists"
+        )
+
+    def test_a_header_directive_survives(self, tmp_path: Path) -> None:
+        """An include guard must show, and not read as an empty line."""
+        root = tmp_path / "proj"
+        header = (
+            "#ifndef GUARD_H_\n"         # 1
+            "#define GUARD_H_\n"         # 2
+            "int kept(void);\n"          # 3
+            "#endif\n"                   # 4
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/guard.h": header,
+                "src/main.c": '#include "guard.h"\nint main(void) { return kept(); }\n',
+            },
+            main="src/main.c",
+        )
+
+        _assert_lines(stored["src/guard.h"], header, blank=set())
+
+    def test_a_dead_branch_of_a_header_stays_blank(self, tmp_path: Path) -> None:
+        """The header path must filter dead code as the main file does."""
+        root = tmp_path / "proj"
+        header = (
+            "#ifndef API_H_\n"           # 1
+            "#define API_H_\n"           # 2
+            "#ifdef FEATURE_OFF\n"       # 3
+            "/* dead doc */\n"           # 4
+            "int dead(void);\n"          # 5
+            "#endif\n"                   # 6
+            "int kept(void);\n"          # 7
+            "#endif\n"                   # 8
+        )
+        stored = _fill_content(
+            root,
+            tmp_path / "index.db",
+            {
+                "src/api.h": header,
+                "src/main.c": '#include "api.h"\nint main(void) { return kept(); }\n',
+            },
+            main="src/main.c",
+        )
+
+        _assert_lines(stored["src/api.h"], header, blank={3, 4, 5, 6})
+        assert "dead doc" not in stored["src/api.h"]

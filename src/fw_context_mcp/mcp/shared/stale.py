@@ -113,6 +113,7 @@ def check_structural_staleness(
         CURRENT_ROW_FORMAT,
         CURRENT_SCHEMA_VERSION,
         get_db_schema_version,
+        row_format_is_older,
     )
     from .context import _is_stale
 
@@ -136,8 +137,18 @@ def check_structural_staleness(
     # .get() and not [...]: a caller builds *cfg* with SELECT *, thus the
     # key is there for any database that open_db() migrated.  An absent key
     # reads as "no format", which asks for the reindex — the safe direction.
+    #
+    # Only an OLDER format belongs here, and the test is therefore an
+    # ordinal one and not a plain inequality.  A NEWER format means that the
+    # index is right and this process is the old reader, thus a reindex
+    # writes the same new format again and the reason comes back.  This
+    # function feeds the daemon (`daemon.py:_staleness_check`), which acts on
+    # what it returns, and a plain `!=` put that daemon into a loop over an
+    # index nothing was wrong with.  `get_active_build` reports that
+    # direction as a warning instead, because the repair is a restart of the
+    # LLM client and not a command against the index.
     stored_format = str(cfg.get("row_format") or "")
-    if stored_format != CURRENT_ROW_FORMAT:
+    if row_format_is_older(stored_format):
         reasons.append(
             f"row format {stored_format or '(none)'} != {CURRENT_ROW_FORMAT}"
         )

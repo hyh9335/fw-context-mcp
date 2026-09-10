@@ -69,6 +69,11 @@ inactive `#if` branch is blank in the `content` of `read_file`, in the text
 that `search_content` and `search_bodies` search, and in the body that
 `get_source` and `get_symbol_context` give. Line numbers never move.
 
+A comment and a preprocessor directive are part of the answer: a block
+comment keeps its closing marker, and an include guard shows. A blank line
+is thus an inactive line, or a line that is blank on disk, and nothing
+else.
+
 This is why a dead `#ifdef` block cannot reach you as live code. Three
 limits:
 
@@ -233,6 +238,15 @@ get_active_build() status:
   • "not_initialized" — ask operator, then run `fw-context init` via bash.
   • "no_index" — ask operator, then run `fw-context index --build` via bash.
   • "error" — DB corruption. Use other tools.
+
+`client_restart_required: True` is not a status, and NO command repairs it.
+The index holds a newer row format than this session reads, thus the index
+is correct and this session is the old reader. Queries keep working. Do NOT
+reindex — the indexer writes the same new format again and the field comes
+back. Tell the operator to restart the LLM client (Claude Code, opencode,
+or the client in use). The MCP server is a child process of that client,
+thus nobody can restart the server alone. `client_restart_reason` holds the
+wording.
 
 ### Diff verification
 

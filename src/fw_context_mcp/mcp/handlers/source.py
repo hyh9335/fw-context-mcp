@@ -1466,9 +1466,11 @@ def read_file(
     known line costs a fraction of the whole file — 40 lines around a match
     instead of 2000 lines of a header.
 
-    An include guard is a blank line: ``#ifndef`` and ``#endif`` are
-    conditional directives, which carry no token and thus never count as
-    active.  The line stays in place, and only its text is gone.
+    A comment and a preprocessor directive are part of the answer.  Both
+    are text that the file holds and the build reads, thus both stay — an
+    include guard, a ``#define``, and the description of a register in a
+    vendor header included.  A blank line is therefore an inactive line, or
+    a line that is blank on disk, and nothing else.
 
     For reading a single function body with libclang exact extents use
     ``get_source``.  For body + callers + callees in one call use

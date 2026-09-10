@@ -106,6 +106,8 @@ __all__ = [
     "rebuild_macros_fts",
     "replace_file_data",
     "replace_memory_regions",
+    "row_format_is_newer",
+    "row_format_is_older",
     "search_similar_hybrid",
     "search_similar_vec",
     "search_symbols",
@@ -230,6 +232,8 @@ from ._schema import (
     CURRENT_SCHEMA_VERSION,
     _ensure_column,
     drop_fts_triggers,
+    row_format_is_newer,
+    row_format_is_older,
 )
 from ._symbols import (
     _expand_query,

@@ -155,6 +155,54 @@ class TestTheCheckReportsAMismatch:
             conn.close()
 
 
+class TestANewerFormatIsNotAReindex:
+    """A reindex cannot repair an index that is NEWER than its reader.
+
+    The check used a plain ``!=``, thus it asked for a reindex in both
+    directions.  In this one the index is correct and the READER is old: the
+    indexer writes the same new format again, and the reason comes straight
+    back.  A daemon acts on what ``check_structural_staleness`` returns, thus
+    the plain inequality put it into a loop — reindex, mismatch, reindex —
+    over an index nothing was wrong with.
+
+    Measured: a session started before a row-format bump reported
+    ``reindex_needed`` right after a finished reindex, and every reindex
+    after it reported the same.
+    """
+
+    def test_a_newer_format_gives_no_reindex_reason(self, tmp_path: Path):
+        conn, cfg, root = _build(tmp_path)
+        try:
+            cfg["row_format"] = "fw-context-rows/999"
+            reasons = check_structural_staleness(conn, "ch", cfg, root)
+            assert not [r for r in reasons if "row format" in r], (
+                "a newer format must not ask for a reindex: the run writes "
+                "the same format again and the reason never clears"
+            )
+        finally:
+            conn.close()
+
+    def test_the_two_directions_are_told_apart(self) -> None:
+        from fw_context_mcp.indexer.db import row_format_is_newer, row_format_is_older
+
+        assert row_format_is_older("fw-context-rows/0")
+        assert not row_format_is_newer("fw-context-rows/0")
+
+        assert row_format_is_newer("fw-context-rows/999")
+        assert not row_format_is_older("fw-context-rows/999")
+
+        assert not row_format_is_older(CURRENT_ROW_FORMAT)
+        assert not row_format_is_newer(CURRENT_ROW_FORMAT)
+
+    def test_an_unreadable_format_counts_as_older(self) -> None:
+        """The safe direction, for a value no ordinal can be read from."""
+        from fw_context_mcp.indexer.db import row_format_is_newer, row_format_is_older
+
+        for value in ("", "(none)", "fw-context-rows/", "something-else/2", "2"):
+            assert row_format_is_older(value), value
+            assert not row_format_is_newer(value), value
+
+
 class TestTheTwoVersionsMoveTogether:
     """A bump of the row format alone rewrites no row.
 

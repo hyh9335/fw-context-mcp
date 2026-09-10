@@ -493,11 +493,13 @@ class TestChangedHeaderRows:
 class TestBlankOutInactiveFiles:
     """A header the parse read that produced no active line.
 
-    ``active`` in _build_filtered_file_content holds only files that carry a
-    token or a cursor extent, and its loop skips an entry whose line set is
-    empty.  A header reduced to comments and pragmas reaches neither, thus
-    the loop cannot refresh it and files.content kept the text from before
-    the edit.
+    The content loop of _build_filtered_file_content skips an entry whose
+    line set is empty, thus it cannot refresh a header that holds nothing to
+    read, and files.content kept the text from before the edit.
+
+    These tests call ``_blank_out_inactive_files`` directly and give it the
+    sets themselves, thus they pin the pass and not the caller that builds
+    those sets.
     """
 
     @staticmethod

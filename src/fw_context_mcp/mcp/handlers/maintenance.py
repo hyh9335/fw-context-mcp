@@ -57,6 +57,8 @@ from ...indexer.db import (
     get_memory_regions_by_config,
     make_analysis_summary,
     open_db,
+    row_format_is_newer,
+    row_format_is_older,
     transaction,
 )
 from ...indexer.git_context import branch_moved_since
@@ -378,6 +380,20 @@ def get_active_build(
     ``fw-context-rows/1`` keeps every inactive ``#ifdef`` branch, thus a
     body or a file from it can show code that the compiler never sees.
 
+    ``client_restart_required`` is the OPPOSITE case, and no command repairs
+    it.  The index carries a NEWER row format than this server process
+    reads, thus the index is the correct one and this process is the old
+    reader.  A reindex makes it worse than useless: the indexer writes the
+    same new format again, and the message comes back over an index that had
+    nothing wrong with it.  ``status`` therefore stays ``"ready"`` and
+    ``reindex_needed`` stays False — every query keeps working.
+
+    Do NOT run a reindex for this field.  Tell the operator to restart the
+    LLM client — Claude Code, opencode, or whichever one is in use.  The MCP
+    server is a child process of that client, thus nobody can restart the
+    server by itself.  ``client_restart_reason`` holds the wording, and
+    ``index_message`` opens with it.
+
     ``indexed_at`` and ``first_indexed_at`` are UTC; file mtimes are local
     time.  Never compare the two directly — in UTC+2 a correctly indexed
     file looks 2 hours newer than ``indexed_at``.  Call with ``fast=False``
@@ -641,8 +657,15 @@ def get_active_build(
         # SET, thus it moves only when a column appears or goes, while the
         # content of a column can change under an unchanged name.  See
         # CURRENT_ROW_FORMAT.
+        # The test is ordinal, and not a plain inequality, because the two
+        # directions need opposite answers.  An OLDER format asks for a
+        # reindex, and the run repairs it.  A NEWER one cannot be repaired by
+        # any command: the index is right and THIS PROCESS is the old reader,
+        # thus the indexer writes the same new format again.  See the warning
+        # that `row_format_newer` builds below.
         stored_row_format = str(cfg.get("row_format") or "")
-        row_format_old = stored_row_format != CURRENT_ROW_FORMAT
+        row_format_old = row_format_is_older(stored_row_format)
+        row_format_newer = row_format_is_newer(stored_row_format)
 
         # A source file that the build system never saw has no translation
         # unit, thus a plain reindex cannot pick it up: it is absent from
@@ -852,6 +875,28 @@ def get_active_build(
         # not as a defect.
         index_message += _analysis_message(analysis, stored_analyze_vendor)
 
+        # ── This process is older than the index it reads ──
+        # No command repairs this, thus it is a warning and not a reindex
+        # reason.  It goes in front of `index_message` because that string is
+        # what a caller reads first, and a "fully up to date" message alone
+        # would hide the one action that helps.
+        client_restart_reason = ""
+        if row_format_newer:
+            client_restart_reason = (
+                f"This session reads row format {CURRENT_ROW_FORMAT} and the index holds "
+                f"{stored_row_format}. The index is the newer one and it is correct — do "
+                f"NOT reindex, because the indexer writes {stored_row_format} again and "
+                f"this message comes back. This server process runs older code. Tell the "
+                f"operator to restart the LLM client (Claude Code, opencode, or the client "
+                f"in use). The MCP server is a child process of that client, thus nobody "
+                f"can restart the server alone."
+            )
+            index_message = (
+                f"Restart the LLM client — this session reads row format "
+                f"{CURRENT_ROW_FORMAT} and the index holds {stored_row_format}. "
+                f"Queries work meanwhile. {index_message}"
+            )
+
         result: dict = {
             "config_hash": config_hash,
             "project_id": project_id,
@@ -885,6 +930,11 @@ def get_active_build(
             "stale": needs_reindex or header_affected_tus > 0,
             "index_message": index_message,
         }
+        if client_restart_reason:
+            # No leading underscore: this is an answer to act on, and not a
+            # note about where an answer came from.
+            result["client_restart_required"] = True
+            result["client_restart_reason"] = client_restart_reason
         if _warning is not None:
             result["_warning"] = _warning
 
