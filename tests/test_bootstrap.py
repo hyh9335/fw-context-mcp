@@ -170,6 +170,168 @@ class TestReady:
         assert result["config_hash"] == "hash-test"
 
 
+class TestAnIndexNewerThanThisProcess:
+    """An index of a NEWER row format asks for a restart, and not a reindex.
+
+    A session that started before a row-format bump keeps reading the old
+    format.  Its index is the correct one, thus a reindex writes the same new
+    format again and the complaint never clears.  Measured on a real project:
+    ``get_active_build`` reported ``reindex_needed`` straight after a
+    finished reindex, and after every reindex that followed.
+
+    The repair is to restart the LLM client, because the MCP server is a
+    child process of it.
+    """
+
+    @staticmethod
+    def _project_with_a_newer_format(tmp_path: Path) -> Path:
+        from fw_context_mcp.indexer.db import open_db, transaction
+
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        db_path = cfg.index.db_dir / pid / "index.db"
+        _create_index_db(db_path, pid, root)
+
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE build_configs SET row_format='fw-context-rows/999' "
+                    "WHERE config_hash='hash-test'"
+                )
+        finally:
+            conn.close()
+        return root
+
+    def test_the_status_stays_ready(self, tmp_path: Path):
+        root = self._project_with_a_newer_format(tmp_path)
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "ready", (
+            "the index is the correct one, thus every query keeps working"
+        )
+        assert result["reindex_needed"] is False
+        assert not [r for r in result["reindex_reasons"] if "row_format" in r], (
+            "a reindex cannot repair this, thus it must not be advised"
+        )
+
+    def test_it_asks_for_a_client_restart(self, tmp_path: Path):
+        root = self._project_with_a_newer_format(tmp_path)
+        result = get_active_build(project_root=str(root))
+
+        assert result["client_restart_required"] is True
+        reason = result["client_restart_reason"]
+        assert "restart the LLM client" in reason
+        assert "child process" in reason, (
+            "the operator has to know that the server cannot restart alone"
+        )
+        assert "do not reindex" in reason.lower(), (
+            "the wording must forbid the one command that cannot help"
+        )
+        assert result["index_message"].startswith("Restart the LLM client"), (
+            "index_message is read first, thus the action belongs at its front"
+        )
+
+    def test_a_current_format_asks_for_nothing(self, tmp_path: Path):
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        _create_index_db(cfg.index.db_dir / pid / "index.db", pid, root)
+
+        result = get_active_build(project_root=str(root))
+        assert "client_restart_required" not in result
+        assert "client_restart_reason" not in result
+
+
+class TestARunningIndexChangesTheAdvice:
+    """A reason must not name a command that is already running.
+
+    Every message for ``reindex_needed`` names a command.  When an index run
+    is already under way that reads as a contradiction, and a caller that
+    follows it asks the operator for work that is being done.
+
+    ``bg_reindex_running`` covers a run of the daemon AND a run the operator
+    started — ``reindex.pid`` carries both.  The arguments of neither can be
+    read, thus the wording must promise nothing about the outcome: only
+    ``--build`` regenerates compile_commands.json.
+    """
+
+    @staticmethod
+    def _project_needing_a_reindex(tmp_path: Path) -> Path:
+        """Give a project whose index asks for a reindex (an old row format)."""
+        from fw_context_mcp.indexer.db import open_db, transaction
+
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        db_path = cfg.index.db_dir / pid / "index.db"
+        _create_index_db(db_path, pid, root)
+
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                conn.execute(
+                    "UPDATE build_configs SET row_format='fw-context-rows/0' "
+                    "WHERE config_hash='hash-test'"
+                )
+        finally:
+            conn.close()
+        return root
+
+    def test_the_running_index_is_named_first(self, tmp_path: Path, monkeypatch):
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        root = self._project_needing_a_reindex(tmp_path)
+        monkeypatch.setattr(maintenance, "_is_bg_reindex_running", lambda _root: True)
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["bg_reindex_running"] is True
+        assert result["status"] == "reindex_needed", (
+            "the answers of this moment still come from the last finished "
+            "run, thus the status must not read as fully operational"
+        )
+        assert result["index_message"].startswith("An index run is in progress"), (
+            f"the front of index_message is what a caller acts on, got: "
+            f"{result['index_message'][:80]!r}"
+        )
+        assert "start a second one" in result["index_message"]
+        assert "--build" in result["index_message"], (
+            "the wording must not promise that the running index clears a "
+            "reason that needs --build"
+        )
+
+    def test_without_a_run_the_message_names_the_command(self, tmp_path: Path, monkeypatch):
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        root = self._project_needing_a_reindex(tmp_path)
+        monkeypatch.setattr(maintenance, "_is_bg_reindex_running", lambda _root: False)
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "reindex_needed"
+        assert not result["index_message"].startswith("An index run is in progress")
+        assert "fw-context index" in result["index_message"], (
+            "with no run under way the caller needs the command"
+        )
+
+    def test_a_ready_index_gets_no_such_prefix(self, tmp_path: Path, monkeypatch):
+        """The prefix belongs to a REASON, and not to a running index alone."""
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        pid = generate_project_id()
+        root = _make_project_root(tmp_path, project_id=pid)
+        cfg = _load_cfg(root)
+        _create_index_db(cfg.index.db_dir / pid / "index.db", pid, root)
+        monkeypatch.setattr(maintenance, "_is_bg_reindex_running", lambda _root: True)
+
+        result = get_active_build(project_root=str(root))
+
+        assert result["status"] == "reindexing"
+        assert not result["index_message"].startswith("An index run is in progress")
+
+
 def _load_cfg(root: Path):
     from fw_context_mcp.config import load as load_config
 

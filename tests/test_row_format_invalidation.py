@@ -153,3 +153,84 @@ class TestTheCheckReportsAMismatch:
             assert any("row format" in r for r in reasons), reasons
         finally:
             conn.close()
+
+
+class TestANewerFormatIsNotAReindex:
+    """A reindex cannot repair an index that is NEWER than its reader.
+
+    The check used a plain ``!=``, thus it asked for a reindex in both
+    directions.  In this one the index is correct and the READER is old: the
+    indexer writes the same new format again, and the reason comes straight
+    back.  A daemon acts on what ``check_structural_staleness`` returns, thus
+    the plain inequality put it into a loop — reindex, mismatch, reindex —
+    over an index nothing was wrong with.
+
+    Measured: a session started before a row-format bump reported
+    ``reindex_needed`` right after a finished reindex, and every reindex
+    after it reported the same.
+    """
+
+    def test_a_newer_format_gives_no_reindex_reason(self, tmp_path: Path):
+        conn, cfg, root = _build(tmp_path)
+        try:
+            cfg["row_format"] = "fw-context-rows/999"
+            reasons = check_structural_staleness(conn, "ch", cfg, root)
+            assert not [r for r in reasons if "row format" in r], (
+                "a newer format must not ask for a reindex: the run writes "
+                "the same format again and the reason never clears"
+            )
+        finally:
+            conn.close()
+
+    def test_the_two_directions_are_told_apart(self) -> None:
+        from fw_context_mcp.indexer.db import row_format_is_newer, row_format_is_older
+
+        assert row_format_is_older("fw-context-rows/0")
+        assert not row_format_is_newer("fw-context-rows/0")
+
+        assert row_format_is_newer("fw-context-rows/999")
+        assert not row_format_is_older("fw-context-rows/999")
+
+        assert not row_format_is_older(CURRENT_ROW_FORMAT)
+        assert not row_format_is_newer(CURRENT_ROW_FORMAT)
+
+    def test_an_unreadable_format_counts_as_older(self) -> None:
+        """The safe direction, for a value no ordinal can be read from."""
+        from fw_context_mcp.indexer.db import row_format_is_newer, row_format_is_older
+
+        for value in ("", "(none)", "fw-context-rows/", "something-else/2", "2"):
+            assert row_format_is_older(value), value
+            assert not row_format_is_newer(value), value
+
+
+class TestTheTwoVersionsMoveTogether:
+    """A bump of the row format alone rewrites no row.
+
+    The staleness check asks every index for a reindex when the stored
+    format differs.  That run mints no new build config, because the config
+    hash did not move, and the content pass skips every file that already
+    holds text.  `_step_finalize_manifest` then stamps the NEW format over
+    rows that still hold the OLD text, and the check goes quiet for good
+    over an index that answers with dead code.
+
+    A new config hash is what really rewrites the rows: no row exists for
+    the build, thus a plain `fw-context index` writes every file and every
+    body again.  Nothing at the stamp site can see the difference, thus this
+    test is the guard.
+    """
+
+    def test_a_row_format_bump_needs_a_config_hash_bump(self) -> None:
+        import inspect
+
+        from fw_context_mcp.indexer.db._schema import ROW_FORMAT_PAIRED_WITH
+        from fw_context_mcp.indexer.manifest import compute_config_hash
+
+        source = inspect.getsource(compute_config_hash)
+        assert f'"_format": "{ROW_FORMAT_PAIRED_WITH}"' in source, (
+            "CURRENT_ROW_FORMAT moved without the config hash. A reindex "
+            "that mints no new build config keeps the old text and stamps "
+            "the new format over it, thus the staleness check goes quiet "
+            "over an index that answers with dead code. Bump `_format` in "
+            "compute_config_hash, then set ROW_FORMAT_PAIRED_WITH to the "
+            "new value."
+        )

@@ -1100,7 +1100,9 @@ def search_content(
 
     Searches **ifdef-filtered** file text — only code that actually compiles
     for the current build configuration.  Inactive ``#ifdef`` branches are
-    replaced with blank lines (preserving original line numbers).
+    replaced with blank lines (preserving original line numbers).  A pattern
+    that lives only in a dead branch therefore gives no result, and that
+    empty answer is the correct one: the code does not compile.
 
     Covers the text that belongs to no definition, which is what
     ``search_bodies`` cannot see: ``#include``, ``#define``, ``#ifdef``,

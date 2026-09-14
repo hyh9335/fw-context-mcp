@@ -359,11 +359,41 @@ def _number_lines(text: str, start_line: int) -> str:
     the numbers of the file, because the index read that same file.  For a
     file that changed after the index run they can differ, and the warning
     that goes with that body says so.
+
+    The text is clamped to ``index.max_symbol_body_lines``, which is the cap
+    that ``_read_symbol_body`` applies to the disk.  Both origins must obey
+    it: an unchanged file always takes this path, thus a cap that this
+    function ignores has no effect on the common case.  The caller marks a
+    clamped body with ``_source_truncated``.
     """
+    lines = text.splitlines()[: _get_max_body_lines()]
     return "\n".join(
         f"{start_line + offset:4d}  {line}"
-        for offset, line in enumerate(text.splitlines())
+        for offset, line in enumerate(lines)
     )
+
+
+def _store_capped_source(result: dict, source: str, stored: str) -> None:
+    """Put *source* in *result*, and mark the body when a cap cut it.
+
+    Two caps can cut a body.  ``index.max_symbol_body_lines`` bounds the
+    number of lines, and ``_SOURCE_TRUNCATE_CHARS`` bounds what travels to
+    the caller.  *stored* is the body that the index holds, and its length
+    is what tells whether the line cap cut anything.
+
+    WHY the mark: the character cut lands in the middle of a line, thus a
+    caller that does not learn about it reads a body with an unbalanced
+    brace as the whole function.  The name carries a leading underscore
+    because it reports where the answer came from, and not the answer.
+    """
+    truncated = len(source) > _SOURCE_TRUNCATE_CHARS
+    if truncated:
+        source = source[:_SOURCE_TRUNCATE_CHARS]
+    if stored and len(stored.splitlines()) > _get_max_body_lines():
+        truncated = True
+    result["source"] = source
+    if truncated:
+        result["_source_truncated"] = True
 
 
 def _body_matches_symbol(file_path: str, row) -> bool:
@@ -768,6 +798,12 @@ def get_source(
         move, ``"index"`` when it did and the body comes from the index
         instead.  A moved symbol never gives the code of another symbol.
 
+        ``_source_truncated`` (True) marks a body that a cap cut:
+        ``index.max_symbol_body_lines`` bounds the number of lines, and a
+        second cap bounds the characters.  The character cut lands in the
+        middle of a line, thus a body with this mark can end in an
+        unbalanced brace.  Read the rest with ``read_file`` and a range.
+
         On failure the dict holds only ``error`` with the reason.
     """
     try:
@@ -858,7 +894,7 @@ def get_source(
         result["stale_warning"] = stale_warning
         result["stale"] = True
     if source:
-        result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        _store_capped_source(result, source, row["source"] or "")
         result["source_origin"] = origin
     elif not stale_warning:
         result["warning"] = f"Could not read source from {file_path}"
@@ -1341,7 +1377,7 @@ def get_symbol_context(
         result["overrides"] = overrides_info["overrides"]
         result["overridden_by"] = overrides_info["overridden_by"]
     if source:
-        result["source"] = source[:_SOURCE_TRUNCATE_CHARS] if len(source) > _SOURCE_TRUNCATE_CHARS else source
+        _store_capped_source(result, source, row["source"] or "")
         result["source_origin"] = source_origin
     if stale_warning:
         # The callers and callees come from the index, thus a changed file
@@ -1413,6 +1449,11 @@ def read_file(
     the original file — inactive branches appear as blank lines, and the
     text spans the whole file, thus ``lines`` is the length of the file.
 
+    A blank line is an answer, and not a defect: it says that the line is
+    in a branch the build does not take.  When EVERY line of the file is
+    blank, the dict carries ``all_lines_inactive`` and a ``warning`` — such
+    a file holds code, and the active build compiles none of it.
+
     ``content`` is bare text by default and carries NO line-number prefix —
     unlike the ``source`` of ``get_source``, which numbers every line.
     Never count the lines here to find a number.  Take it from a field
@@ -1425,9 +1466,11 @@ def read_file(
     known line costs a fraction of the whole file — 40 lines around a match
     instead of 2000 lines of a header.
 
-    An include guard is a blank line: ``#ifndef`` and ``#endif`` are
-    conditional directives, which carry no token and thus never count as
-    active.  The line stays in place, and only its text is gone.
+    A comment and a preprocessor directive are part of the answer.  Both
+    are text that the file holds and the build reads, thus both stay — an
+    include guard, a ``#define``, and the description of a register in a
+    vendor header included.  A blank line is therefore an inactive line, or
+    a line that is blank on disk, and nothing else.
 
     For reading a single function body with libclang exact extents use
     ``get_source``.  For body + callers + callees in one call use
@@ -1459,7 +1502,14 @@ def read_file(
         content (str — the ifdef-filtered text, bare unless
         ``line_numbers`` was set),
         warning (str, optional — when reading from raw disk instead of
-        indexed content)}.
+        indexed content, or when no line of the file is active),
+        all_lines_inactive (True, optional)}.
+
+        ``all_lines_inactive`` marks a file that the active build compiles
+        no line of: every line is inside an inactive ``#if`` branch, thus
+        ``content`` holds the correct number of lines and no text.  Without
+        this field that answer reads as an empty file, and the two mean
+        opposite things.
 
         A range adds ``start_line`` and ``end_line`` — the first and last
         line the ``content`` really holds, after the end was clamped to the
@@ -1533,6 +1583,19 @@ def read_file(
         # Normal path: ifdef-filtered content is available from the index.
         # This is the preferred code path — inactive #ifdef branches are
         # already stripped, line numbers are preserved as blank lines.
+        if not content.strip():
+            # Every line of the file is inside an inactive branch.  The text
+            # keeps the length of the file, thus it is truthy and reaches
+            # this branch as a normal answer — but content of the correct
+            # length that holds no text reads exactly like an empty file.
+            # The two mean opposite things: an empty file has no code, and
+            # this file has code that the active build does not compile.
+            result["all_lines_inactive"] = True
+            result["warning"] = (
+                f"The active build compiles no line of {row['path']}. Every line "
+                f"is inside an inactive #if branch, thus the content below is "
+                f"blank and the file is NOT empty on disk."
+            )
         if _file_differs(result["file"], row["mtime"] or 0.0, row["source_hash"] or ""):
             # The content comes from the index, thus a changed file makes it
             # a copy of an older state.  The disk path below does not need

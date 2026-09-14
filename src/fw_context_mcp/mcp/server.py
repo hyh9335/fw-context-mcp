@@ -547,13 +547,20 @@ mcp = FastMCP(
         "blank in the content of read_file, in the text that search_content\n"
         "and search_bodies search, and in the body that get_source and\n"
         "get_symbol_context give.  Line numbers never move.  Thus a dead\n"
-        "#ifdef block cannot reach you as live code.  Two limits:\n"
+        "#ifdef block cannot reach you as live code.\n"
+        "A comment and a preprocessor directive are part of the answer: a\n"
+        "block comment keeps its closing marker, and an include guard shows.\n"
+        "A blank line is thus an inactive line, or a line that is blank on\n"
+        "disk, and nothing else.  Three limits:\n"
         "• The filter needs an index.  When a file changed after the last\n"
         "  index run, get_source gives the current text from the DISK, which\n"
         "  holds every branch.  It sets source_origin: \"disk\" and a\n"
         "  stale_warning — read both before you cite such a body.\n"
         "• An empty result can mean the pattern is only in a dead branch.\n"
-        "  That is an answer, not a failure: the code does not compile.\n\n"
+        "  That is an answer, not a failure: the code does not compile.\n"
+        "• A file can come back with every line blank.  read_file marks it\n"
+        "  with all_lines_inactive and a warning.  Such a file holds code,\n"
+        "  and the active build compiles none of it — NOT an empty file.\n\n"
         "TOOL SELECTION (pick the right one):\n"
         '• Symbol by exact/prefix name _____ → lookup_symbol (e.g. "uart_", "main")\n'
         '• Symbols by concept/topic _________ → search_code (e.g. "interrupt handler")\n'
@@ -693,6 +700,13 @@ mcp = FastMCP(
         '  • status="ready" or "reindexing" — fw-context is fully operational.\n'
         "    bg_reindex_running does NOT mean the index is unavailable. Continue.\n"
         '  • status="reindex_needed" — queries still work, but schedule fw-context index.\n'
+        "  • client_restart_required=True — NOT a status, and NO command repairs\n"
+        "    it. The index holds a newer row format than this session reads, thus\n"
+        "    the index is correct and this session is the old reader. Queries keep\n"
+        "    working. Do NOT reindex: the indexer writes the same new format again\n"
+        "    and the field comes back. Tell the operator to restart the LLM client\n"
+        "    (Claude Code, opencode, or the client in use). The MCP server is a\n"
+        "    child process of that client, thus nobody can restart it alone.\n"
         '  • status="not_initialized" — project not set up. ASK the operator:\n'
         '    "Initialize fw-context? Runs `fw-context init` — creates project ID,\n'
         "    config files (.fw-context/config.toml), and registers with AI tools.\"\n"

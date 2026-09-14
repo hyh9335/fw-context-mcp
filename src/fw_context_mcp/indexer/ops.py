@@ -52,7 +52,7 @@ except ImportError:
 from collections import OrderedDict
 from collections.abc import Set as AbstractSet
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # Type-only import: fw_context_mcp.indexer.symbols pulls in libclang at
@@ -211,20 +211,103 @@ def _normalize_file_path(file_path: str, project_root: Path) -> str:
         return str(resolved)
 
 
+def _token_lines_of_file(tu: Any, path: str) -> set[int]:
+    """Give every line that a token of *path* covers.
+
+    *path* must be resolved — one file has more than one spelling in one
+    translation unit, and ``_normalize_file_path`` gives the reason.
+
+    The caller asks for one file at a time, and only for a file it is about
+    to write.  A header that already holds text needs no answer here, thus
+    a batch over every file of the TU would tokenize hundreds of files for
+    an answer that nothing reads.
+
+    WHY this function is necessary: ``tu.cursor.get_tokens()`` answers for
+    the MAIN file only, and the caller kept one line for each token — the
+    line the token starts on.  The two limits together erase text that the
+    build compiles:
+
+    * A block comment is ONE token whose extent spans its whole range.  The
+      start-line rule stored the ``/*`` and dropped every line after it, the
+      closing ``*/`` included.  A reader then saw a comment that no line
+      closes, and read the live code below it as commented out.  The same
+      shape holds for a string that a backslash continues, and for a raw
+      string literal.
+    * A header carries no token at all, thus every comment and every
+      conditional directive was absent from it.  A vendor SDK keeps the
+      description of each register and each bit in those comments.
+
+    Tokenization is a raw lexer, thus it answers for a dead ``#if`` branch
+    also.  The caller subtracts ``collect_skipped_lines`` from this answer,
+    and that subtraction is what separates live text from dead text.  See
+    ``skipped_ranges.py``.
+
+    A file that is not on disk, an empty file, and a libclang that will not
+    answer for a file all give an empty set.  Such a file then keeps the
+    lines that the AST walk found for it, which is what it had before this
+    pass existed.
+    """
+    from clang import cindex as cx
+
+    try:
+        size = Path(path).stat().st_size
+    except OSError:
+        # A generated header that the build removed after the parse.
+        return set()
+    if not size:
+        return set()
+
+    rows: set[int] = set()
+    try:
+        handle = cx.File.from_name(tu, path)
+        # The token below carries the spelling that libclang uses, which is
+        # the spelling of this handle and not always the string the caller
+        # gave.  Comparing against the caller string would drop every token
+        # of the file when the two differ.
+        own_name = str(handle.name)
+        extent = cx.SourceRange.from_locations(
+            cx.SourceLocation.from_offset(tu, handle, 0),
+            cx.SourceLocation.from_offset(tu, handle, size),
+        )
+        for token in tu.get_tokens(extent=extent):
+            span = token.extent
+            start = span.start
+            if start.file is None or str(start.file.name) != own_name:
+                # A token that a macro expansion moved to a different file.
+                # Its lines belong to that file, not to this one.
+                continue
+            rows.update(range(start.line, span.end.line + 1))
+    except (AttributeError, OSError, TypeError, ValueError):
+        # A deliberate boundary, for the reason `skipped_ranges.py` gives:
+        # an index run of a large project takes hours, thus a file that
+        # libclang will not tokenize must cost the run only the comments of
+        # that file, and not the run itself.
+        log.debug("could not tokenize %s for the content fill", path, exc_info=True)
+        return set()
+    return rows
+
+
 def _build_filtered_file_content(
     conn, unit, config_hash: str, project_root: Path, *, build_dir_patterns: list[str] | None = None, existing_tu=None,
     skip_files: frozenset[str] | None = None,
     refresh_paths: set[str] | None = None,
+    skipped: dict[Path, set[int]] | None = None,
 ) -> tuple[int, list[dict]]:
     """Find the active lines of each file of a TU, store ifdef-filtered content.
 
     Parses *unit* (a ``CompilationUnit`` data class) with libclang, then
-    collects the lines that carry code and subtracts the lines that the
-    preprocessor skipped.  Two steps build the first set — the tokens of the
-    TU and the extent of every cursor — and neither can tell an inactive
-    ``#if`` branch from live code.  ``collect_skipped_lines`` gives the
-    record the preprocessor made of the branches it did not take, and that
-    record decides.  See ``skipped_ranges.py``.
+    collects the lines that hold text and subtracts the lines that the
+    preprocessor skipped.  Three steps build the first set — the tokens of
+    the TU, the extent of every cursor, and the tokens of each file this
+    parse owns (``_token_lines_of_files``) — and none of them can tell an
+    inactive ``#if`` branch from live code.  ``collect_skipped_lines`` gives
+    the record the preprocessor made of the branches it did not take, and
+    that record decides.  See ``skipped_ranges.py``.
+
+    The third step is what keeps a comment and a preprocessor directive in
+    the text.  The first two lose both: a token contributes only the line it
+    starts on, thus a block comment lost its closing marker, and a header
+    carries no token of its own at all.
 
     Processes files whose ``content`` column is still empty, plus the files
     named in *refresh_paths* — the set this parse owns, whose text just
@@ -398,7 +481,11 @@ def _build_filtered_file_content(
     # extent is one continuous range of lines, thus it carries a dead block
     # inside a function body along with the body.  The preprocessor kept a
     # record of what it skipped; subtract it below, per file.
-    skipped = collect_skipped_lines(tu)
+    #
+    # A caller that already has the map for THIS TU passes it: the walk over
+    # every range and the resolve of every path are the same work twice.
+    if skipped is None:
+        skipped = collect_skipped_lines(tu)
 
     # Paths this loop wrote.  The blank-out pass below must not touch them
     # again: this loop already put the current text there.
@@ -410,23 +497,43 @@ def _build_filtered_file_content(
     # lines all the same.  The blank-out pass took the absence from
     # `written` as "no active line" and erased the text of a header that
     # still held code.
+    #
+    # WHY this set comes from `active` alone, and not from the token lines
+    # below: a file is in it when this parse saw CODE in the file.  The
+    # token pass answers for a comment and a directive also, thus a header
+    # that an edit reduced to comments would enter this set.  The blank-out
+    # pass lets such a path through, and the content loop also skips it when
+    # it already holds text that this parse does not own — the stale text
+    # would then stay for ever.  The two sets must therefore stay apart.
     active_paths: set[str] = {
         _normalize_file_path(path, project_root)
         for path, lines in active.items()
         if lines
     }
 
-    for abs_path, active_lines in active.items():
-        if not active_lines:
-            continue
+    # ── The files this loop can write ──
+    # Two groups, and both are necessary.  The first is every file that
+    # carries a cursor line, keyed on the RESOLVED path: `active` is keyed
+    # by the spelling libclang used at that point, and one file has more
+    # than one spelling inside one TU — `_normalize_file_path` gives the
+    # measurement.  The second is every file this parse read, because a
+    # header that holds only comments carries no cursor and would otherwise
+    # never reach the loop.
+    #
+    # `header_files` already holds resolved paths — the loop that built it
+    # resolved each one for the manifest — thus none is resolved again here.
+    # One resolve for each header of each TU is a system call the run cannot
+    # use: a large project reaches the same header from hundreds of TUs.
+    candidates: dict[Path, set[int]] = {}
+    for spelling, rows in active.items():
+        if rows:
+            candidates.setdefault(Path(spelling).resolve(), set()).update(rows)
+    for path in (str(Path(unit.file).resolve()), *(header for header, _ in header_files)):
+        candidates.setdefault(Path(path), set())
 
+    for resolved, cursor_lines in candidates.items():
+        abs_path = str(resolved)
         db_path = _normalize_file_path(abs_path, project_root)
-        resolved = Path(abs_path).resolve()
-
-        # Drop the lines of every inactive #if branch.  The key of `active`
-        # is the spelling libclang used at that point, which is not stable
-        # for one file, thus the two sides meet on the resolved path.
-        active_lines = active_lines - skipped.get(resolved, frozenset())
 
         # Already processed — and not owned by this parse, so its stored
         # content still matches the disk.
@@ -436,6 +543,24 @@ def _build_filtered_file_content(
         ).fetchone()
         if row and row[0] and not (refresh_paths and db_path in refresh_paths):
             continue  # already have filtered content
+
+        # Tokenize only now, when the file is really going to be written.
+        # WHY here and not in one batch before the loop: the file that this
+        # TU writes is not the file that this TU owns.  A batch over the
+        # owned files tokenized a header that an earlier TU had already
+        # filled, and left the header that THIS TU writes without an answer.
+        # Measured on one project: a header kept its multi-line comments and
+        # lost its `#pragma once` and its first two comment lines.
+        #
+        # Drop the lines of every inactive #if branch after the merge.
+        # `skipped` is keyed by the resolved path, which is the key of this
+        # loop, thus the two sides meet.  This subtraction is what keeps the
+        # comments of a dead branch out of the stored text.
+        active_lines = (cursor_lines | _token_lines_of_file(tu, abs_path)) - skipped.get(
+            resolved, frozenset()
+        )
+        if not active_lines:
+            continue
 
         # Read original file
         try:
@@ -450,13 +575,12 @@ def _build_filtered_file_content(
         # Replace inactive lines with \n to keep the line numbers.
         #
         # The range covers the whole file, and not only the lines up to the
-        # last active one.  A conditional directive carries no token, thus
-        # the `#endif` of an include guard is never an active line — and it
-        # is the last line of almost every header.  A range that stopped at
-        # max(active_lines) cut that tail off: measured on a 115-line
-        # header, `read_file` stored 113 lines and then reported 113 as the
-        # length of the file.  The same column backs `search_content`, so a
-        # pattern in the tail was also unreachable.
+        # last active one.  A range that stopped at max(active_lines) cut
+        # the tail off: measured on a 115-line header, `read_file` stored
+        # 113 lines and then reported 113 as the length of the file.  The
+        # same column backs `search_content`, so a pattern in the tail was
+        # also unreachable.  The tail of a file is inactive whenever it
+        # holds blank lines, or lines of a branch the build does not take.
         #
         # The cost is one byte for each line after the last active one, thus
         # a few bytes for each header.
@@ -562,13 +686,19 @@ def _blank_out_inactive_files(
 ) -> int:
     """Refresh a header the parse read that produced no active line.
 
-    ``active`` holds only files that carry a token or a cursor extent, and
-    the content loop skips an entry whose line set is empty.  A header with
-    nothing to parse reaches neither: an empty one, or one an edit reduced
-    to comments, pragmas and include guards.  Measured before this pass
-    existed, files.content then kept the text from BEFORE the edit,
-    read_file served that text, and search_content still matched words the
-    file no longer held.
+    The content loop skips an entry whose line set is empty, and a header
+    with nothing at all to read reaches it with such a set: an empty file,
+    or one whose every line is inside an inactive branch.  Measured before
+    this pass existed, files.content then kept the text from BEFORE the
+    edit, read_file served that text, and search_content still matched words
+    the file no longer held.
+
+    The domain of this pass is smaller than it was.  A header that an edit
+    reduced to comments and pragmas used to reach it, because a comment
+    carried no active line; ``_token_lines_of_files`` now gives it one, thus
+    the content loop stores the comments and this pass leaves the file
+    alone.  ``active_paths`` deliberately stays out of that change — see the
+    comment where the caller builds it.
 
     The right text is the all-blank form.  The filter keeps line numbers
     and blanks every inactive line; here every line is inactive, thus the
@@ -844,7 +974,7 @@ def _detect_moved_symbols(
         # cleanup would add overhead without benefit.
         old_row = conn.execute(
             """SELECT s.id, s.file_id, s.qualified_name, s.signature, s.line, s.end_line,
-                      s.docstring, f.path as file_path,
+                      s.docstring, s.source, f.path as file_path,
                       a.summary, a.inputs, a.outputs, a.model, a.analyzed_at
                FROM symbols s
                LEFT JOIN llm_analysis a ON a.symbol_id = s.id
@@ -866,28 +996,43 @@ def _detect_moved_symbols(
         lines = _cached_read_lines(s.file)
         if lines is None:
             continue
-        old_abs_path = abs_path(project_root, old_row["file_path"])
-        old_lines = _cached_read_lines(old_abs_path)
-        if old_lines is None:
-            continue
         # Compare content hashes — same body + signature = same symbol.
         # If hashes differ, the symbol was genuinely modified (not just
         # moved), so we keep the new insert (old row will be cleaned up
         # by _delete_old_for_tu on its original TU).
         #
-        # Each body drops the dead lines of ITS OWN file: the two bodies
-        # come from two files, and the hash must cover the same text that
-        # the index stores for each.  A file outside this TU has no entry,
-        # and both sides then compare the full text of that file.
-        old_ch = _compute_content_hash(
-            old_lines,
-            old_row["line"],
-            old_row["end_line"],
-            old_row["signature"],
-            old_row["qualified_name"],
-            old_row["docstring"],
-            skipped.get(Path(old_abs_path).resolve(), frozenset()),
-        )
+        # Both sides must be filtered, or neither.  The old row lives in
+        # another file, and `skipped` covers THIS unit alone, thus that file
+        # has no entry in it.  Reading the old body from the disk therefore
+        # hashed every branch, while the new side hashed the filtered text.
+        # No symbol that holds an inactive branch could ever match, and its
+        # analysis was thrown away on a move that changed nothing.
+        #
+        # `symbols.source` already holds the filtered body of the old row —
+        # the same text that `_read_body` wrote for it.  Use it, and read
+        # the disk only for a row from before that column was filled.
+        old_stored = old_row["source"] or ""
+        if old_stored:
+            old_ch = compute_content_hash(
+                old_stored,
+                old_row["qualified_name"],
+                old_row["signature"],
+                old_row["docstring"],
+            )
+        else:
+            old_abs_path = abs_path(project_root, old_row["file_path"])
+            old_lines = _cached_read_lines(old_abs_path)
+            if old_lines is None:
+                continue
+            old_ch = _compute_content_hash(
+                old_lines,
+                old_row["line"],
+                old_row["end_line"],
+                old_row["signature"],
+                old_row["qualified_name"],
+                old_row["docstring"],
+                skipped.get(Path(old_abs_path).resolve(), frozenset()),
+            )
         new_ch = _compute_content_hash(
             lines, s.line, s.end_line, s.signature, s.qualified_name, s.docstring,
             skipped.get(Path(s.file).resolve(), frozenset()),
@@ -1442,6 +1587,10 @@ def store_symbols_for_unit(
     _, headers = _build_filtered_file_content(
         conn, unit, config_hash, project_root, build_dir_patterns=build_dir_patterns, existing_tu=tu,
         skip_files=skip_files, refresh_paths=owned_paths,
+        # Only when the TU below is the one this map came from.  With no
+        # `tu` the callee parses its own, and the empty map that `skipped`
+        # holds in that case would turn the filter off for every file of it.
+        skipped=skipped if tu is not None else None,
     )
     _t_content = time.monotonic() - _t_content
 

@@ -235,11 +235,11 @@ def upsert_build_config(
     compile_commands_path: str,
     embedding_dim: int | None = None,
     manifest_verification: str = "none",
-    description: str | None = "",
+    description: str | None = None,
     analyze_vendor: int = 0,
-    variant: str = "",
-    image: str = "",
-    board: str = "",
+    variant: str | None = None,
+    image: str | None = None,
+    board: str | None = None,
     row_format: str | None = None,
 ) -> None:
     """Insert or update a build configuration record.
@@ -271,7 +271,20 @@ def upsert_build_config(
             the first write for that reason; ``_postprocess`` passes the
             real value on the last one, when the content matches it.
         variant: Build variant name (``''`` for single-project builds).
+            ``None`` keeps whatever the row already holds, and it is the
+            default.  ``''`` is a value and not a way of saying "keep": it
+            is what a single-project build stores.
+
+            WHY None is the default: the UPDATE arm assigns this column from
+            ``excluded``, thus a caller that omits it writes the default over
+            the stored value.  ``cmd_analyze`` omits this column and the two
+            below, because it only updates ``analyze_vendor`` on an index
+            that another run built.  It erased the three, and
+            ``get_active_config`` then matched no row for a build that names
+            a variant — every tool called with an explicit variant failed on
+            an index that is fully present.
         image: Sysbuild image name (``''`` for non-sysbuild builds).
+            ``None`` keeps the stored value, as with ``variant``.
         row_format: Which meaning the stored text of this build carries —
             pass ``CURRENT_ROW_FORMAT``.  ``None`` keeps whatever the row
             already holds, and it is the default.
@@ -286,32 +299,43 @@ def upsert_build_config(
             reindex that was not needed — a wrong stamp costs silence over
             an index that answers with dead code.
         board: Concrete board string per-(variant, image) — captures per-image
-            board overrides (e.g. FLPR ``cpuflpr`` vs ``cpuapp``).
+            board overrides.  ``None`` keeps the stored value, as with
+            ``variant``.
 
     Returns:
         None.
     """
 
-    if description is None:
-        # Read it rather than express "keep the old one" in SQL: the column
-        # is NOT NULL, so a NULL cannot travel through the INSERT arm to a
-        # coalesce in the UPDATE arm.  One row by primary key.
-        row = conn.execute(
-            "SELECT description FROM build_configs WHERE config_hash = ?",
+    # Five columns take None for "keep the value that the row holds".  Read
+    # them rather than express that in SQL: each column is NOT NULL, thus a
+    # NULL cannot travel through the INSERT arm to a coalesce in the UPDATE
+    # arm.  One row by primary key answers for all five, because the UPDATE
+    # arm assigns every column from `excluded` and a caller that omits one
+    # would otherwise write the default over the stored value.
+    keep = {
+        "description": description,
+        "row_format": row_format,
+        "variant": variant,
+        "image": image,
+        "board": board,
+    }
+    if any(value is None for value in keep.values()):
+        old = conn.execute(
+            """SELECT description, row_format, variant, image, board
+               FROM build_configs WHERE config_hash = ?""",
             (config_hash,),
         ).fetchone()
-        description = str(row["description"]) if row is not None else ""
-
-    if row_format is None:
-        # Read it for the reason the description above gives: the column is
-        # NOT NULL, thus "keep the old one" cannot travel through SQL.  An
-        # absent row gives '', which reports the build as an older format
-        # until the postprocess step stamps it — the safe direction.
-        fmt_row = conn.execute(
-            "SELECT row_format FROM build_configs WHERE config_hash = ?",
-            (config_hash,),
-        ).fetchone()
-        row_format = str(fmt_row["row_format"]) if fmt_row is not None else ""
+        for column, value in keep.items():
+            if value is None:
+                # An absent row gives ''.  For `row_format` that reports the
+                # build as an older format until the postprocess step stamps
+                # it, which is the safe direction.
+                keep[column] = str(old[column]) if old is not None else ""
+    description = keep["description"]
+    row_format = keep["row_format"]
+    variant = keep["variant"]
+    image = keep["image"]
+    board = keep["board"]
 
     # Columns guaranteed by open_db() → _ensure_migrated_columns()
     conn.execute(

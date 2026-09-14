@@ -1027,7 +1027,10 @@ def compute_config_hash(
         # question this function asks: from /3 on, ``files.content`` and
         # ``symbols.source`` hold only the lines that the preprocessor took.
         # Before it, an inactive #ifdef branch stayed in both, and a dead
-        # block inside a function body was invisible as dead.
+        # block inside a function body was invisible as dead.  /4 marks a
+        # second change of the stored rows: ``files.content`` holds the
+        # comments and the preprocessor directives of every file, which the
+        # one-line-per-token rule and the token-free headers had dropped.
         #
         # WHY the format version belongs in THIS hash: a new config_hash
         # leaves no row for the build, thus a plain `fw-context index` writes
@@ -1038,7 +1041,7 @@ def compute_config_hash(
         #
         # Every existing index therefore gets one final reindex, which is
         # intended.
-        "_format": "fw-context-cc/3",
+        "_format": "fw-context-cc/4",
         "project_root": str(project_root),
         # WHY only these two: config_hash answers "could the same source text
         # compile to something different now?"  Macros flip #ifdef, and the

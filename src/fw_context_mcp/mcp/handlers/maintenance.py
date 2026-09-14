@@ -57,6 +57,8 @@ from ...indexer.db import (
     get_memory_regions_by_config,
     make_analysis_summary,
     open_db,
+    row_format_is_newer,
+    row_format_is_older,
     transaction,
 )
 from ...indexer.git_context import branch_moved_since
@@ -361,6 +363,15 @@ def get_active_build(
       ``reindex_reasons``: a missing source file needs
       ``fw-context index --build``, the others need only
       ``fw-context index``.
+
+      Read ``bg_reindex_running`` before you name any command here.  A run
+      already under way does the work, thus a second one only waits on the
+      same lock, and ``index_message`` and the branch reason both say so.
+      That field covers a run of the daemon AND a run the operator started
+      — the arguments of neither are readable, thus a reason that needs
+      ``--build`` can outlive a run without it.  This status wins over
+      ``"reindexing"`` deliberately: the answers of this moment come from
+      the rows of the last FINISHED run.
     * ``"no_index"`` — initialized, never indexed. Run ``fw-context index``.
     * ``"not_initialized"`` — run ``fw-context init``.
     * ``"error"`` — DB corruption or access error. Use other tools.
@@ -377,6 +388,20 @@ def get_active_build(
     older meaning.  Take it seriously: an index written before
     ``fw-context-rows/1`` keeps every inactive ``#ifdef`` branch, thus a
     body or a file from it can show code that the compiler never sees.
+
+    ``client_restart_required`` is the OPPOSITE case, and no command repairs
+    it.  The index carries a NEWER row format than this server process
+    reads, thus the index is the correct one and this process is the old
+    reader.  A reindex makes it worse than useless: the indexer writes the
+    same new format again, and the message comes back over an index that had
+    nothing wrong with it.  ``status`` therefore stays ``"ready"`` and
+    ``reindex_needed`` stays False — every query keeps working.
+
+    Do NOT run a reindex for this field.  Tell the operator to restart the
+    LLM client — Claude Code, opencode, or whichever one is in use.  The MCP
+    server is a child process of that client, thus nobody can restart the
+    server by itself.  ``client_restart_reason`` holds the wording, and
+    ``index_message`` opens with it.
 
     ``indexed_at`` and ``first_indexed_at`` are UTC; file mtimes are local
     time.  Never compare the two directly — in UTC+2 a correctly indexed
@@ -641,8 +666,15 @@ def get_active_build(
         # SET, thus it moves only when a column appears or goes, while the
         # content of a column can change under an unchanged name.  See
         # CURRENT_ROW_FORMAT.
+        # The test is ordinal, and not a plain inequality, because the two
+        # directions need opposite answers.  An OLDER format asks for a
+        # reindex, and the run repairs it.  A NEWER one cannot be repaired by
+        # any command: the index is right and THIS PROCESS is the old reader,
+        # thus the indexer writes the same new format again.  See the warning
+        # that `row_format_newer` builds below.
         stored_row_format = str(cfg.get("row_format") or "")
-        row_format_old = stored_row_format != CURRENT_ROW_FORMAT
+        row_format_old = row_format_is_older(stored_row_format)
+        row_format_newer = row_format_is_newer(stored_row_format)
 
         # A source file that the build system never saw has no translation
         # unit, thus a plain reindex cannot pick it up: it is absent from
@@ -685,6 +717,10 @@ def get_active_build(
             cc_changed or schema_old or row_format_old or blocked_sources or branch_moved
         )
 
+        # Asked once, because the call reaches the build backend and is not
+        # free.  Only the branch reason below reads it.
+        bg_build_allowed = branch_moved and _background_build_allowed(root, proj_cfg)
+
         # Build reindex_reasons — only when reindex is actually needed
         reindex_reasons: list[str] = []
         if branch_moved:
@@ -699,17 +735,37 @@ def get_active_build(
             # second half this reason read as a command while the
             # new-source reason beside it read "no command is needed", and
             # the two contradicted each other on one checkout of the Mbed project.
-            reindex_reasons.append(
-                f"branch changed: indexed on {indexed_branch!r}, "
-                f"now on {live_branch!r} — compile_commands.json belongs to "
-                f"the old branch"
-                + (
+            # A run already under way changes the advice: the command named
+            # here is the command that runs, thus naming it asks for the same
+            # work a second time.
+            #
+            # WHY the wording stays careful: `bg_running` says that AN INDEX
+            # RUN exists, and nothing more.  The run belongs to the daemon or
+            # to the operator — `reindex.pid` carries both (see
+            # `background._is_bg_reindex_running`) — and its arguments are
+            # not readable from here.  Only `--build` regenerates
+            # compile_commands.json, thus a plain run leaves this reason
+            # standing, and a promise that the run clears it would be a
+            # guess.
+            if bg_running:
+                branch_advice = (
+                    "; an index run is in progress — wait for it rather than "
+                    "start a second one, and run `fw-context index --build` "
+                    "afterwards only if this reason stays (a run without "
+                    "--build cannot clear it)"
+                )
+            elif bg_build_allowed:
+                branch_advice = (
                     "; a background reindex regenerates it with --build when "
                     "the watcher sees a change, or run "
                     "`fw-context index --build` now"
-                    if _background_build_allowed(root, proj_cfg)
-                    else ", run `fw-context index --build`"
                 )
+            else:
+                branch_advice = ", run `fw-context index --build`"
+            reindex_reasons.append(
+                f"branch changed: indexed on {indexed_branch!r}, "
+                f"now on {live_branch!r} — compile_commands.json belongs to "
+                f"the old branch" + branch_advice
             )
         if schema_old:
             reindex_reasons.append(f"schema_mismatch: {db_schema_ver} < {CURRENT_SCHEMA_VERSION}")
@@ -801,6 +857,30 @@ def get_active_build(
         else:
             index_message = "Compile commands changed — run fw-context index. Queries still work on existing data."
 
+        # ── A reason and a running index at the same time ──
+        # Every message above names a command.  When a run is already under
+        # way that reads as a contradiction, and a caller that follows it
+        # asks the operator for work that is being done.  Say so in front,
+        # because the front of this string is what a caller acts on.
+        #
+        # `status` stays "reindex_needed" on purpose.  The answers of THIS
+        # moment still come from the rows of the last finished run, thus a
+        # caller must not read them as final — and "reindexing" carries
+        # "fully operational, continue" in the tool instructions.
+        #
+        # The wording promises nothing about the outcome: `bg_running` says
+        # only that an index run exists.  It belongs to the daemon or to the
+        # operator, and its arguments cannot be read from here, thus a reason
+        # that needs `--build` may well survive it.
+        if needs_reindex and bg_running:
+            index_message = (
+                "An index run is in progress — wait for it rather than start "
+                "a second one, and ask the operator for no command yet. It "
+                "can clear the reasons below, but a reason that needs "
+                "`--build` clears only if the run uses it. Answers meanwhile "
+                "come from the last finished run. " + index_message
+            )
+
         # When manifest verification is not full, warn the LLM.
         _warning = None
         if manifest_verification != "full":
@@ -852,6 +932,28 @@ def get_active_build(
         # not as a defect.
         index_message += _analysis_message(analysis, stored_analyze_vendor)
 
+        # ── This process is older than the index it reads ──
+        # No command repairs this, thus it is a warning and not a reindex
+        # reason.  It goes in front of `index_message` because that string is
+        # what a caller reads first, and a "fully up to date" message alone
+        # would hide the one action that helps.
+        client_restart_reason = ""
+        if row_format_newer:
+            client_restart_reason = (
+                f"This session reads row format {CURRENT_ROW_FORMAT} and the index holds "
+                f"{stored_row_format}. The index is the newer one and it is correct — do "
+                f"NOT reindex, because the indexer writes {stored_row_format} again and "
+                f"this message comes back. This server process runs older code. Tell the "
+                f"operator to restart the LLM client (Claude Code, opencode, or the client "
+                f"in use). The MCP server is a child process of that client, thus nobody "
+                f"can restart the server alone."
+            )
+            index_message = (
+                f"Restart the LLM client — this session reads row format "
+                f"{CURRENT_ROW_FORMAT} and the index holds {stored_row_format}. "
+                f"Queries work meanwhile. {index_message}"
+            )
+
         result: dict = {
             "config_hash": config_hash,
             "project_id": project_id,
@@ -885,6 +987,11 @@ def get_active_build(
             "stale": needs_reindex or header_affected_tus > 0,
             "index_message": index_message,
         }
+        if client_restart_reason:
+            # No leading underscore: this is an answer to act on, and not a
+            # note about where an answer came from.
+            result["client_restart_required"] = True
+            result["client_restart_reason"] = client_restart_reason
         if _warning is not None:
             result["_warning"] = _warning
 

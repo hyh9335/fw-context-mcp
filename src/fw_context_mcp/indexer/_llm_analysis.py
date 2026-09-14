@@ -89,10 +89,19 @@ def _enrich_batch(conn, batch_rows, config_hash: str, *, project_root: Path | No
     no stored body — a symbol indexed before the column existed.
 
     ``body_unavailable`` is True when the kind of the symbol must have a
-    body, but the read gave nothing.  The two causes are a source file that
-    disappeared, and an extent that does not agree with the file on disk —
-    for example when an editor shortens the file while a background reindex
-    reads it.  The caller must skip such a symbol; see the note in
+    body, but no text was available.  There are three causes:
+
+    * The stored body holds only blank lines.  Every line of the symbol is
+      inside an inactive branch, thus the active build compiles none of it.
+      The disk is no alternative here, because it holds every branch.
+    * The source file disappeared.  This and the next cause apply only to a
+      row that has no stored body, thus the disk had to answer.
+    * The extent does not agree with the file on disk — for example when an
+      editor shortens the file while a background reindex reads it.
+
+    The caller must skip such a symbol.  The reason is not only that an
+    analysis without the body is worthless: the hash of an empty body would
+    reach the content-addressable caches.  See the note in
     ``_build_llm_analysis``.
     """
     from ..utils import abs_path as resolve_abs_path
@@ -123,8 +132,32 @@ def _enrich_batch(conn, batch_rows, config_hash: str, *, project_root: Path | No
             # The stored body is ifdef-filtered — prefer it, see the
             # docstring.  A row from before the column existed holds nothing
             # here, and the disk then answers.
-            body = d.get("source") or ""
-            if not body:
+            stored = d.get("source") or ""
+            body = stored
+            if stored and not stored.strip():
+                # The filter blanked every line of this symbol: the whole
+                # body is inside an inactive branch.  The string is truthy,
+                # thus it used to pass as a real body.
+                #
+                # WHY this must not read the disk as an alternative: the
+                # disk holds every branch, so it would give the model the
+                # dead code that the filter removed.
+                #
+                # WHY this must not reach the model: `compute_content_hash`
+                # strips the body, thus `h` here is the hash of an EMPTY
+                # body.  An answer stored under that hash is readable by
+                # every later symbol with the same name, signature and
+                # docstring — the cache hazard that the sentinel path below
+                # exists to prevent.
+                body = ""
+                body_unavailable = True
+                log.warning(
+                    "[%s] body not available for %s — every line of %s:%d-%d "
+                    "is in an inactive #if branch",
+                    kind, d.get("qualified_name", "?"), abs_file_path,
+                    start_line, end_line,
+                )
+            elif not body:
                 if not os.path.exists(abs_file_path):
                     body_unavailable = True
                     log.warning(

@@ -553,10 +553,14 @@ def _cleanup_files(sock_path: Path, pid_file: Path) -> None:
 def _staleness_check(project_root: Path) -> tuple[bool, list[str]]:
     """Return ``(needs_reindex, reasons)`` for the initial daemon startup.
 
-    Checks structural staleness (compile_commands.json, schema, refs) AND
-    file-level staleness (on-disk mtime newer than stored mtime).  Without
-    the file-level check the daemon would never detect files that were
-    modified BEFORE it started — watchfiles only detects NEW changes.
+    Checks structural staleness (compile_commands.json, schema, row format,
+    refs) AND file-level staleness (on-disk mtime newer than stored mtime).
+    Without the file-level check the daemon would never detect files that
+    were modified BEFORE it started — watchfiles only detects NEW changes.
+
+    The row-format check is the reason a daemon can ask for a reindex over
+    an index whose files did not change: the columns are the same, but the
+    text in them carries an older meaning.  See ``CURRENT_ROW_FORMAT``.
     """
     from .shared.context import _db_path, _quick_open_readonly
     from .shared.stale import _count_modified_files, check_structural_staleness
@@ -585,10 +589,11 @@ def _staleness_check(project_root: Path) -> tuple[bool, list[str]]:
 
         config_hash = cfg["config_hash"]
 
-        # 1-3. Structural checks (shared with background._fast_staleness_check)
+        # 1-4. Structural checks (shared with background._fast_staleness_check):
+        #      compile_commands.json, schema version, row format, refs.
         reasons.extend(check_structural_staleness(conn, config_hash, dict(cfg), project_root))
 
-        # 4. Modified source files — files changed before daemon started.
+        # 5. Modified source files — files changed before daemon started.
         #    watchfiles only detects NEW events, so without this check
         #    already-stale files would never be reindexed.
         modified = _count_modified_files(conn, config_hash, project_root, use_cache=True)
