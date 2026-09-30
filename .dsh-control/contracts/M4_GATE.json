@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
+  "contract": ".dsh-control/contracts/IMMUTABLE_M4_GOAL_CONTRACT.md",
+  "scanner": "python .dsh-control/gates/scan_write_authority.py",
+  "scanner_output": ".dsh-control/evidence/write_authority_state.json",
+  "hard_gate": "python .dsh-control/gates/run_m4_stage_gate.py",
+  "verifier_artifact_glob": ".dsh-control/evidence/m4_verifier_*.json",
+  "guardian_artifact_glob": ".dsh-control/evidence/m4_guardian_*.json",
+  "regression_marker": ".dsh-control/evidence/m4_regression.json",
+  "fault_injection_dir": ".dsh-control/evidence/m4_faults",
+  "numeric_clauses": {
+    "NORMAL_INDEX_ENTRYPOINTS_gt_0": true,
+    "V2_PRIMARY_INDEX_ENTRYPOINTS_eq_NORMAL": true,
+    "LEGACY_WRITE_REQUIRED_FOR_SUCCESS_eq_0": true,
+    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS_eq_0": true,
+    "LEGACY_DB_REQUIRED_FOR_V2_INDEX_eq_0": true,
+    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY_true": true,
+    "INCOMPLETE_WORLD_EXPOSURE_PATHS_eq_0": true,
+    "UNSAFE_PARTIAL_FINALIZATION_PATHS_eq_0": true,
+    "EXPECTED_TU_ACCOUNTING_VIOLATIONS_eq_0": true,
+    "V2_FAILURE_MASKED_BY_LEGACY_PATHS_eq_0": true,
+    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS_eq_0": true,
+    "UNRESOLVED_NORMAL_USE_V2_WRITE_BUGS_eq_0": true,
+    "CURRENT_WRITE_MODE_is_V2_PRIMARY_LEGACY_MIRROR": true
+  },
+  "fault_injection_clauses": {
+    "V2_SUCCESS_LEGACY_FAILURE_TEST_PASS": true,
+    "V2_FAILURE_LEGACY_SUCCESS_TEST_PASS": true,
+    "CRASH_BEFORE_FINALIZE_TEST_PASS": true,
+    "RESTART_IDEMPOTENCE_TEST_PASS": true,
+    "RETRY_IDEMPOTENCE_TEST_PASS": true,
+    "READ_AFTER_FINALIZE_TEST_PASS": true,
+    "ROLLBACK_TEST_PASS": true
+  },
+  "acceptance_clauses": {
+    "M3B_READ_AUTHORITY_REGRESSION_PASS": true,
+    "fresh_verifier_names_current_head": true,
+    "fresh_guardian_names_current_head": true,
+    "durable_checkpoint_commit_exists": true,
+    "head_clean_or_checkpointed": true
+  },
+  "no_warning_pass": true,
+  "exit_nonzero_on_any_failed_clause": true
+}

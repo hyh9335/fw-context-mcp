@@ -1,33 +1,36 @@
-# PROJECT_STATUS — fw-context M3B (cache, NOT truth)
+# PROJECT_STATUS — fw-context M4 (cache, NOT truth)
 
-> **This file is a CACHE.** The scanner (`.dsh-control/gates/scan_authority_state.py`)
-> and the hard gate (`.dsh-control/gates/run_stage_gate.py`) are TRUTH. Any
-> divergence is resolved in favor of the scanner. Drift is logged in
-> `DECISION_LOG.md`.
+> **This file is a CACHE.** The code-derived scanner
+> (`.dsh-control/gates/scan_write_authority.py`) and the executable hard gate
+> (`.dsh-control/gates/run_m4_stage_gate.py`) are TRUTH. Reconcile every round.
 
-**Last scanner run:** see `.dsh-control/evidence/authority_state.json` (`generated_at_utc`).
-**HEAD at last scan:** see `authority_state.json` (`git.head`).
+**Milestone:** `M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE`
 
-## Code-derived counters (mirror of latest scan)
+**HEAD:** 180da59 (branch `m3b-native-v2`)
 
-| Counter | Value | M3B target |
-|---|---|---|
-| CORE_NORMAL_USE_SEMANTIC_TOOLS | 29 | > 0 |
-| CORE_V2_ROUTED | 29 | == CORE |
-| CORE_V2_NATIVE_READ | 5 | == CORE (29) |
-| CORE_LEGACY_SEMANTIC_EXECUTION | 26 | == 0 |
-| CORE_UNSAFE_FALLBACK | 1 | == 0 |
-| UNRESOLVED_NORMAL_USE_V2_BUGS | 0 | == 0 |
+**Gate status:** FAIL (baseline, non-vacuous). 19/27 clauses fail.
+M3B read-authority regression PASS (C23 OK).
 
-## M3B hard gate: FAIL
+**Phase:** M4-0 setup complete. Archaeology in progress.
 
-Failing: C5, C6, C7 (and C9/C10/C11 not yet produced).
+## Baseline counters (scanner-derived, not narrative)
+- NORMAL_INDEX_ENTRYPOINTS = 4
+- V2_PRIMARY_INDEX_ENTRYPOINTS = 0
+- LEGACY_PRIMARY_INDEX_ENTRYPOINTS = 4
+- V2_FINALIZATION_IS_SUCCESS_AUTHORITY = false
+- V2_FAILURE_MASKED_BY_LEGACY_PATHS = 1
+- LEGACY_WRITE_REQUIRED_FOR_SUCCESS = 3
+- LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS = 1
+- LEGACY_DB_REQUIRED_FOR_V2_INDEX = 3
+- INCOMPLETE_WORLD_EXPOSURE_PATHS = 1
+- CURRENT_WRITE_MODE = LEGACY_PRIMARY
+- M3B_READ_AUTHORITY_REGRESSION = PASS
+- UNRESOLVED_NORMAL_USE_V2_WRITE_BUGS = 0
+- Fault tests: all NOT_RUN
 
-## Note on divergence from prior PROJECT_STATUS
+## Self-tests
+`python .dsh-control/gates/m4_self_test.py` → 7/7 PASS (gate cannot fool itself).
 
-The earlier (pre-controller) `PROJECT_STATUS.md` at repo root claimed
-`native=4, legacy_exec=25`. The code-derived scanner reports `native=5,
-legacy_exec=26`: it finds `find_all_callers_recursive` ALSO has a v2 read path
-(PARTIAL) in addition to its deferral branch. The scanner is authoritative;
-this cache has been corrected. This is exactly why counters are derived from
-code, not ledgers.
+## Previous milestone
+M3B COMPLETE at 180da59. Archived under `.dsh-control/archive/m3b/`.
+M3B scanner/gate retained as C23 regression check of the M4 gate.

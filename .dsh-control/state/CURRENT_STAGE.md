@@ -1,39 +1,40 @@
-# CURRENT_STAGE — fw-context M3B
+# CURRENT_STAGE — fw-context M4
 
 > Cache, NOT truth. The scanner + hard gate are truth. Reconcile every round.
 
-**Milestone:** `M3B_NATIVE_V2_READ_ENGINE_COMPLETE`
+**Milestone:** `M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE`
 
-**Stage:** BOOTSTRAP_COMPLETE → entering autonomous Controller→Lead→Guardian→Verifier loop.
+**Immutable contract:** `.dsh-control/contracts/IMMUTABLE_M4_GOAL_CONTRACT.md`
 
-**As-of HEAD:** `ac76feb` (bootstrap; working tree dirty with controller scaffolding).
+**Machine gate:** `python .dsh-control/gates/run_m4_stage_gate.py`
 
-## Code-derived baseline (from `.dsh-control/evidence/authority_state.json`)
+**Code-derived scanner:** `python .dsh-control/gates/scan_write_authority.py`
 
-| Counter | Value |
-|---|---|
-| CORE_NORMAL_USE_SEMANTIC_TOOLS | 29 |
-| CORE_V2_ROUTED | 29 |
-| CORE_V2_NATIVE_READ | 5 |
-| CORE_LEGACY_SEMANTIC_EXECUTION | 26 |
-| CORE_UNSAFE_FALLBACK | 1 |
-| UNRESOLVED_NORMAL_USE_V2_BUGS | 0 |
+**M3B regression scanner:** `python .dsh-control/gates/scan_authority_state.py`
+(M3B is COMPLETE and archived under `.dsh-control/archive/m3b/`; its scanner
+and gate remain as the C23 regression check of the M4 gate.)
 
-## M3B numeric gate status: **FAIL**
+## Phase
+M4-0 setup complete. Baseline gate RED (19/27 fail), non-vacuous. M3B green.
 
-Failing clauses: C5 (native != core), C6 (legacy exec != 0), C7 (unsafe fallback != 0).
+## Baseline counters (code-derived, HEAD 180da59)
+- NORMAL_INDEX_ENTRYPOINTS = 4
+- V2_PRIMARY_INDEX_ENTRYPOINTS = 0  (LEGACY_PRIMARY = 4)
+- V2_FINALIZATION_IS_SUCCESS_AUTHORITY = false
+- V2_FAILURE_MASKED_BY_LEGACY_PATHS = 1
+- LEGACY_WRITE_REQUIRED_FOR_SUCCESS = 3
+- LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS = 1
+- LEGACY_DB_REQUIRED_FOR_V2_INDEX = 3
+- INCOMPLETE_WORLD_EXPOSURE_PATHS = 1
+- CURRENT_WRITE_MODE = LEGACY_PRIMARY
+- M3B_READ_AUTHORITY_REGRESSION = PASS
+- All 7 fault tests = NOT_RUN
 
-## Highest-leverage failing clauses (work order)
-
-1. **C7 — CORE_UNSAFE_FALLBACK == 0**: the `v2_authority_route` wrapper returns
-   `legacy_fn(...)` unguarded inside `except QueryViewResolutionError`
-   (`authority.py:317`). Every CORE tool inherits this unsafe fallback. Fixing
-   this once unblocks C7 for all 29 tools.
-2. **C6/C5 — the 24 `V2_ROUTED_LEGACY_EXEC` adapters**: each must gain a real
-   v2-native read path and drop its `raise V2UnsupportedOperation`. Plus the 2
-   `PARTIAL` adapters (`lookup_symbol` prefix path, `find_all_callers_recursive`
-   recursive path) must eliminate their deferral branches.
-
-## Already-native (no work): find_callers, find_references, find_callees_recursive
-
-## Partial (eliminate deferral): lookup_symbol, find_all_callers_recursive
+## Next
+1. Guardian G0 (startup/plan validation).
+2. M4 write-path archaeology (M4_WRITE_PATH_ARCHAEOLOGY.md).
+3. M4-1 freeze v2 completion contract.
+4. M4-2 implement V2_PRIMARY_LEGACY_MIRROR mode.
+5. M4-3 migrate entry points; M4-4 postprocess demotion; M4-5 Legacy-GATE.
+6. M4-6 fault-injection tests.
+7. G5 + fresh verifier + durable checkpoint + final gate exit 0.

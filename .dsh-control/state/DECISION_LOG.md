@@ -222,3 +222,37 @@ LEGACY_EXEC=23). Open follow-ups from Batch 1: recover condition line numbers
 from `file_blobs` + `parse_conditional_directives` for full `explain_condition` /
 `list_conditional_regions` equivalence; add reverse-edge scan for
 `find_variables.references`.
+
+---
+
+# M4 DECISIONS (V2 Write / Finalization Authority)
+
+## 2026-09-30 M4-0 setup
+- M3B milestone COMPLETE at HEAD 180da59 (all 12 M3B clauses green, fresh
+  verifier + guardian re-accepted at this HEAD). Archived M3B control
+  artifacts under `.dsh-control/archive/m3b/` without rewriting history.
+- Created `IMMUTABLE_M4_GOAL_CONTRACT.md` (human-owned, frozen). M4 means:
+  v2 finalization is the authoritative success criterion; legacy may remain
+  as compatibility mirror; legacy success must not mask v2 failure.
+- Created `M4_GATE.json` (27 clauses: 13 numeric, 7 fault-injection, 5
+  acceptance, no-warning-pass, exit-nonzero-on-any-fail).
+- Built `scan_write_authority.py` — code-derived, 17 counters. Derives entry
+  points from CLI/MCP/watcher surfaces; analyzes `runner.run` for v2
+  finalize sites (flag-gated? exception-isolated?), legacy postprocess,
+  legacy DB writes, success-return authority.
+- Built `run_m4_stage_gate.py` (C1–C27). Built `m4_self_test.py` (7/7 PASS).
+- Baseline gate RED (19/27 fail): V2_PRIMARY=0/4, V2_FAILURE_MASKED=1,
+  WRITE_MODE=LEGACY_PRIMARY, all faults NOT_RUN. Non-vacuous as required.
+- M3B regression PASS (C23 OK) — read authority intact, no regression.
+- Updated AGENTS.local.md controller block → M4 (M3B archived).
+- Dispatched Lead to perform write-path archaeology
+  (`M4_WRITE_PATH_ARCHAEOLOGY.md`).
+
+## Key baseline finding (code-derived)
+`runner.py:909-936`: v2 World finalization is (a) flag-gated behind
+`_v2_shadow_flag_on()` AND (b) exception-isolated ("v2 world finalize failed
+(legacy unaffected)"). This means v2 failure is SWALLOWED — legacy success
+masks it. `runner.py:995`: `_run_postprocess` runs on the success path and is
+required. `runner.py:1037`: `return config_hash` succeeds regardless of v2.
+This is LEGACY_PRIMARY. M4-2 must make v2 finalization gate the return.
+
