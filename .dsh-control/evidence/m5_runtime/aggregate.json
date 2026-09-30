@@ -1,0 +1,42 @@
+{
+  "head": "b965373",
+  "passed": 7,
+  "total": 7,
+  "results": [
+    {
+      "name": "C30_PRODUCTION_DEFAULT_TEST_LANE_PASS",
+      "result": "PASS",
+      "detail": "Production defaults correct: legacy_compat=False, v2_write_authority=True"
+    },
+    {
+      "name": "C31_CLEAN_PROJECT_V2_ONLY_PASS",
+      "result": "PASS",
+      "detail": "_legacy_compat_on() returns False in default mode \u2014 v2-only"
+    },
+    {
+      "name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS",
+      "result": "PASS",
+      "detail": "open_db is gated behind _legacy_compat \u2014 no legacy DB in default mode"
+    },
+    {
+      "name": "C33_UPGRADE_EXISTING_PROJECT_PASS",
+      "result": "PASS",
+      "detail": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path \u2014 existing projects can be upgraded to v2 with legacy mirror"
+    },
+    {
+      "name": "C34_GC_DRY_RUN_PASS",
+      "result": "PASS",
+      "detail": "analyze_gc: eligible=[1], protected=[2]"
+    },
+    {
+      "name": "C35_GC_APPLY_PASS",
+      "result": "PASS",
+      "detail": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"
+    },
+    {
+      "name": "C36_GC_RESTART_INTEGRITY_PASS",
+      "result": "PASS",
+      "detail": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
+    }
+  ]
+}

@@ -271,15 +271,24 @@ def apply_gc(store, analysis: GCAnalysis) -> GCApplyResult:
     try:
         conn.execute("BEGIN IMMEDIATE")
         try:
-            # ── Step 1: delete eligible Worlds (CASCADE removes bindings) ──
+            # ── Step 1: delete eligible Worlds ──
+            # Explicitly delete per-World rows first (don't rely on CASCADE —
+            # SQLite requires PRAGMA foreign_keys=ON for CASCADE to work,
+            # and we can't assume the caller has enabled it).
             for wid in analysis.eligible_world_ids:
-                # Count bindings before deletion for reporting
+                # Count and delete bindings
                 bcount = conn.execute(
                     "SELECT COUNT(*) AS c FROM tu_bindings WHERE world_id=?",
                     (wid,)).fetchone()["c"]
+                conn.execute(
+                    "DELETE FROM tu_bindings WHERE world_id=?", (wid,))
+                # Count and delete rollups
                 rcount = conn.execute(
                     "SELECT COUNT(*) AS c FROM build_rollups WHERE world_id=?",
                     (wid,)).fetchone()["c"]
+                conn.execute(
+                    "DELETE FROM build_rollups WHERE world_id=?", (wid,))
+                # Delete the World itself
                 conn.execute(
                     "DELETE FROM snapshot_builds WHERE world_id=?", (wid,))
                 deleted_bindings += bcount

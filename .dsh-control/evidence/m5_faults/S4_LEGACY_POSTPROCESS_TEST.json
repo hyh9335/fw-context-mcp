@@ -1,6 +1,6 @@
 {
   "test": "S4_LEGACY_POSTPROCESS_TEST",
   "verdict": "PASS",
-  "head": "f57ff3d02496ccfe65b86186acd7081a522d4b71",
+  "head": "b9653733e80f132a4e5a39dcb22dde0b6aec9724",
   "detail": "Scanner detected 1 injected legacy postprocess calls"
 }

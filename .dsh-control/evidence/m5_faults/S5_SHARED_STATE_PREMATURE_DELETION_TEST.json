@@ -1,6 +1,6 @@
 {
   "test": "S5_SHARED_STATE_PREMATURE_DELETION_TEST",
   "verdict": "PASS",
-  "head": "f57ff3d02496ccfe65b86186acd7081a522d4b71",
+  "head": "b9653733e80f132a4e5a39dcb22dde0b6aec9724",
   "detail": "REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works."
 }

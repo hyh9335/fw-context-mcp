@@ -1,0 +1,12 @@
+{
+  "production_default_test_lane": "PASS",
+  "clean_project_v2_only": "PASS",
+  "legacy_unavailable_normal_mode": "PASS",
+  "upgrade_existing_project": "PASS",
+  "gc_dry_run": "PASS",
+  "gc_apply": "PASS",
+  "gc_restart_integrity": "PASS",
+  "_head": "b965373",
+  "_passed": 7,
+  "_total": 7
+}
