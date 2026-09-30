@@ -414,12 +414,20 @@ def _check_postprocess_abort_degraded(root: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 def _detect_write_mode(root: Path) -> dict:
-    """Detect the active write mode from env flags + code defaults."""
+    """Detect the active write mode from env flags + code defaults.
+
+    Mirrors the runtime logic of `_v2_write_authority_on()`:
+    - If FW_CONTEXT_V2_WRITE_AUTHORITY env var is set, use it (1=true, else false).
+    - If env var is NOT set, fall back to the config code default.
+    """
     env = {k: os.environ.get(k) for k in V2_WRITE_FLAG_NAMES}
-    v2_write_authority_on = env.get("FW_CONTEXT_V2_WRITE_AUTHORITY") in {"1", "true", "True"}
-    # Read the CODE DEFAULT from settings.py: if v2_write_authority defaults
-    # to True, the default write mode is V2_PRIMARY_LEGACY_MIRROR.
+    env_val = env.get("FW_CONTEXT_V2_WRITE_AUTHORITY")
     code_default_on = _code_default_v2_write_authority(root)
+    if env_val is not None:
+        v2_write_authority_on = env_val in {"1", "true", "True"}
+    else:
+        # Env not set → use the config code default.
+        v2_write_authority_on = code_default_on
     current_mode = "V2_PRIMARY_LEGACY_MIRROR" if v2_write_authority_on else "LEGACY_PRIMARY"
     default_mode = "V2_PRIMARY_LEGACY_MIRROR" if code_default_on else "LEGACY_PRIMARY"
     return {
@@ -427,6 +435,7 @@ def _detect_write_mode(root: Path) -> dict:
         "default_write_mode": default_mode,
         "env_flags": env,
         "code_default_v2_write_authority": code_default_on,
+        "env_explicitly_set": env_val is not None,
         "rollback_mode_available": True,  # legacy-primary is the rollback mode
     }
 

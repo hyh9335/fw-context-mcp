@@ -514,7 +514,7 @@ class IndexConfig:
     purge_max_missing_percent: int = 20
     shadow_v2_enabled: bool = False  # Phase-4 Slice-0 shadow v2 flag (inert by default)
     shadow_v2_db: Path | None = None  # None = M-C default <db_dir>/<project_id>/index-v2.db
-    v2_write_authority: bool = False  # M4: v2 World finalization is the authoritative success criterion
+    v2_write_authority: bool = True  # M4-7: v2 World finalization is the authoritative success criterion (default ON)
     """Abort the automatic ghost-file purge when more than this percent of
     indexed files are missing from disk — guards against an offline network
     mount or a misconfigured project root deleting the whole vendor index."""

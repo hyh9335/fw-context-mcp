@@ -32,13 +32,14 @@
     "title": "v2 master flag defaults OFF — production runs LEGACY_PRIMARY",
     "severity": "high",
     "file": "src/fw_context_mcp/config/settings.py",
-    "lines": "516",
+    "lines": "517",
     "description": "shadow_v2_enabled defaults False (env FW_CONTEXT_SHADOW_V2). Production today runs LEGACY_PRIMARY. V2_PRIMARY_LEGACY_MIRROR must become the default write mode.",
     "case": "infra",
-    "status": "open",
-    "resolution": "M4-7: flip the default after G4 guardian approval. Intentionally deferred — the flag should default OFF until M4 engineering is complete and verified.",
+    "status": "resolved",
+    "resolution": "M4-7: flipped v2_write_authority default from False to True. Scanner confirms DEFAULT_WRITE_MODE=V2_PRIMARY_LEGACY_MIRROR. Production now runs v2-primary by default.",
     "m4_work_package": "M4-7",
-    "introduced_at": "180da59 (baseline)"
+    "introduced_at": "180da59 (baseline)",
+    "resolved_at": "M4-7 (uncommitted)"
   },
   {
     "id": "M4-BUG-004",
