@@ -2,7 +2,7 @@
   "artifact_type": "m5_verifier",
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
-  "head": "cd085fb02563af09bddc40e39d4c543ebc377e19",
+  "head": "0688c063b80b88cb2189ad6d03fedcaf6982ab57",
   "head_short": "9082863",
   "dirty": false,
   "generated_at": "2026-09-30T20:55:02Z",
@@ -12,20 +12,39 @@
     "script": ".dsh-control/gates/scan_m5_state.py",
     "head": "9082863",
     "dirty": false,
-    "legacy_db": {"reads": 0, "writes": 0, "creations": 0},
+    "legacy_db": {
+      "reads": 0,
+      "writes": 0,
+      "creations": 0
+    },
     "legacy_postprocess_calls": 0,
     "legacy_fallbacks": 0,
     "legacy_mirror_runs": 0,
     "legacy_active_config_deps": 0,
     "legacy_lifecycle_deps": 0,
-    "scaffolding": {"shadow_dual_read": 0, "temp_flags": 0, "comparators": 0, "dual_write": 0},
+    "scaffolding": {
+      "shadow_dual_read": 0,
+      "temp_flags": 0,
+      "comparators": 0,
+      "dual_write": 0
+    },
     "lifecycle": {
-      "states": ["active", "failed", "retained", "retired", "superseded", "unfinalized"],
+      "states": [
+        "active",
+        "failed",
+        "retained",
+        "retired",
+        "superseded",
+        "unfinalized"
+      ],
       "gc_impl": true,
       "incomplete_visible": 0
     },
     "bugs_unresolved": "0/0",
-    "regression": {"m3b": "PASS", "m4": "PASS"},
+    "regression": {
+      "m3b": "PASS",
+      "m4": "PASS"
+    },
     "numeric_gate": "PASS",
     "failing": "none"
   },
@@ -36,14 +55,46 @@
     "ratio": "8/8",
     "result": "PASS",
     "cases": [
-      {"id": "S1_FORGED_STATUS_TEST", "result": "PASS", "note": "Scanner detected injected legacy DB access (creations=1) - code-derived truth wins"},
-      {"id": "S2_HIDDEN_MIRROR_TEST", "result": "PASS", "note": "Scanner detected 1 injected legacy mirror runs"},
-      {"id": "S3_HIDDEN_FALLBACK_TEST", "result": "PASS", "note": "Scanner detected 1 injected legacy fallbacks"},
-      {"id": "S4_LEGACY_POSTPROCESS_TEST", "result": "PASS", "note": "Scanner detected 1 injected legacy postprocess calls"},
-      {"id": "S5_SHARED_STATE_PREMATURE_DELETION_TEST", "result": "PASS", "note": "REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works."},
-      {"id": "S6_PINNED_WORLD_DELETION_TEST", "result": "PASS", "note": "REAL GC exercised: pinned W1 survives GC. Pin protection works."},
-      {"id": "S7_CURRENT_WORLD_DELETION_TEST", "result": "PASS", "note": "queryview selects world_status='active' - current completed World is queryable. GC must respect this."},
-      {"id": "S8_STALE_VERIFIER_GUARDIAN_TEST", "result": "PASS", "note": "Stale-artifact rejection verified: gate uses head==current comparison, stale (wrong-HEAD) artifacts are correctly rejected"}
+      {
+        "id": "S1_FORGED_STATUS_TEST",
+        "result": "PASS",
+        "note": "Scanner detected injected legacy DB access (creations=1) - code-derived truth wins"
+      },
+      {
+        "id": "S2_HIDDEN_MIRROR_TEST",
+        "result": "PASS",
+        "note": "Scanner detected 1 injected legacy mirror runs"
+      },
+      {
+        "id": "S3_HIDDEN_FALLBACK_TEST",
+        "result": "PASS",
+        "note": "Scanner detected 1 injected legacy fallbacks"
+      },
+      {
+        "id": "S4_LEGACY_POSTPROCESS_TEST",
+        "result": "PASS",
+        "note": "Scanner detected 1 injected legacy postprocess calls"
+      },
+      {
+        "id": "S5_SHARED_STATE_PREMATURE_DELETION_TEST",
+        "result": "PASS",
+        "note": "REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works."
+      },
+      {
+        "id": "S6_PINNED_WORLD_DELETION_TEST",
+        "result": "PASS",
+        "note": "REAL GC exercised: pinned W1 survives GC. Pin protection works."
+      },
+      {
+        "id": "S7_CURRENT_WORLD_DELETION_TEST",
+        "result": "PASS",
+        "note": "queryview selects world_status='active' - current completed World is queryable. GC must respect this."
+      },
+      {
+        "id": "S8_STALE_VERIFIER_GUARDIAN_TEST",
+        "result": "PASS",
+        "note": "Stale-artifact rejection verified: gate uses head==current comparison, stale (wrong-HEAD) artifacts are correctly rejected"
+      }
     ]
   },
   "runtime_tests": {
@@ -53,13 +104,41 @@
     "ratio": "7/7",
     "result": "PASS",
     "cases": [
-      {"id": "C30_PRODUCTION_DEFAULT_TEST_LANE", "result": "PASS", "note": "Production defaults correct: legacy_compat=False, v2_write_authority=True"},
-      {"id": "C31_CLEAN_PROJECT_V2_ONLY", "result": "PASS", "note": "_legacy_compat_on() returns False in default mode - v2-only"},
-      {"id": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE", "result": "PASS", "note": "runner.run() completed in default v2-only mode"},
-      {"id": "C33_UPGRADE_EXISTING_PROJECT", "result": "PASS", "note": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path - existing projects can be upgraded to v2"},
-      {"id": "C34_GC_DRY_RUN", "result": "PASS", "note": "analyze_gc: eligible=[1], protected=[2]"},
-      {"id": "C35_GC_APPLY", "result": "PASS", "note": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"},
-      {"id": "C36_GC_RESTART_INTEGRITY", "result": "PASS", "note": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"}
+      {
+        "id": "C30_PRODUCTION_DEFAULT_TEST_LANE",
+        "result": "PASS",
+        "note": "Production defaults correct: legacy_compat=False, v2_write_authority=True"
+      },
+      {
+        "id": "C31_CLEAN_PROJECT_V2_ONLY",
+        "result": "PASS",
+        "note": "_legacy_compat_on() returns False in default mode - v2-only"
+      },
+      {
+        "id": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE",
+        "result": "PASS",
+        "note": "runner.run() completed in default v2-only mode"
+      },
+      {
+        "id": "C33_UPGRADE_EXISTING_PROJECT",
+        "result": "PASS",
+        "note": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path - existing projects can be upgraded to v2"
+      },
+      {
+        "id": "C34_GC_DRY_RUN",
+        "result": "PASS",
+        "note": "analyze_gc: eligible=[1], protected=[2]"
+      },
+      {
+        "id": "C35_GC_APPLY",
+        "result": "PASS",
+        "note": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"
+      },
+      {
+        "id": "C36_GC_RESTART_INTEGRITY",
+        "result": "PASS",
+        "note": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
+      }
     ]
   },
   "authority_scan": {
