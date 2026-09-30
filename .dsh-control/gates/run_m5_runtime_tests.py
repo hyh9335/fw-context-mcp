@@ -245,8 +245,13 @@ def test_c34_gc_dry_run() -> dict:
                         run_provenance TEXT, created_at TEXT
                     );
                     CREATE TABLE tu_bindings (
+                        binding_id INTEGER PRIMARY KEY,
                         world_id INTEGER, tu_context_id TEXT,
-                        binding_status TEXT, state_id INTEGER
+                        canon_source_path TEXT, source_blob_sha TEXT,
+                        ncc_digest_sha TEXT,
+                        state_key TEXT, state_generation INTEGER,
+                        binding_status TEXT, disposition TEXT,
+                        cert_digest_sha TEXT
                     );
                     CREATE TABLE semantic_states (
                         state_id INTEGER PRIMARY KEY,
@@ -257,7 +262,7 @@ def test_c34_gc_dry_run() -> dict:
                 conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
                 conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
                 conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'k',1)")
-                conn.execute("INSERT INTO tu_bindings VALUES (1,'tu1','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (1,1,'tu1','src/a.c','b1','n1','k',1,'bound','ok')")
                 conn.commit()
 
                 class S:
@@ -300,8 +305,13 @@ def test_c35_gc_apply() -> dict:
                         run_provenance TEXT, created_at TEXT
                     );
                     CREATE TABLE tu_bindings (
+                        binding_id INTEGER PRIMARY KEY,
                         world_id INTEGER, tu_context_id TEXT,
-                        binding_status TEXT, state_id INTEGER,
+                        canon_source_path TEXT, source_blob_sha TEXT,
+                        ncc_digest_sha TEXT,
+                        state_key TEXT, state_generation INTEGER,
+                        binding_status TEXT, disposition TEXT,
+                        cert_digest_sha TEXT,
                         FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
                     );
                     CREATE TABLE semantic_states (
@@ -316,8 +326,8 @@ def test_c35_gc_apply() -> dict:
                 conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
                 conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
                 conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'k',1)")
-                conn.execute("INSERT INTO tu_bindings VALUES (1,'tu1','bound',100)")
-                conn.execute("INSERT INTO tu_bindings VALUES (2,'tu2','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (1,1,'tu1','src/a.c','b1','n1','k',1,'bound','ok')")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (2,2,'tu2','src/a.c','b1','n1','k',1,'bound','ok')")
                 conn.commit()
 
                 class S:
@@ -337,11 +347,11 @@ def test_c35_gc_apply() -> dict:
                 if w2 is None:
                     return _write_result("C35_GC_APPLY_PASS", "FAIL",
                         "W2 (active) was deleted — ROOT VIOLATION")
-                # State 100 should survive (W2 references it)
-                s = conn.execute("SELECT state_id FROM semantic_states WHERE state_id=100").fetchone()
+                # State 'k'/gen1 should survive (W2 references it)
+                s = conn.execute("SELECT state_id FROM semantic_states WHERE tusemantic_key='k' AND parser_generation=1").fetchone()
                 if s is None:
                     return _write_result("C35_GC_APPLY_PASS", "FAIL",
-                        "State 100 deleted despite W2 referencing it")
+                        "State k/1 deleted despite W2 referencing it")
                 # Verify integrity
                 v = verify_gc(store)
                 if not v.integrity_ok:
@@ -382,8 +392,13 @@ def test_c36_gc_restart_integrity() -> dict:
                         run_provenance TEXT, created_at TEXT
                     );
                     CREATE TABLE tu_bindings (
+                        binding_id INTEGER PRIMARY KEY,
                         world_id INTEGER, tu_context_id TEXT,
-                        binding_status TEXT, state_id INTEGER,
+                        canon_source_path TEXT, source_blob_sha TEXT,
+                        ncc_digest_sha TEXT,
+                        state_key TEXT, state_generation INTEGER,
+                        binding_status TEXT, disposition TEXT,
+                        cert_digest_sha TEXT,
                         FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
                     );
                     CREATE TABLE semantic_states (

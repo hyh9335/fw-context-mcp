@@ -1,5 +1,5 @@
 {
   "name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS",
   "result": "PASS",
-  "detail": "runner.run() completed in default v2-only mode (ch=b51c0bda02145bce44d2f95e8c8a3e50ee4d554280ad017f5e925653e911175c); no legacy index.db created"
+  "detail": "runner.run() completed in default v2-only mode (ch=9c8be5003404061052bd7fda4caa287bbda8d619e90dadbd7bc7f84366437a37); no legacy index.db created"
 }

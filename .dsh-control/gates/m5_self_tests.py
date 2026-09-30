@@ -250,10 +250,14 @@ def test_s5_shared_state_premature_deletion(head: str) -> bool:
                         UNIQUE(namespace_id, snapshot_id, build_identity_sha)
                     );
                     CREATE TABLE tu_bindings (
+                        binding_id INTEGER PRIMARY KEY,
                         world_id INTEGER NOT NULL,
                         tu_context_id TEXT NOT NULL,
-                        binding_status TEXT,
-                        state_id INTEGER,
+                        canon_source_path TEXT, source_blob_sha TEXT,
+                        ncc_digest_sha TEXT,
+                        state_key TEXT, state_generation INTEGER,
+                        binding_status TEXT, disposition TEXT,
+                        cert_digest_sha TEXT,
                         FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
                     );
                     CREATE TABLE semantic_states (
@@ -280,8 +284,8 @@ def test_s5_shared_state_premature_deletion(head: str) -> bool:
                 conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
                 conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
                 conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'key100',1)")
-                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (1,'tu1','bound',100)")
-                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (2,'tu2','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (1,1,'tu1','src/a.c','blob1','ncc1','key100',1,'bound','ok')")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (2,2,'tu2','src/a.c','blob1','ncc1','key100',1,'bound','ok')")
                 conn.commit()
 
                 # Import gc module via sys.path
@@ -305,10 +309,10 @@ def test_s5_shared_state_premature_deletion(head: str) -> bool:
                     _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
                                    "W2 (active) should NOT be eligible")
                     return False
-                # State 100 should NOT be eligible (W2 still references it)
-                if 100 in analysis.eligible_state_ids:
+                # State key100/gen1 should NOT be eligible (W2 still references it)
+                if ("key100", 1) in analysis.eligible_state_keys:
                     _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
-                                   f"State 100 should NOT be eligible (W2 references it): {analysis.eligible_state_ids}")
+                                   f"State key100/1 should NOT be eligible (W2 references it): {analysis.eligible_state_keys}")
                     return False
 
                 # APPLY: delete W1
@@ -318,11 +322,11 @@ def test_s5_shared_state_premature_deletion(head: str) -> bool:
                                    f"APPLY failed: {result.error}")
                     return False
 
-                # VERIFY: state 100 must still exist
-                row = conn.execute("SELECT state_id FROM semantic_states WHERE state_id=100").fetchone()
+                # VERIFY: state key100/gen1 must still exist
+                row = conn.execute("SELECT state_id FROM semantic_states WHERE tusemantic_key='key100' AND parser_generation=1").fetchone()
                 if row is None:
                     _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
-                                   "State 100 was deleted despite W2 referencing it — PREMATURE DELETION")
+                                   "State key100/1 was deleted despite W2 referencing it — PREMATURE DELETION")
                     return False
 
                 _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "PASS", head,
@@ -370,10 +374,14 @@ def test_s6_pinned_world_deletion(head: str) -> bool:
                         UNIQUE(namespace_id, snapshot_id, build_identity_sha)
                     );
                     CREATE TABLE tu_bindings (
+                        binding_id INTEGER PRIMARY KEY,
                         world_id INTEGER NOT NULL,
                         tu_context_id TEXT NOT NULL,
-                        binding_status TEXT,
-                        state_id INTEGER,
+                        canon_source_path TEXT, source_blob_sha TEXT,
+                        ncc_digest_sha TEXT,
+                        state_key TEXT, state_generation INTEGER,
+                        binding_status TEXT, disposition TEXT,
+                        cert_digest_sha TEXT,
                         FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
                     );
                     CREATE TABLE semantic_states (
@@ -390,8 +398,8 @@ def test_s6_pinned_world_deletion(head: str) -> bool:
                 conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
                 conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
                 conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'k',1)")
-                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (1,'tu1','bound',100)")
-                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (2,'tu2','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (1,1,'tu1','src/a.c','b1','n1','k',1,'bound','ok')")
+                conn.execute("INSERT INTO tu_bindings(binding_id,world_id,tu_context_id,canon_source_path,source_blob_sha,ncc_digest_sha,state_key,state_generation,binding_status,disposition) VALUES (2,2,'tu2','src/a.c','b1','n1','k',1,'bound','ok')")
                 conn.commit()
 
                 import sys as _sys

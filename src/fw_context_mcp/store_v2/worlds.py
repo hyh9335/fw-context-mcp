@@ -712,7 +712,8 @@ def finalize_world(store, ctx: V2WorldContext) -> FinalizeResult:
                                       "unfinalized")
             conn.execute(
                 "UPDATE snapshot_builds SET world_status='active' WHERE "
-                "world_id=? AND world_status='unfinalized'", (world_id,))
+                "world_id=? AND world_status IN ('unfinalized','failed')",
+                (world_id,))
             ensure_slice2_schema(conn)
             conn.execute(
                 "INSERT OR REPLACE INTO slice2_run_metrics(run_id, metric, "

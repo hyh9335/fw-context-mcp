@@ -43,7 +43,7 @@ class GCAnalysis:
     """Result of ANALYZE (dry-run). No mutation has occurred."""
 
     eligible_world_ids: list[int] = field(default_factory=list)
-    eligible_state_ids: list[int] = field(default_factory=list)
+    eligible_state_keys: list[tuple] = field(default_factory=list)  # (state_key, state_generation) tuples
     protected_world_ids: list[int] = field(default_factory=list)
     protected_reasons: dict[int, str] = field(default_factory=dict)
     reclaimed_worlds_estimate: int = 0
@@ -55,7 +55,7 @@ class GCAnalysis:
     def to_dict(self) -> dict[str, Any]:
         return {
             "eligible_world_ids": list(self.eligible_world_ids),
-            "eligible_state_ids": list(self.eligible_state_ids),
+            "eligible_state_keys": [list(t) for t in self.eligible_state_keys],
             "protected_world_ids": list(self.protected_world_ids),
             "protected_reasons": dict(self.protected_reasons),
             "reclaimed_worlds_estimate": self.reclaimed_worlds_estimate,
@@ -197,12 +197,13 @@ def analyze_gc(
                 # protected World — these become unreferenced after
                 # eligible World deletion and are safe to sweep.
                 eligible_state_rows = conn.execute(
-                    f"SELECT DISTINCT b.state_id FROM tu_bindings b "
+                    f"SELECT DISTINCT b.state_key, b.state_generation FROM tu_bindings b "
                     f"WHERE b.world_id IN ({placeholders_eligible}) "
-                    f"AND b.state_id IS NOT NULL "
+                    f"AND b.state_key IS NOT NULL "
                     f"AND NOT EXISTS ("
                     f"  SELECT 1 FROM tu_bindings b2 "
-                    f"  WHERE b2.state_id = b.state_id "
+                    f"  WHERE b2.state_key = b.state_key "
+                    f"  AND b2.state_generation = b.state_generation "
                     f"  AND b2.world_id IN ({placeholders_protected})"
                     f")",
                     list(eligible_worlds) + list(protected_ids),
@@ -211,12 +212,12 @@ def analyze_gc(
                 # No protected Worlds — all states referenced by eligible
                 # Worlds are eligible.
                 eligible_state_rows = conn.execute(
-                    f"SELECT DISTINCT b.state_id FROM tu_bindings b "
+                    f"SELECT DISTINCT b.state_key, b.state_generation FROM tu_bindings b "
                     f"WHERE b.world_id IN ({placeholders_eligible}) "
-                    f"AND b.state_id IS NOT NULL",
+                    f"AND b.state_key IS NOT NULL",
                     list(eligible_worlds),
                 ).fetchall()
-            eligible_states = [r["state_id"] for r in eligible_state_rows]
+            eligible_states = [(r["state_key"], r["state_generation"]) for r in eligible_state_rows]
         else:
             eligible_states = []
 
@@ -226,7 +227,7 @@ def analyze_gc(
 
         return GCAnalysis(
             eligible_world_ids=sorted(eligible_worlds),
-            eligible_state_ids=sorted(eligible_states),
+            eligible_state_keys=sorted(eligible_states),
             protected_world_ids=sorted(protected_ids),
             protected_reasons=protected,
             reclaimed_worlds_estimate=len(eligible_worlds),
@@ -259,7 +260,7 @@ def apply_gc(store, analysis: GCAnalysis) -> GCApplyResult:
     """
     if analysis.error:
         return GCApplyResult(error=f"analysis has error: {analysis.error}")
-    if not analysis.eligible_world_ids and not analysis.eligible_state_ids:
+    if not analysis.eligible_world_ids and not analysis.eligible_state_keys:
         return GCApplyResult(transaction_committed=True)
 
     conn = store._conn
@@ -299,15 +300,15 @@ def apply_gc(store, analysis: GCAnalysis) -> GCApplyResult:
             # A state is eligible only if NO tu_bindings reference it.
             # (§10: shared state survives until ALL referencing Worlds
             # are unreachable.)
-            for sid in analysis.eligible_state_ids:
+            for skey, sgen in analysis.eligible_state_keys:
                 # Double-check: is this state still referenced?
                 refcount = conn.execute(
-                    "SELECT COUNT(*) AS c FROM tu_bindings WHERE state_id=?",
-                    (sid,)).fetchone()["c"]
+                    "SELECT COUNT(*) AS c FROM tu_bindings WHERE state_key=? AND state_generation=?",
+                    (skey, sgen)).fetchone()["c"]
                 if refcount == 0:
                     conn.execute(
-                        "DELETE FROM semantic_states WHERE state_id=?",
-                        (sid,))
+                        "DELETE FROM semantic_states WHERE tusemantic_key=? AND parser_generation=?",
+                        (skey, sgen))
                     deleted_states += 1
 
             conn.commit()
@@ -351,7 +352,8 @@ def verify_gc(store) -> GCVerifyResult:
         orphaned_states = conn.execute(
             "SELECT COUNT(*) AS c FROM semantic_states s "
             "WHERE NOT EXISTS (SELECT 1 FROM tu_bindings b "
-            "WHERE b.state_id = s.state_id)"
+            "WHERE b.state_key = s.tusemantic_key "
+            "AND b.state_generation = s.parser_generation)"
         ).fetchone()["c"]
 
         # SQLite foreign-key check
