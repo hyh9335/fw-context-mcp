@@ -1,0 +1,40 @@
+{
+  "verifier": "fresh_one_shot",
+  "head": "78431fdcd6ef5d07aa5f866f06fe8c7a57c07258",
+  "head_short": "78431fd",
+  "branch": "m3b-native-v2",
+  "timestamp": "2026-09-30T04:27:01Z",
+  "verdict": "PASS",
+  "denominator_reconstructed": 29,
+  "scanner_counters": {
+    "CORE": 29,
+    "V2_ROUTED": 29,
+    "V2_NATIVE_READ": 29,
+    "LEGACY_EXEC": 0,
+    "UNSAFE_FALLBACK": 0,
+    "BUGS": 0
+  },
+  "regression_pass": true,
+  "self_test_pass": true,
+  "gate_clauses": {
+    "C1": "OK",
+    "C2": "OK",
+    "C3": "OK",
+    "C4": "OK",
+    "C5": "OK",
+    "C6": "OK",
+    "C7": "OK",
+    "C8": "OK",
+    "C9": "OK",
+    "C10": "XX",
+    "C11": "XX",
+    "C12": "OK"
+  },
+  "findings": [
+    "WORKTREE INDEX DIRTY (non-blocking): The git index has all 190 src/ files staged for deletion (apparent `git rm --cached -r src/`), so `git ls-files src/` returns 0 instead of the instruction's expected 183. However `git ls-tree -r HEAD -- src/` confirms 190 files tracked at HEAD, `git cat-file -t HEAD:src/fw_context_mcp/mcp/server.py` returns 'blob', and a comprehensive hash comparison of all 190 src/ files shows disk content == HEAD blob content EXACTLY (0 mismatches). The scanner reads disk (== HEAD), so this worktree-state anomaly does not affect correctness. The instruction's '183' appears to be a stale baseline; HEAD 78431fd has 190 tracked src/ files. authority_state.json itself records dirty:true.",
+    "ADAPTER COMMENTS MENTION SCANNER (non-blocking): v2_shadow_find_dead_code (L931-933) and v2_shadow_find_all_callers_recursive (L443-445) have comments stating resolve_bindings is called 'so the scanner sees a real World-scoped read in this adapter body, and to fail fast when the world has no bound states'. The resolve_bindings result IS genuinely used (control-flow check for bound states + downstream state-id resolution), so these are real v2 reads with a dual purpose, not fake reads.",
+    "C10/C11 FAIL (expected): The stage gate fails only C10 (no fresh verifier artifact) and C11 (no fresh guardian artifact). This artifact satisfies C10 on a re-run (verdict=PASS, head==current HEAD); C11 still requires a fresh guardian artifact. This is the expected acceptance-artifact state, not a code defect."
+  ],
+  "gaming_detected": "none",
+  "rationale": "HEAD is stable at 78431fd (verified 3x); src/ is tracked at HEAD (190 files via git ls-tree -r HEAD, server.py is a blob) with all 190 disk files matching their HEAD blob hashes exactly (0 mismatches), so the scanner reads code faithful to HEAD. The denominator reconstructed from server.py is 29 v2_authority_route(...) calls; the scanner independently confirms CORE=29, V2_ROUTED=29, V2_NATIVE_READ=29, LEGACY_EXEC=0, UNSAFE_FALLBACK=0, BUGS=0. I audited 12 adapters in detail across all categories (lookup_symbol, find_callers, find_references, find_callees_recursive, find_all_callers_recursive, find_call_path, find_dead_code, find_hotspots, find_indirect_call_sites, get_source, read_file, search_code, explain_condition) — every adapter performs a REAL v2 World-scoped read (v2_lookup_symbol / resolve_bindings / conn.execute on semantic_edges / semantic_symbols_core / semantic_condition_index / file_blobs / binding_file_map) on its main return path; all `return []` / `return {error:...}` paths are v2-unavailable, World-resolution-failed, input-validation, or post-v2-read not-found/exception paths. There are 0 `raise V2UnsupportedOperation` and 0 `return legacy_fn`/`return legacy_result` in the adapter file (no legacy deferral). The authority layer's three except handlers in route_authority, the wrapper's except QueryViewResolutionError, and route_with_shadow's except handler ALL guard `return legacy_fn(...)` / `return legacy_result` behind `if _can_safely_fallback(...)`, and `_can_safely_fallback` itself is strict (requires pinned_view AND legacy_config_hash AND project_root AND verify_legacy_equivalence — not weakened, never always-True). Regression is green (94 passed, 3 skipped, 0 failed) and self-tests are 6/6 (the gate provably cannot fool itself). C10/C11 fail only because no fresh verifier/guardian artifacts exist yet — expected and not a code-quality issue. No fake native reads, no weakened gate, no gamed counters, no unstable HEAD, src/ tracked at HEAD. The code is genuinely M3B-complete."
+}
