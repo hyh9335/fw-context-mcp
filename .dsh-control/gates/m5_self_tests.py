@@ -48,21 +48,48 @@ def _git_head() -> str:
 def test_s1_forged_status(head: str) -> bool:
     """Write status saying legacy retired. Leave runtime unchanged.
 
-    Expected: M5 FAIL (scanner derives from code, not status).
+    Fault-injection: inject a synthetic legacy DB open into a temp copy of
+    runner.py, run the scanner against it, and verify the scanner detects
+    the legacy access despite any status claims. Code-derived truth wins.
     """
+    import tempfile, shutil
     mod = _import_scanner()
-    # Run the real scanner — it reads code, not status
-    d = mod.scan()
-    ldb = d["legacy_db"]
-    # If code still creates legacy DB, scanner should detect it
-    if ldb["creations"] > 0 or ldb["writes"] > 0 or ldb["reads"] > 0:
+    # Inject a synthetic open_db call into a temp runner.py copy
+    runner = ROOT / "src" / "fw_context_mcp" / "indexer" / "runner.py"
+    text = runner.read_text(encoding="utf-8")
+    # Insert a synthetic legacy DB open OUTSIDE any compat guard
+    injected = text.replace(
+        "    log.info(\"project=%s",
+        "    _forged_legacy = open_db(db_path)  # S1 fault injection\n    log.info(\"project=%s",
+        1)
+    if injected == text:
+        _write_verdict("S1_FORGED_STATUS_TEST", "FAIL", head,
+                       "Could not inject fault (anchor not found)")
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        tpath = Path(td) / "runner.py"
+        tpath.write_text(injected, encoding="utf-8")
+        # Run scanner against the injected file by monkeypatching SRC
+        orig_src = mod.SRC
+        try:
+            # Point scanner at a temp src tree with the injected runner
+            tsrc = Path(td) / "src" / "fw_context_mcp" / "indexer"
+            tsrc.mkdir(parents=True)
+            shutil.copy(tpath, tsrc / "runner.py")
+            # Also copy other needed files
+            shutil.copytree(orig_src / "mcp", Path(td) / "src" / "fw_context_mcp" / "mcp")
+            mod.SRC = Path(td) / "src" / "fw_context_mcp"
+            d = mod._scan_normal_mode_legacy_db()
+        finally:
+            mod.SRC = orig_src
+    if d["creations"] > 0 or d["reads"] > 0 or d["writes"] > 0:
         _write_verdict("S1_FORGED_STATUS_TEST", "PASS", head,
-                       "Scanner detected legacy DB access in code despite "
-                       "any status claims. Code-derived truth wins.")
+                       f"Scanner detected injected legacy DB access "
+                       f"(creations={d['creations']}) — code-derived truth wins")
         return True
     _write_verdict("S1_FORGED_STATUS_TEST", "FAIL", head,
-                   "Scanner found no legacy DB access — cannot verify "
-                   "forged-status detection (baseline may have retired it)")
+                   f"Scanner FAILED to detect injected legacy DB access "
+                   f"(creations={d['creations']})")
     return False
 
 
@@ -71,18 +98,37 @@ def test_s1_forged_status(head: str) -> bool:
 def test_s2_hidden_mirror(head: str) -> bool:
     """Default indexing still writes legacy DB through a helper.
 
-    Expected: M5 FAIL (scanner detects legacy mirror runs).
+    Fault-injection: inject a synthetic upsert_project call (legacy mirror)
+    OUTSIDE any compat guard, verify the scanner detects it.
     """
+    import tempfile, shutil
     mod = _import_scanner()
-    d = mod.scan()
-    mirror = d["legacy_mirror"]["runs"]
-    if mirror > 0:
+    runner = ROOT / "src" / "fw_context_mcp" / "indexer" / "runner.py"
+    text = runner.read_text(encoding="utf-8")
+    injected = text.replace(
+        "    log.info(\"project=%s",
+        "    upsert_project(conn, project_id, name, str(project_root))  # S2 fault\n    log.info(\"project=%s",
+        1)
+    if injected == text:
+        _write_verdict("S2_HIDDEN_MIRROR_TEST", "FAIL", head, "anchor not found")
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        tsrc = Path(td) / "src" / "fw_context_mcp" / "indexer"
+        tsrc.mkdir(parents=True)
+        (tsrc / "runner.py").write_text(injected, encoding="utf-8")
+        shutil.copytree(mod.SRC / "mcp", Path(td) / "src" / "fw_context_mcp" / "mcp")
+        orig_src = mod.SRC
+        try:
+            mod.SRC = Path(td) / "src" / "fw_context_mcp"
+            d = mod._scan_legacy_mirror_runs()
+        finally:
+            mod.SRC = orig_src
+    if d["runs"] > 0:
         _write_verdict("S2_HIDDEN_MIRROR_TEST", "PASS", head,
-                       f"Scanner detected {mirror} legacy mirror runs in "
-                       f"normal index path")
+                       f"Scanner detected {d['runs']} injected legacy mirror runs")
         return True
     _write_verdict("S2_HIDDEN_MIRROR_TEST", "FAIL", head,
-                   "No legacy mirror detected — cannot verify detection")
+                   f"Scanner FAILED to detect injected mirror (runs={d['runs']})")
     return False
 
 
@@ -91,18 +137,37 @@ def test_s2_hidden_mirror(head: str) -> bool:
 def test_s3_hidden_fallback(head: str) -> bool:
     """One normal query secretly falls back to legacy.
 
-    Expected: M5 FAIL (scanner detects legacy fallbacks).
+    Fault-injection: inject a synthetic legacy_fallback() CALL into a temp
+    copy of a read-path module, verify the scanner detects it.
     """
+    import tempfile, shutil
     mod = _import_scanner()
-    d = mod.scan()
-    fb = d["legacy_fallbacks"]["fallbacks"]
-    if fb > 0:
+    target = ROOT / "src" / "fw_context_mcp" / "mcp" / "shared" / "authority.py"
+    text = target.read_text(encoding="utf-8")
+    # Inject a synthetic legacy_fallback CALL (not a string/comment)
+    injected = text.replace(
+        "    if not v2_read_authority_enabled():",
+        "    _x = legacy_fallback()  # S3 fault injection\n    if not v2_read_authority_enabled():",
+        1)
+    if injected == text:
+        _write_verdict("S3_HIDDEN_FALLBACK_TEST", "FAIL", head, "anchor not found")
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        tshared = Path(td) / "src" / "fw_context_mcp" / "mcp" / "shared"
+        tshared.mkdir(parents=True)
+        (tshared / "authority.py").write_text(injected, encoding="utf-8")
+        orig_src = mod.SRC
+        try:
+            mod.SRC = Path(td) / "src" / "fw_context_mcp"
+            d = mod._scan_legacy_fallbacks()
+        finally:
+            mod.SRC = orig_src
+    if d["fallbacks"] > 0:
         _write_verdict("S3_HIDDEN_FALLBACK_TEST", "PASS", head,
-                       f"Scanner detected {fb} legacy fallback patterns "
-                       f"in read path")
+                       f"Scanner detected {d['fallbacks']} injected legacy fallbacks")
         return True
     _write_verdict("S3_HIDDEN_FALLBACK_TEST", "FAIL", head,
-                   "No legacy fallbacks detected — cannot verify detection")
+                   f"Scanner FAILED to detect injected fallback (fallbacks={d['fallbacks']})")
     return False
 
 
@@ -111,18 +176,37 @@ def test_s3_hidden_fallback(head: str) -> bool:
 def test_s4_legacy_postprocess(head: str) -> bool:
     """Normal indexing invokes one legacy compatibility postprocess.
 
-    Expected: M5 FAIL (scanner detects legacy postprocess calls).
+    Fault-injection: inject a synthetic _run_postprocess call OUTSIDE any
+    compat guard, verify the scanner detects it.
     """
+    import tempfile, shutil
     mod = _import_scanner()
-    d = mod.scan()
-    pp = d["legacy_postprocess"]["calls"]
-    if pp > 0:
+    runner = ROOT / "src" / "fw_context_mcp" / "indexer" / "runner.py"
+    text = runner.read_text(encoding="utf-8")
+    injected = text.replace(
+        "    elapsed = time.monotonic() - t0",
+        "    _run_postprocess(conn=conn)  # S4 fault injection\n    elapsed = time.monotonic() - t0",
+        1)
+    if injected == text:
+        _write_verdict("S4_LEGACY_POSTPROCESS_TEST", "FAIL", head, "anchor not found")
+        return False
+    with tempfile.TemporaryDirectory() as td:
+        tsrc = Path(td) / "src" / "fw_context_mcp" / "indexer"
+        tsrc.mkdir(parents=True)
+        (tsrc / "runner.py").write_text(injected, encoding="utf-8")
+        shutil.copytree(mod.SRC / "mcp", Path(td) / "src" / "fw_context_mcp" / "mcp")
+        orig_src = mod.SRC
+        try:
+            mod.SRC = Path(td) / "src" / "fw_context_mcp"
+            d = mod._scan_legacy_postprocess_calls()
+        finally:
+            mod.SRC = orig_src
+    if d["calls"] > 0:
         _write_verdict("S4_LEGACY_POSTPROCESS_TEST", "PASS", head,
-                       f"Scanner detected {pp} legacy postprocess calls "
-                       f"in normal index path")
+                       f"Scanner detected {d['calls']} injected legacy postprocess calls")
         return True
     _write_verdict("S4_LEGACY_POSTPROCESS_TEST", "FAIL", head,
-                   "No legacy postprocess detected — cannot verify detection")
+                   f"Scanner FAILED to detect injected postprocess (calls={d['calls']})")
     return False
 
 

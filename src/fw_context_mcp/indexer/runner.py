@@ -497,18 +497,30 @@ def run(
     log.info("", extra={"phase": f"Indexing {name} ({config_hash[:12]})"})
     log.info("project=%s project_id=%s config_hash=%s", name, project_id, config_hash[:12])
 
-    conn = open_db(db_path)
-    # Determine initial manifest verification for this config.
-    # New config_hash → 'indexing' (hidden from MCP queries until complete).
-    # Existing config → preserve the previous value (in-place update).
-    old_row = conn.execute(
-        "SELECT manifest_verification FROM build_configs WHERE config_hash=?",
-        (config_hash,),
-    ).fetchone()
-    if old_row is None:
-        initial_manifest_verification = "indexing"
+    # ── M5-1: legacy DB is opened ONLY in explicit compat mode ──
+    # Normal/default operation is v2-only: no legacy index.db is created or
+    # opened. The v2 store (index-v2.db) owns all semantic storage.
+    # FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 opts back into the legacy mirror.
+    from ._unit_processor import _legacy_compat_on
+    _legacy_compat = _legacy_compat_on()
+    conn = None
+    initial_manifest_verification = "indexing"
+    if _legacy_compat:
+        conn = open_db(db_path)
+        # Determine initial manifest verification for this config.
+        # New config_hash → 'indexing' (hidden from MCP queries until complete).
+        # Existing config → preserve the previous value (in-place update).
+        old_row = conn.execute(
+            "SELECT manifest_verification FROM build_configs WHERE config_hash=?",
+            (config_hash,),
+        ).fetchone()
+        if old_row is None:
+            initial_manifest_verification = "indexing"
+        else:
+            initial_manifest_verification = old_row["manifest_verification"]
     else:
-        initial_manifest_verification = old_row["manifest_verification"]
+        # v2-only: log that legacy mirror is off.
+        log.debug("M5 v2-only mode: legacy DB not opened (compat=%s)", _legacy_compat)
 
     # Resolve analyze_vendor: CLI flag takes precedence, config falls back.
     # Only meaningful when analyze_symbols is True — otherwise analysis doesn't
@@ -519,27 +531,28 @@ def run(
         _analyze_vendor = False
 
     # Serialize with any concurrent writer (background reindex, daemon)
-    with write_lock(db_path.parent, timeout=120.0):
-        with transaction(conn):
-            upsert_project(conn, project_id, name, str(project_root))
-            upsert_build_config(
-                conn,
-                config_hash,
-                project_id,
-                str(compile_commands),
-                # None keeps the recorded git context of the CONTENT.  This
-                # write happens before a single translation unit is read, so
-                # stamping the current branch here would mark the index as
-                # coming from a tree it has not been built from — and a run
-                # that fails leaves exactly that.  `_run_postprocess` writes
-                # the real value at the end, when the content matches it.
-                description=None,
-                manifest_verification=initial_manifest_verification,
-                analyze_vendor=int(_analyze_vendor),
-                variant=variant,
-                image=image,
-                board=board,
-            )
+    if _legacy_compat:
+        with write_lock(db_path.parent, timeout=120.0):
+            with transaction(conn):
+                upsert_project(conn, project_id, name, str(project_root))
+                upsert_build_config(
+                    conn,
+                    config_hash,
+                    project_id,
+                    str(compile_commands),
+                    # None keeps the recorded git context of the CONTENT.  This
+                    # write happens before a single translation unit is read, so
+                    # stamping the current branch here would mark the index as
+                    # coming from a tree it has not been built from — and a run
+                    # that fails leaves exactly that.  `_run_postprocess` writes
+                    # the real value at the end, when the content matches it.
+                    description=None,
+                    manifest_verification=initial_manifest_verification,
+                    analyze_vendor=int(_analyze_vendor),
+                    variant=variant,
+                    image=image,
+                    board=board,
+                )
 
     # Validate that all -include/-imacros referenced files exist BEFORE
     # starting any libclang parsing.  A missing build-generated config
@@ -709,14 +722,16 @@ def run(
 
     log.info("", extra={"phase": f"Parsing ({len(units)} TUs)"})
 
-    # ── Phase-4 Slice 2: construct the v2 shadow world context ONCE per run
-    # (task §34/§35).  Flag-gated + dynamically imported so the Slice-0
-    # inertness gate holds (flag off ⇒ store_v2 never loads).  Any failure
-    # returns None and the whole Slice-2 leg silently skips (task §32).
+    # ── Phase-4 Slice 2: construct the v2 world context ONCE per run.
+    # M5: v2 is the DEFAULT semantic engine. When legacy compat is OFF
+    # (normal mode), v2 world context is ALWAYS built. When compat is ON
+    # (explicit legacy mirror), v2 still runs alongside (M4 authority) but
+    # the flag-gated path is preserved for backward compatibility.
     world_ctx = None
     try:
         from ._unit_processor import _v2_shadow_flag_on
-        if _v2_shadow_flag_on():
+        # M5: v2 runs when compat is OFF (v2-only) OR when v2 shadow flag is ON
+        if not _legacy_compat or _v2_shadow_flag_on():
             import importlib
             _worlds_mod = importlib.import_module(
                 "fw_context_mcp.store_v2.worlds")
@@ -726,7 +741,7 @@ def run(
                 build_system=build_system,
                 project_id=project_id)
     except Exception as _w_exc:                       # pragma: no cover
-        log.debug("v2 world context unavailable (legacy unaffected): %s",
+        log.debug("v2 world context unavailable: %s",
                   _w_exc)
         world_ctx = None
 
@@ -963,19 +978,23 @@ def run(
 
     # ── Linker scripts, between the C units and the assembly ──
     # The position is deliberate, and both neighbours depend on it — see
-    # _store_linker_scripts.
-    linker = _store_linker_scripts(
-        conn=conn,
-        config_hash=config_hash,
-        project_root=project_root,
-        db_dir=db_path.parent,
-        compile_commands=compile_commands,
-        build_system=build_system,
-        variant=variant,
-        units=all_units,
-        vendor_patterns=vendor_patterns,
-        project_patterns=project_patterns_list,
-    )
+    # _store_linker_scripts.  M5: legacy-only path — gated behind compat mode.
+    # In v2-only mode, linker scripts are handled by the v2 store.
+    if _legacy_compat:
+        linker = _store_linker_scripts(
+            conn=conn,
+            config_hash=config_hash,
+            project_root=project_root,
+            db_dir=db_path.parent,
+            compile_commands=compile_commands,
+            build_system=build_system,
+            variant=variant,
+            units=all_units,
+            vendor_patterns=vendor_patterns,
+            project_patterns=project_patterns_list,
+        )
+    else:
+        linker = None
 
     asm = None
 
@@ -983,8 +1002,8 @@ def run(
     # The ordering is deliberate and the steps built on this one depend on
     # it: deciding whether a vector slot is handled means asking whether a
     # strong definition exists, and nothing can answer that until the C and
-    # C++ units are stored.
-    if asm_units:
+    # C++ units are stored.  M5: legacy-only path — gated behind compat mode.
+    if asm_units and _legacy_compat:
         from .asm import store_units as _store_asm
 
         with write_lock(db_path.parent, timeout=120.0):
@@ -1017,44 +1036,48 @@ def run(
     uncovered_paths = set(asm.paths) if asm is not None else set()
     if linker is not None:
         uncovered_paths |= linker.paths
-    _run_postprocess(
-        asm_paths=uncovered_paths,
-        conn=conn,
-        config_hash=config_hash,
-        project_root=project_root,
-        db_dir=db_path.parent,
-        units=units,
-        tu_headers=tu_headers,
-        manifest=manifest,
-        compile_commands=compile_commands,
-        updated=updated,
-        build_dir_patterns=build_dir_patterns,
-        vendor_patterns=vendor_patterns,
-        project_patterns_list=project_patterns_list,
-        project_id=project_id,
-        git_description=git_description,
-        index_refs=index_refs,
-        index_embeddings=index_embeddings,
-        index_macros_expanded=index_macros_expanded,
-        analyze_symbols=analyze_symbols,
-        analyze_overrides=analyze_overrides,
-        analyze_vendor=_analyze_vendor,
-        llm_config=llm_config,
-        cache_server_config=cache_server_config,
-        force=force,
-        purge_max_missing_percent=purge_max_missing_percent,
-        variant=variant,
-        image=image,
-        board=board,
-        scope=scope,
-        defer_fts=defer_fts,
-        defer_cleanup=defer_cleanup,
-        header_hash_cache=header_hash_cache,
-        reparsed_tus=reparsed_tus,
-        unit_context_ids={
-            i: unit_identities[i]["context_id"] for i in unit_identities
-        },
-    )
+    # M5: legacy postprocess runs ONLY in explicit compat mode. In v2-only
+    # mode (default), all 18 legacy postprocess steps are skipped — v2 owns
+    # certification, publication, binding, and finalization.
+    if _legacy_compat:
+        _run_postprocess(
+            asm_paths=uncovered_paths,
+            conn=conn,
+            config_hash=config_hash,
+            project_root=project_root,
+            db_dir=db_path.parent,
+            units=units,
+            tu_headers=tu_headers,
+            manifest=manifest,
+            compile_commands=compile_commands,
+            updated=updated,
+            build_dir_patterns=build_dir_patterns,
+            vendor_patterns=vendor_patterns,
+            project_patterns_list=project_patterns_list,
+            project_id=project_id,
+            git_description=git_description,
+            index_refs=index_refs,
+            index_embeddings=index_embeddings,
+            index_macros_expanded=index_macros_expanded,
+            analyze_symbols=analyze_symbols,
+            analyze_overrides=analyze_overrides,
+            analyze_vendor=_analyze_vendor,
+            llm_config=llm_config,
+            cache_server_config=cache_server_config,
+            force=force,
+            purge_max_missing_percent=purge_max_missing_percent,
+            variant=variant,
+            image=image,
+            board=board,
+            scope=scope,
+            defer_fts=defer_fts,
+            defer_cleanup=defer_cleanup,
+            header_hash_cache=header_hash_cache,
+            reparsed_tus=reparsed_tus,
+            unit_context_ids={
+                i: unit_identities[i]["context_id"] for i in unit_identities
+            },
+        )
 
     elapsed = time.monotonic() - t0
     log.info("", extra={"phase": f"Done — {total_syms} symbols, {total_refs} refs, {_fmt_dur(elapsed)}"})

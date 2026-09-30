@@ -1,6 +1,6 @@
 {
   "test": "S6_PINNED_WORLD_DELETION_TEST",
   "verdict": "PASS",
-  "head": "43427196b7a39f546af192790c20dfc9fd622fea",
+  "head": "20bd51b7d377be2742b1649aecc338922d1c9962",
   "detail": "No real GC implementation (matches are compiler flags) \u2014 pinned Worlds are never deleted. Invariant holds."
 }

@@ -28,10 +28,18 @@ import pytest
 # incomplete-World fixtures.  Tests that specifically exercise the v2-
 # authority path should set FW_CONTEXT_V2_WRITE_AUTHORITY=1 explicitly.
 # The M4 gate's C24 regression also runs with this set to "0".
+#
+# M5: legacy compatibility mode defaults ON for the test suite.  Existing
+# fixtures index into the legacy DB and expect legacy postprocess to run.
+# Production defaults to v2-only (compat=OFF); the dedicated M5 production-
+# default test lane (run_m5_runtime_tests.py) exercises v2-only behavior.
 if os.environ.get("FW_CONTEXT_V2_WRITE_AUTHORITY") is None:
     os.environ["FW_CONTEXT_V2_WRITE_AUTHORITY"] = "0"
 if os.environ.get("FW_CONTEXT_SHADOW_V2") is None:
     os.environ["FW_CONTEXT_SHADOW_V2"] = "0"
+# M5: existing fixtures need the legacy mirror — opt into compat mode.
+if os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE") is None:
+    os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = "1"
 
 # ── Result logging ─────────────────────────────────────────────────────────
 
@@ -42,25 +50,30 @@ log = logging.getLogger(__name__)
 
 @pytest.fixture(autouse=True)
 def _reset_v2_flag_caches():
-    """Reset v2 flag caches before each test (M4).
+    """Reset v2 flag caches before each test (M4 + M5).
 
-    The `_v2_write_authority_on()` and `_v2_shadow_flag_on()` functions
-    cache their result in module globals.  Without this fixture, a test
-    that sets the env var would pollute the cache for subsequent tests.
+    The `_v2_write_authority_on()`, `_v2_shadow_flag_on()`, and
+    `_legacy_compat_on()` functions cache their result in module globals.
+    Without this fixture, a test that sets the env var would pollute the
+    cache for subsequent tests.
     """
     try:
         from fw_context_mcp.indexer._unit_processor import (
-            _reset_v2_write_authority_cache, _reset_v2_flag_cache)
+            _reset_v2_write_authority_cache, _reset_v2_flag_cache,
+            _reset_legacy_compat_cache)
         _reset_v2_write_authority_cache()
         _reset_v2_flag_cache()
+        _reset_legacy_compat_cache()
     except Exception:
         pass  # module not importable in some test contexts
     yield
     try:
         from fw_context_mcp.indexer._unit_processor import (
-            _reset_v2_write_authority_cache, _reset_v2_flag_cache)
+            _reset_v2_write_authority_cache, _reset_v2_flag_cache,
+            _reset_legacy_compat_cache)
         _reset_v2_write_authority_cache()
         _reset_v2_flag_cache()
+        _reset_legacy_compat_cache()
     except Exception:
         pass
 

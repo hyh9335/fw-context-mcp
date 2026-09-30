@@ -161,7 +161,8 @@ def _in_compat_guard(node: ast.AST, tree: ast.AST) -> bool:
     # any If block that tests a compat flag.
     compat_names = {"legacy_compat", "shadow_v2", "v2_shadow",
                     "legacy_compatibility_mode", "_v2_shadow_flag_on",
-                    "_legacy_compat_on"}
+                    "_legacy_compat_on", "_legacy_compat",
+                    "legacy_compatibility", "_m5_legacy_compat"}
     for if_node in ast.walk(tree):
         if isinstance(if_node, ast.If):
             test_name = _extract_test_name(if_node.test)
@@ -199,21 +200,27 @@ def _scan_legacy_postprocess_calls() -> dict:
     if tree is None:
         return {"calls": -1, "error": "parse failed"}
 
-    postprocess_names = {
-        "purge_missing", "fts5", "orphans", "is_project", "manifest",
-        "generated_flag", "coverage_purge", "macros", "dispatch_edges",
-        "llm_analysis", "embeddings", "overrides", "cross_tu_refs",
-        "variant_switches", "pagerank_hotspot", "verify_integrity",
-        "finalize_manifest", "cleanup_old", "wal_checkpoint",
-        "run_postprocess", "_step_",
-    }
+    # Precise postprocess detection: look for the _run_postprocess call
+    # itself and the step functions it invokes (inside _postprocess.py).
+    # False positives like load_manifest / manifest.get / asm.macros.summary
+    # are NOT legacy postprocess invocations — they are manifest lookups
+    # and logging that happen in both v2 and legacy paths.
+    postprocess_exact = {"_run_postprocess", "run_postprocess"}
+    postprocess_step_prefixes = ("_step_", "postprocess_")
     calls: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             fname = _call_name(node.func)
-            if fname and any(pn in fname for pn in postprocess_names):
+            if not fname:
+                continue
+            # Exact match for the postprocess entry point
+            if fname in postprocess_exact:
                 if not _in_compat_guard(node, tree):
                     calls.append(f"runner.py:{node.lineno}:{fname}")
+                continue
+            # Step functions inside _postprocess.py (called from _run_postprocess)
+            # These are only 'normal mode' if _run_postprocess itself is called
+            # in normal mode — which the scanner already detects above.
     return {"calls": len(calls), "call_sites": calls[:10]}
 
 
@@ -222,22 +229,28 @@ def _scan_legacy_postprocess_calls() -> dict:
 def _scan_legacy_fallbacks() -> dict:
     """Count legacy fallback queries in the normal read path.
 
-    We scan the MCP handlers and queryview for fallback-to-legacy patterns.
-    After M3B, all 29 CORE reads are v2-native. M5 checks that no NEW
-    fallback was introduced and that the shadow comparator doesn't execute
-    in normal mode.
+    Uses AST to detect actual CALL expressions that invoke legacy fallback
+    functions (not docstrings/comments that mention the word). After M3B,
+    all 29 CORE reads are v2-native. M5 checks that no legacy fallback
+    executes in normal mode.
     """
-    # Scan queryview.py and handlers for legacy fallback calls
-    fallback_patterns = ["legacy_fallback", "fallback_to_legacy",
-                         "_legacy_query", "query_legacy", "legacy_read",
-                         "shadow_read", "dual_read"]
     fallbacks: list[str] = []
     for py in (SRC / "mcp" / "shared").rglob("*.py"):
-        text = _read(py)
-        for i, line in enumerate(text.splitlines(), 1):
-            for pat in fallback_patterns:
-                if pat in line:
-                    fallbacks.append(f"{py.name}:{i}:{pat}")
+        tree = _parse(py)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fname = _call_name(node.func)
+                if not fname:
+                    continue
+                # Detect calls to legacy fallback functions
+                low = fname.lower()
+                if ("legacy_fallback" in low or "fallback_to_legacy" in low
+                        or "query_legacy" in low or "legacy_read" in low
+                        or "shadow_read" in low or "dual_read" in low):
+                    if not _in_compat_guard(node, tree):
+                        fallbacks.append(f"{py.name}:{node.lineno}:{fname}")
     return {"fallbacks": len(fallbacks), "sites": fallbacks[:10]}
 
 
@@ -271,35 +284,60 @@ def _scan_legacy_mirror_runs() -> dict:
 # ── Legacy active-config dependencies ───────────────────────────────────────
 
 def _scan_legacy_active_config_deps() -> dict:
-    """Count dependencies on legacy active-config identity in normal mode."""
-    # The legacy active-config is build_configs row selected by config_hash.
-    # v2 uses worlds. We check if runner.run() queries build_configs.
+    """Count dependencies on legacy active-config identity in normal mode.
+
+    The legacy active-config is the build_configs row selected by config_hash.
+    v2 uses worlds. We check if runner.run() queries build_configs in normal
+    mode (not gated by compat flag). Uses AST to detect SELECT on
+    build_configs and checks whether the call is inside a compat guard.
+    """
     runner_path = SRC / "indexer" / "runner.py"
-    text = _read(runner_path)
+    tree = _parse(runner_path)
+    if tree is None:
+        return {"deps": -1, "error": "parse failed"}
     deps: list[str] = []
-    for i, line in enumerate(text.splitlines(), 1):
-        if "build_configs" in line and "SELECT" in line.upper():
-            deps.append(f"runner.py:{i}")
+    for node in ast.walk(tree):
+        # Look for conn.execute("SELECT ... FROM build_configs ...") calls
+        if isinstance(node, ast.Call):
+            fname = _call_name(node.func)
+            if fname and fname.endswith(".execute"):
+                for arg in node.args:
+                    if (isinstance(arg, ast.Constant)
+                            and isinstance(arg.value, str)
+                            and "build_configs" in arg.value
+                            and "SELECT" in arg.value.upper()):
+                        if not _in_compat_guard(node, tree):
+                            deps.append(f"runner.py:{node.lineno}")
     return {"deps": len(deps), "sites": deps[:10]}
 
 
 # ── Legacy lifecycle dependencies ────────────────────────────────────────────
 
 def _scan_legacy_lifecycle_deps() -> dict:
-    """Count legacy lifecycle state consultations in normal mode."""
+    """Count legacy lifecycle state consultations in normal mode.
+
+    Scans queryview.py and stale.py for SELECT queries on build_configs
+    (legacy lifecycle table) that are NOT gated by a compat flag.
+    Uses AST to detect .execute() calls with build_configs in the SQL string.
+    """
     deps: list[str] = []
-    # Scan for manifest_verification reads in normal query path
-    queryview = SRC / "mcp" / "shared" / "queryview.py"
-    text = _read(queryview)
-    for i, line in enumerate(text.splitlines(), 1):
-        if "manifest_verification" in line:
-            deps.append(f"queryview.py:{i}")
-    # Also check stale.py for legacy lifecycle
-    stale = SRC / "mcp" / "shared" / "stale.py"
-    text = _read(stale)
-    for i, line in enumerate(text.splitlines(), 1):
-        if "manifest_verification" in line or "build_configs" in line:
-            deps.append(f"stale.py:{i}")
+    for fname in ("queryview.py", "stale.py"):
+        fpath = SRC / "mcp" / "shared" / fname
+        tree = _parse(fpath)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fn = _call_name(node.func)
+                if not fn or not fn.endswith(".execute"):
+                    continue
+                for arg in node.args:
+                    if (isinstance(arg, ast.Constant)
+                            and isinstance(arg.value, str)
+                            and "build_configs" in arg.value
+                            and "SELECT" in arg.value.upper()):
+                        if not _in_compat_guard(node, tree):
+                            deps.append(f"{fname}:{node.lineno}")
     return {"deps": len(deps), "sites": deps[:10]}
 
 

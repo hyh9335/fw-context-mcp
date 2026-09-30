@@ -1142,15 +1142,24 @@ def diagnose_empty_result(conn, config_hash: str, root: Path) -> tuple[int, list
     it describes for as long as its TTL.
     """
     dirty = _count_modified_files(conn, config_hash, root, use_cache=False)
-    row = conn.execute(
-        "SELECT compile_commands_path FROM build_configs WHERE config_hash=?",
-        (config_hash,),
-    ).fetchone()
-    if row is None or not row["compile_commands_path"]:
-        return dirty, []
-    return dirty, find_unindexed_sources(
-        conn, config_hash, root, Path(row["compile_commands_path"])
-    )
+    # M5: in v2-only mode (default), no legacy build_configs table exists.
+    # Return early with just the dirty count — the unindexed-sources
+    # diagnostic requires legacy compile_commands_path and is compat-only.
+    try:
+        from fw_context_mcp.indexer._unit_processor import _legacy_compat_on
+        _m5_legacy_compat = _legacy_compat_on()
+    except Exception:
+        _m5_legacy_compat = False
+    if _m5_legacy_compat:
+        row = conn.execute(
+            "SELECT compile_commands_path FROM build_configs WHERE config_hash=?",
+            (config_hash,),
+        ).fetchone()
+        if row is not None and row["compile_commands_path"]:
+            return dirty, find_unindexed_sources(
+                conn, config_hash, root, Path(row["compile_commands_path"])
+            )
+    return dirty, []
 
 
 def with_stale_annotation(

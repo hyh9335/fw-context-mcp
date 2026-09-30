@@ -137,6 +137,42 @@ def _reset_v2_write_authority_cache() -> None:
     global _V2_WRITE_AUTHORITY_CACHE
     _V2_WRITE_AUTHORITY_CACHE = None
 
+
+# ── M5-1: legacy compatibility mode ──
+# When True, the normal index path also writes legacy semantic storage
+# (index.db, postprocess, mirror). When False (default), normal operation
+# is v2-only: no legacy DB opened, no legacy writes, no legacy postprocess.
+_LEGACY_COMPAT_CACHE: bool | None = None
+
+
+def _legacy_compat_on() -> bool:
+    """``FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1`` env override, else config flag.
+
+    When True, the normal index path generates legacy semantic storage as a
+    compatibility mirror. When False (default), normal operation is v2-only.
+    """
+    global _LEGACY_COMPAT_CACHE
+    if _LEGACY_COMPAT_CACHE is not None:
+        return _LEGACY_COMPAT_CACHE
+    env = os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE")
+    if env is not None:
+        enabled = env == "1"
+    else:
+        try:
+            from fw_context_mcp.config import load
+            enabled = bool(getattr(load().index, "legacy_compatibility_mode", False))
+        except Exception:
+            enabled = False
+    _LEGACY_COMPAT_CACHE = enabled
+    return enabled
+
+
+def _reset_legacy_compat_cache() -> None:
+    """Test seam: forget the cached legacy-compat decision."""
+    global _LEGACY_COMPAT_CACHE
+    _LEGACY_COMPAT_CACHE = None
+
+
 from ..utils import MTIME_TOLERANCE_S, SAFE_EXCEPT, compute_source_hash, is_fatal
 from .config_hash import compute_flags_hash, compute_tu_content_hash
 from .db import (
@@ -505,6 +541,19 @@ def _process_unit(
         except Exception as _v2_exc:                  # pragma: no cover
             log.debug("v2 shadow hook returned error (legacy unaffected): %s",
                       _v2_exc)
+
+    # ── M5-1: legacy DB writes are gated behind explicit compat mode ──
+    # When _legacy_compat_on() is False (the M5 default), normal indexing is
+    # v2-only: the v2 certification/publication/binding above is the sole
+    # semantic write path. No legacy index.db is opened, no legacy symbols
+    # are stored. Legacy storage is generated ONLY when the operator opts in
+    # via FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1.
+    if not _legacy_compat_on():
+        # v2-only path: v2 certify/publish/bind already ran above. Return
+        # a no-legacy-write result. Timing reflects parse only (no legacy
+        # write occurred).
+        t_parse = t_parse_end - t_parse_start
+        return ("updated", 0, 0, (t_parse, 0.0, 0.0), [])
 
     # Resolve connection: caller-supplied or own.
     # Persistent per-worker connections avoid open()+close() per TU

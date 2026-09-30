@@ -1,6 +1,6 @@
 {
   "test": "S8_STALE_VERIFIER_GUARDIAN_TEST",
   "verdict": "PASS",
-  "head": "43427196b7a39f546af192790c20dfc9fd622fea",
-  "detail": "Detected stale verifier/guardian (stale_v=True, stale_g=True) \u2014 no fresh artifact on current HEAD"
+  "head": "20bd51b7d377be2742b1649aecc338922d1c9962",
+  "detail": "Detected stale verifier/guardian (stale_v=True, stale_g=False) \u2014 no fresh artifact on current HEAD"
 }

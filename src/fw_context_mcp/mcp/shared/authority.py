@@ -338,25 +338,31 @@ def v2_authority_route(
                 "legacy execution.)", tool_name, e)
             raise
 
-        # Step 2: Get legacy config_hash for equivalence checking
-        # Legacy DB schema: build_configs table has config_hash per build
+        # Step 2: Get legacy config_hash for equivalence checking.
+        # M5: this legacy DB read is migration scaffolding — only needed when
+        # legacy compatibility mode is ON (explicit legacy mirror exists).
+        # In v2-only mode (default), no legacy DB exists, so this is skipped
+        # and legacy_config_hash stays None (no fallback path).
         legacy_config_hash = None
         try:
             from pathlib import Path
-            root = Path(project_root).resolve() if not isinstance(project_root, Path) else project_root
-            db_path = _db_path(root)
-            if db_path.exists():
-                import sqlite3
-                conn = sqlite3.connect(str(db_path))
-                try:
-                    row = conn.execute(
-                        "SELECT config_hash FROM build_configs "
-                        "ORDER BY created_at DESC LIMIT 1"
-                    ).fetchone()
-                    if row:
-                        legacy_config_hash = row[0] if isinstance(row, tuple) else row["config_hash"]
-                finally:
-                    conn.close()
+            # M5: skip legacy DB read in v2-only mode (no legacy DB exists).
+            from fw_context_mcp.indexer._unit_processor import _legacy_compat_on
+            if _legacy_compat_on():
+                root = Path(project_root).resolve() if not isinstance(project_root, Path) else project_root
+                db_path = _db_path(root)
+                if db_path.exists():
+                    import sqlite3
+                    conn = sqlite3.connect(str(db_path))
+                    try:
+                        row = conn.execute(
+                            "SELECT config_hash FROM build_configs "
+                            "ORDER BY created_at DESC LIMIT 1"
+                        ).fetchone()
+                        if row:
+                            legacy_config_hash = row[0] if isinstance(row, tuple) else row["config_hash"]
+                    finally:
+                        conn.close()
         except Exception:
             pass  # legacy_config_hash stays None
 
