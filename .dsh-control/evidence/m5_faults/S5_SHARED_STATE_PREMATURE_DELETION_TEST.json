@@ -1,0 +1,6 @@
+{
+  "test": "S5_SHARED_STATE_PREMATURE_DELETION_TEST",
+  "verdict": "PASS",
+  "head": "43427196b7a39f546af192790c20dfc9fd622fea",
+  "detail": "GC implementation uses reachability/referenced checks for shared state"
+}

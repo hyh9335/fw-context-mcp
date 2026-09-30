@@ -1,0 +1,6 @@
+{
+  "test": "S4_LEGACY_POSTPROCESS_TEST",
+  "verdict": "PASS",
+  "head": "43427196b7a39f546af192790c20dfc9fd622fea",
+  "detail": "Scanner detected 8 legacy postprocess calls in normal index path"
+}
