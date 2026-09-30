@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "milestone": "M3B_NATIVE_V2_READ_ENGINE_COMPLETE",
-  "generated_at_utc": "2026-09-30T07:02:45Z",
+  "generated_at_utc": "2026-09-30T07:08:50Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
-    "short": "cb35b19",
+    "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
+    "short": "9a45b2d",
     "branch": "m3b-native-v2",
     "dirty": true
   },

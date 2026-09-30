@@ -1,6 +1,6 @@
 {
   "verdict": "PASS",
-  "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
-  "timestamp": "2026-09-30T07:02:35Z",
+  "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
+  "timestamp": "2026-09-30T07:08:49Z",
   "detail": "FW_CONTEXT_V2_WRITE_AUTHORITY unset \u2192 authority off, shadow off \u2192 legacy-primary (rollback coherent)"
 }

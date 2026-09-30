@@ -47,13 +47,24 @@ Who provides a coherent legacy-primary rollback.
 **M4 target:** `FW_CONTEXT_V2_WRITE_AUTHORITY=0` restores legacy-primary.
 
 ## Status per domain (baseline → M4 target)
-| Domain | Baseline | M4 target |
-|---|---|---|
-| identity | legacy | v2 |
-| SemanticState pub | v2 (flag-gated, isolated) | v2 (authoritative) |
-| TUBinding | v2 (flag-gated) | v2 (authoritative) |
-| World completion | v2 (isolated/swallowed) | v2 (authoritative) |
-| exit-status | legacy (config_hash) | v2 finalization |
-| legacy mirror | n/a (legacy primary) | mirror (degraded-on-fail) |
-| postprocess | legacy (required) | split (V2_REQUIRED vs COMPAT) |
-| rollback | n/a | legacy-primary coherent |
+| Domain | Baseline | M4 target | M4 state (HEAD 9a45b2d) |
+|---|---|---|---|
+| identity | legacy | v2 | v2 (flag-on) |
+| SemanticState pub | v2 (flag-gated, isolated) | v2 (authoritative) | v2 (flag-on, not yet default) |
+| TUBinding | v2 (flag-gated) | v2 (authoritative) | v2 (flag-on) |
+| World completion | v2 (isolated/swallowed) | v2 (authoritative) | v2 (raises IndexIntegrityError on fin.ok==False) ✓ |
+| exit-status | legacy (config_hash) | v2 finalization | v2 (IndexIntegrityError propagates) ✓ |
+| legacy mirror | n/a (legacy primary) | mirror (degraded-on-fail) | mirror (CASE B degraded) ✓ |
+| postprocess | legacy (required) | split (V2_REQUIRED vs COMPAT) | CASE B degraded (raise aborted → log.warning) ✓ |
+| rollback | n/a | legacy-primary coherent | FW_CONTEXT_V2_WRITE_AUTHORITY=0 → legacy-primary ✓ |
+| reindex v2 leg | bypassed (BUG-002) | v2 certify+bind+finalize | Phase 2.5 added ✓ |
+
+## M4 work packages status (HEAD 9a45b2d)
+- M4-1 contract freeze: DONE (committed d0b90a0)
+- M4-2 enforce fin.ok (CASE C/D): DONE (runner.py raises IndexIntegrityError)
+- M4-3 migrate entry points: N/A (entry points already route through runner)
+- M4-4 reindex v2 leg (BUG-002): DONE (maintenance.py Phase 2.5)
+- M4-5 postprocess degradation (CASE B): DONE (_postprocess.py guard)
+- M4-6 Legacy-GATE reassessment: PENDING (after G2)
+- M4-7 flip flag default: PENDING (after G2 approval; resolves M4-BUG-003/C14)
+- M4-8 fault-injection tests: DONE (7/7 PASS)
