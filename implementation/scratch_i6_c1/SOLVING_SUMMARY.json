@@ -1,0 +1,58 @@
+{
+ "cards": [
+  {
+   "detail": "R1_pattern_compiled_out=FAIL; R2_config_symbol_guard=OK; R3_harmful_consequence=FAIL",
+   "failed_roles": [
+    "R1_pattern_compiled_out",
+    "R3_harmful_consequence"
+   ],
+   "family": "condition_config_gated",
+   "kind": "rejected",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33"
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "condition_config_gated",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "positive",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 4
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "failed_roles": [
+    "A3_config_causal_cutoff"
+   ],
+   "family": "existence_absence",
+   "kind": "rejected",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "init_submit_pairing",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "negative",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 6
+  }
+ ],
+ "case_id": "C1",
+ "coherence_violations": [],
+ "freeze_id": "FRZ-C1-20260921T064343Z"
+}

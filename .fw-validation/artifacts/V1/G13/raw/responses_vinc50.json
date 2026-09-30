@@ -1,0 +1,699 @@
+{
+  "search_content::{\"query\": \"\\\"return 8\\\"\", \"limit\": 100}": {
+    "tool": "search_content",
+    "arguments": {
+      "query": "\"return 8\"",
+      "limit": 100
+    },
+    "elapsed_s": 0.018,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n50\\work\\shared.h",
+              "language": "c",
+              "mtime": 1789701361.012075,
+              "_match_snippet": "#pragma once\nstatic inline int shared_value(void){<b>return 8</b>;}\n",
+              "match_lines": [
+                2
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n50\\\\work\\\\shared.h\",\n  \"language\": \"c\",\n  \"mtime\": 1789701361.012075,\n  \"_match_snippet\": \"#pragma once\\nstatic inline int shared_value(void){<b>return 8</b>;}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}",
+    "json": null
+  },
+  "search_content::{\"query\": \"\\\"return 7\\\"\", \"limit\": 100}": {
+    "tool": "search_content",
+    "arguments": {
+      "query": "\"return 7\"",
+      "limit": 100
+    },
+    "elapsed_s": 0.056,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false
+      }
+    },
+    "text": "",
+    "json": null
+  },
+  "server_exit_code": 0
+}

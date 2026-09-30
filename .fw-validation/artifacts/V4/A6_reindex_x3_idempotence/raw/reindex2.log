@@ -1,0 +1,34 @@
+exit: 0
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A6_reindex_x3_idempotence\work  build=unknown
+Indexed. config_hash=baa4927d701bfc1c…  db=C:\Users\h00969597\fwctx-validation-work\V4\A6_reindex_x3_idempotence\index\0ec5fcad754f4d66bc929bc1f7f1959e\index.db
+
+18:36:18 INFO TUs to index: 2
+18:36:18 INFO vendor patterns for work: none
+18:36:18 INFO 
+18:36:18 INFO project=work project_id=0ec5fcad754f4d66bc929bc1f7f1959e config_hash=baa4927d701b
+18:36:18 INFO 
+18:36:18 INFO [1/2] master.c: unchanged
+18:36:18 INFO [2/2] slave.c: unchanged
+18:36:18 INFO linker script: none found for this build
+18:36:18 INFO Post-process: purge_missing (0.0s)
+18:36:18 INFO Post-process: fts5 (0.0s)
+18:36:18 INFO Post-process: orphans (0.0s)
+18:36:18 INFO Post-process: is_project (0.0s)
+18:36:18 INFO Post-process: manifest (0.0s)
+18:36:18 INFO Post-process: generated_flag (0.0s)
+18:36:18 INFO Post-process: coverage_purge (0.0s)
+18:36:18 INFO Post-process: macros (0.1s)
+18:36:18 INFO Post-process: dispatch_edges (0.0s)
+18:36:18 INFO No virtual methods found — skipping override analysis
+18:36:18 INFO Post-process: overrides (0.0s)
+18:36:18 INFO Post-process: cross_tu_refs (0.0s)
+18:36:18 INFO Post-process: variant_switches (0.0s)
+18:36:18 INFO PageRank already computed — nothing to do
+18:36:18 INFO Hotspot cache already built — nothing to do
+18:36:18 INFO Post-process: pagerank_hotspot (0.0s)
+18:36:18 INFO Post-process: verify_integrity (0.0s)
+18:36:18 INFO Post-process: finalize_manifest (0.0s)
+18:36:18 INFO Post-process: cleanup_old (0.0s)
+18:36:18 INFO Post-process: wal_checkpoint (0.0s)
+18:36:18 INFO 
+18:36:18 INFO 0 updated, 2 unchanged, 0 skipped  config_hash=baa4927d701b

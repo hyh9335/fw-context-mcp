@@ -1,0 +1,12 @@
+[project]
+id = "b44626f903404a8a8af8d6cb564abca4"
+
+[build]
+
+[index]
+compile_commands = ".fw-context/build/compile_commands.json"
+
+[call_graph]
+
+[llm]
+enabled = false

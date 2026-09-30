@@ -1,0 +1,12 @@
+{
+  "direct_mode": {
+    "trap_address": "BASE"
+  },
+  "vectored_mode": {
+    "interrupt_address_formula": "BASE + 4*cause"
+  },
+  "cause_1_offset": 4,
+  "cause_2_offset": 8,
+  "cause_3_offset": 12,
+  "forbidden_interpretation": "entries are pointer-sized function pointers"
+}

@@ -1,0 +1,49 @@
+{
+  "round": "R1_INDEPENDENT_RESEARCH",
+  "agent": "A8",
+  "status": "COMPLETE",
+  "inputs": [
+    "fault_discovery_goal_architecture_agent_team/roles/A8_ALTERNATIVE_ARCHITECT.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/GOAL_CONTRACT.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/CURRENT_STATE_SEED.md",
+    "fault_discovery_goal_architecture_agent_team/outputs/FACT_LEDGER.json",
+    "fault_discovery_goal_architecture_agent_team/outputs/CONTRADICTIONS.json",
+    "fault_discovery_goal_architecture_agent_team/workflow/ANTI_ANCHOR.md",
+    "docs/tools.md",
+    "KNOWN_LIMITATIONS.md"
+  ],
+  "outputs": [
+    "fault_discovery_goal_architecture_agent_team/outputs/R1_A8.md"
+  ],
+  "evidence_paths": [
+    "fault_discovery_goal_architecture_agent_team/inputs/GOAL_CONTRACT.md",
+    "fault_discovery_goal_architecture_agent_team/outputs/FACT_LEDGER.json",
+    "fault_discovery_goal_architecture_agent_team/outputs/CONTRADICTIONS.json",
+    "fault_discovery_goal_architecture_agent_team/workflow/ANTI_ANCHOR.md",
+    "docs/tools.md",
+    "KNOWN_LIMITATIONS.md"
+  ],
+  "claims_fact_ids": [
+    "F-R0-11",
+    "F-R0-13",
+    "F-R0-14",
+    "F-R0-18",
+    "F-R0-20",
+    "F-V1-001",
+    "F-V1-003",
+    "F-V1-004",
+    "F-V1-005",
+    "F-V1-007",
+    "F-V2-001",
+    "F-V2-002",
+    "C-01",
+    "C-04"
+  ],
+  "uncertainties": [
+    "U-1: toolchain provisioning policy on corporate hosts unknown (reopens Alt-2/Alt-4 viability)",
+    "U-2: C-01 READY vs NOT_READY adjudication pending (A4/A0); affects sequencing, not decomposition",
+    "U-3: CodeQL/external-tool firmware extraction quality on custom toolchains unmeasured",
+    "U-4: scale beyond 250 TUs unmeasured for substrate fanout and Alt-4 per-query cost",
+    "U-5: kconfiglib-class per-variant config resolution without full builds untested"
+  ]
+}

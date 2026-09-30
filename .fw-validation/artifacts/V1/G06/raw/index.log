@@ -1,0 +1,41 @@
+exit: 0
+stdout:
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V1\G06\work  build=unknown
+Indexed. config_hash=cf3da43a0883e65c…  db=C:\Users\h00969597\fwctx-validation-work\V1\G06\index\ffbce0b85a594a0fb21a85e9910ffb6e\index.db
+
+stderr:
+10:46:20 INFO TUs to index: 1
+10:46:20 INFO vendor patterns for work: none
+10:46:20 INFO manifest.json (preliminary): 1 TUs, config_hash=cf3da43a0883
+10:46:20 INFO 
+10:46:20 INFO project=work project_id=ffbce0b85a594a0fb21a85e9910ffb6e config_hash=cf3da43a0883
+10:46:20 INFO 
+10:46:20 INFO content fill: 1 files from TU callbacks.c in 0.0s
+10:46:20 INFO [1/1] callbacks.c: 14 syms, 25 refs, 0.1s
+10:46:20 INFO linker script: none found for this build
+10:46:20 INFO Post-process: purge_missing (0.0s)
+10:46:20 INFO Post-process: fts5 (0.0s)
+10:46:20 INFO Post-process: orphans (0.0s)
+10:46:20 INFO Post-process: is_project (0.0s)
+10:46:20 INFO manifest.json incremental: 1 updated, 0 reused, 0 needs_reparse
+10:46:20 INFO manifest.json saved: 1 TUs, 0 distinct headers (0 references), config_hash=cf3da43a0883
+10:46:20 INFO Post-process: manifest (0.0s)
+10:46:20 INFO Post-process: generated_flag (0.0s)
+10:46:20 INFO Post-process: coverage_purge (0.0s)
+10:46:20 INFO Post-process: macros (0.0s)
+10:46:20 INFO Post-process: dispatch_edges (0.0s)
+10:46:20 INFO No virtual methods found — skipping override analysis
+10:46:20 INFO Post-process: overrides (0.0s)
+10:46:20 INFO Post-process: cross_tu_refs (0.0s)
+10:46:20 INFO Post-process: variant_switches (0.0s)
+10:46:20 INFO PageRank converged after 3 iterations
+10:46:20 INFO PageRank stored: 2 nodes
+10:46:20 INFO Hotspot cache stored: 6 entries
+10:46:20 INFO Post-process: pagerank_hotspot (0.0s)
+10:46:20 INFO Post-process: verify_integrity (0.0s)
+10:46:20 INFO Post-process: finalize_manifest (0.0s)
+10:46:20 INFO Post-process: cleanup_old (0.0s)
+10:46:20 INFO Post-process: wal_checkpoint (0.0s)
+10:46:20 INFO 
+10:46:20 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=cf3da43a0883
+10:46:20 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V1\G06\work

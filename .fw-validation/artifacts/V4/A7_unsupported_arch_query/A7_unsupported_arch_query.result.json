@@ -1,0 +1,185 @@
+{
+  "case_id": "A7_unsupported_arch_query",
+  "phase": "V4_ADVERSARIAL",
+  "status": "PASS",
+  "expected": "arch-specific queries on a non-MCU fixture return honest empties (no fabricated tables, no crashes)",
+  "observed": {
+    "isError_calls": [],
+    "vector_honest": true
+  },
+  "notes": [
+    "unsupported-arch honesty probe"
+  ],
+  "responses": {
+    "vector::{}": {
+      "tool": "get_vector_table",
+      "arguments": {},
+      "elapsed_s": 0.021,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"info\": \"No vector table in this build. No source found one: the assembly holds no table of address words, and no array of function addresses was recognised; no linked image was found in the build directory. arm64, Xtensa, RISC-V and MIPS build their tables from branch instructions, which this tool does not read. An index written before slots were recorded also answers this way \u2014 reindex to read the C source. Use find_references on a handler name instead.\"\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "info": "No vector table in this build. No source found one: the assembly holds no table of address words, and no array of function addresses was recognised; no linked image was found in the build directory. arm64, Xtensa, RISC-V and MIPS build their tables from branch instructions, which this tool does not read. An index written before slots were recorded also answers this way \u2014 reindex to read the C source. Use find_references on a handler name instead."
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"info\": \"No vector table in this build. No source found one: the assembly holds no table of address words, and no array of function addresses was recognised; no linked image was found in the build directory. arm64, Xtensa, RISC-V and MIPS build their tables from branch instructions, which this tool does not read. An index written before slots were recorded also answers this way \u2014 reindex to read the C source. Use find_references on a handler name instead.\"\n}",
+      "json": {
+        "info": "No vector table in this build. No source found one: the assembly holds no table of address words, and no array of function addresses was recognised; no linked image was found in the build directory. arm64, Xtensa, RISC-V and MIPS build their tables from branch instructions, which this tool does not read. An index written before slots were recorded also answers this way \u2014 reindex to read the C source. Use find_references on a handler name instead."
+      }
+    },
+    "cond_none::{\"file_path\": \"common.h\", \"line\": 1}": {
+      "tool": "explain_condition",
+      "arguments": {
+        "file_path": "common.h",
+        "line": 1
+      },
+      "elapsed_s": 0.006,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"file\": \"common.h\",\n  \"line\": 1,\n  \"context_id\": \"36d7faa5fcd87cc1\",\n  \"config_hash\": \"8befa76115af38010391a5057ba849b044d4f2017cabc5b2f703782c6faf4786\",\n  \"chain\": []\n}"
+            }
+          ],
+          "structuredContent": {
+            "file": "common.h",
+            "line": 1,
+            "context_id": "36d7faa5fcd87cc1",
+            "config_hash": "8befa76115af38010391a5057ba849b044d4f2017cabc5b2f703782c6faf4786",
+            "chain": []
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"file\": \"common.h\",\n  \"line\": 1,\n  \"context_id\": \"36d7faa5fcd87cc1\",\n  \"config_hash\": \"8befa76115af38010391a5057ba849b044d4f2017cabc5b2f703782c6faf4786\",\n  \"chain\": []\n}",
+      "json": {
+        "file": "common.h",
+        "line": 1,
+        "context_id": "36d7faa5fcd87cc1",
+        "config_hash": "8befa76115af38010391a5057ba849b044d4f2017cabc5b2f703782c6faf4786",
+        "chain": []
+      }
+    },
+    "absent::{\"exact\": true, \"name\": \"HardFault_Handler\"}": {
+      "tool": "lookup_symbol",
+      "arguments": {
+        "name": "HardFault_Handler",
+        "exact": true
+      },
+      "elapsed_s": 0.011,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [],
+          "structuredContent": {
+            "result": []
+          },
+          "isError": false
+        }
+      },
+      "text": "",
+      "json": null
+    },
+    "dead::{}": {
+      "tool": "find_dead_code",
+      "arguments": {},
+      "elapsed_s": 0.01,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"signature\": \"int master_entry()\",\n  \"line\": 2,\n  \"status\": \"dead\",\n  \"reason\": \"no references found \u2014 likely unused\",\n  \"evidence_level\": \"L1\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\master.c\"\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"slave_entry\",\n  \"qualified_name\": \"slave_entry\",\n  \"kind\": \"function\",\n  \"signature\": \"int slave_entry()\",\n  \"line\": 2,\n  \"status\": \"dead\",\n  \"reason\": \"no references found \u2014 likely unused\",\n  \"evidence_level\": \"L1\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\slave.c\"\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"signature\": \"int feature_value()\",\n  \"line\": 9,\n  \"status\": \"graph_unreachable\",\n  \"reason\": \"referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code\",\n  \"evidence_level\": \"L2\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\common.h\"\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"signature\": \"int role_value()\",\n  \"line\": 2,\n  \"status\": \"graph_unreachable\",\n  \"reason\": \"referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code\",\n  \"evidence_level\": \"L2\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\common.h\"\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "name": "master_entry",
+                "qualified_name": "master_entry",
+                "kind": "function",
+                "signature": "int master_entry()",
+                "line": 2,
+                "status": "dead",
+                "reason": "no references found \u2014 likely unused",
+                "evidence_level": "L1",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A7_unsupported_arch_query\\work\\master.c"
+              },
+              {
+                "name": "slave_entry",
+                "qualified_name": "slave_entry",
+                "kind": "function",
+                "signature": "int slave_entry()",
+                "line": 2,
+                "status": "dead",
+                "reason": "no references found \u2014 likely unused",
+                "evidence_level": "L1",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A7_unsupported_arch_query\\work\\slave.c"
+              },
+              {
+                "name": "feature_value",
+                "qualified_name": "feature_value",
+                "kind": "function",
+                "signature": "int feature_value()",
+                "line": 9,
+                "status": "graph_unreachable",
+                "reason": "referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code",
+                "evidence_level": "L2",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A7_unsupported_arch_query\\work\\common.h"
+              },
+              {
+                "name": "role_value",
+                "qualified_name": "role_value",
+                "kind": "function",
+                "signature": "int role_value()",
+                "line": 2,
+                "status": "graph_unreachable",
+                "reason": "referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code",
+                "evidence_level": "L2",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A7_unsupported_arch_query\\work\\common.h"
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"signature\": \"int master_entry()\",\n  \"line\": 2,\n  \"status\": \"dead\",\n  \"reason\": \"no references found \u2014 likely unused\",\n  \"evidence_level\": \"L1\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\master.c\"\n}\n{\n  \"name\": \"slave_entry\",\n  \"qualified_name\": \"slave_entry\",\n  \"kind\": \"function\",\n  \"signature\": \"int slave_entry()\",\n  \"line\": 2,\n  \"status\": \"dead\",\n  \"reason\": \"no references found \u2014 likely unused\",\n  \"evidence_level\": \"L1\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\slave.c\"\n}\n{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"signature\": \"int feature_value()\",\n  \"line\": 9,\n  \"status\": \"graph_unreachable\",\n  \"reason\": \"referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code\",\n  \"evidence_level\": \"L2\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\common.h\"\n}\n{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"signature\": \"int role_value()\",\n  \"line\": 2,\n  \"status\": \"graph_unreachable\",\n  \"reason\": \"referenced but unreachable from every root (entry point, constructors, aliases, KEEP/attr, vector slots) \u2014 called only by other unreachable code\",\n  \"evidence_level\": \"L2\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A7_unsupported_arch_query\\\\work\\\\common.h\"\n}",
+      "json": null
+    }
+  }
+}

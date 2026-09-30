@@ -1,0 +1,6 @@
+init_exit: 0
+index_exit: 1
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A8_malformed_env\work  build=unknown
+
+warning: Cannot parse compile_commands.json
+fw-context: error: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)

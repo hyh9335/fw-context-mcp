@@ -1,0 +1,37 @@
+{
+ "cards": [
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "condition_config_gated",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "positive",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C4C6-A-LIB-GETCWD-38",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "existence_absence",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "negative",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C4C6-A-API-GETCWD",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  }
+ ],
+ "case_id": "C4C6-A",
+ "coherence_violations": [],
+ "freeze_id": "FRZ-C4C6-A-20260921T062837Z"
+}

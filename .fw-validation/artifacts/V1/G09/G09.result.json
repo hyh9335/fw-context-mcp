@@ -1,0 +1,87 @@
+{
+  "case_id": "G09",
+  "command": {
+    "index": "D:\\github\\fw-context-mcp\\.fw-validation\\venv-win\\Scripts\\python.exe -m fw_context_mcp.cli index C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G09\\work\\compile_commands.json --project C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G09\\work --no-analyze --no-embeddings",
+    "queries": [
+      "find_callers",
+      "find_callers",
+      "find_call_path",
+      "find_call_path",
+      "find_call_path",
+      "find_call_path",
+      "find_references"
+    ],
+    "index_time_s": 0.77
+  },
+  "exit_code": 0,
+  "expected": {
+    "semantic_edges": [
+      {
+        "kind": "SPAWN",
+        "from": "setup",
+        "to": "task"
+      },
+      {
+        "kind": "REGISTER",
+        "from": "setup",
+        "to": "timer_cb"
+      },
+      {
+        "kind": "EVENT_SEND",
+        "from": "producer",
+        "object": "q"
+      },
+      {
+        "kind": "EVENT_RECEIVE",
+        "from": "consumer",
+        "object": "q"
+      }
+    ],
+    "forbidden_edges": [
+      {
+        "kind": "CALL",
+        "from": "producer",
+        "to": "consumer"
+      }
+    ]
+  },
+  "observed": {
+    "task_callers": [
+      [
+        "setup",
+        "indirect"
+      ]
+    ],
+    "timer_cb_callers": [
+      [
+        "setup",
+        "indirect"
+      ]
+    ],
+    "setup_to_task_proven": true,
+    "setup_to_timer_cb_proven": true,
+    "producer_to_consumer_proven": false,
+    "producer_to_consumer_possible": false,
+    "q_refs": [
+      [
+        "producer",
+        "ref"
+      ],
+      [
+        "consumer",
+        "ref"
+      ]
+    ]
+  },
+  "comparison": {
+    "spawn_setup_task": true,
+    "register_setup_timer_cb": true,
+    "no_call_producer_consumer": true,
+    "queue_object_evidence": true,
+    "all_match": true
+  },
+  "status": "PASS",
+  "notes": [
+    "work_dir=C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G09\\work"
+  ]
+}

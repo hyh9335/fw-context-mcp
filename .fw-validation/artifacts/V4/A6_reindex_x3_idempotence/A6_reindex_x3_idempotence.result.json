@@ -1,0 +1,18 @@
+{
+  "case_id": "A6_reindex_x3_idempotence",
+  "phase": "V4_ADVERSARIAL",
+  "status": "PASS",
+  "expected": "3 consecutive reindexes: symbol count constant, DB integrity ok after each",
+  "observed": {
+    "symbol_counts": [
+      6,
+      6,
+      6,
+      6
+    ],
+    "all_integrity_ok": true
+  },
+  "notes": [
+    "idempotence under repeated identical reindex"
+  ]
+}

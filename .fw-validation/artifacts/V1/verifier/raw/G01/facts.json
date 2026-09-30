@@ -1,0 +1,34 @@
+{
+  "facts": {
+    "role_value_body_count": 2,
+    "role_value_has_11": true,
+    "role_value_has_22": true,
+    "role_value_mixed_bodies": 0,
+    "role_value_lookup_rows": 2,
+    "feature_value_body_count": 2,
+    "feature_value_has_100": true,
+    "feature_value_has_200": true,
+    "feature_value_mixed_bodies": 0,
+    "feature_value_lookup_rows": 2,
+    "build_status": "ready",
+    "defines_varying": 2
+  },
+  "checks": {
+    "role_value_two_bodies": true,
+    "role_value_has_11": true,
+    "role_value_has_22": true,
+    "role_value_no_collapse": true,
+    "role_value_lookup_rows_2": true,
+    "feature_value_two_bodies": true,
+    "feature_value_has_100": true,
+    "feature_value_has_200": true,
+    "feature_value_no_collapse": true,
+    "feature_value_lookup_rows_2": true,
+    "build_ready": true,
+    "defines_varying_2": true,
+    "ALL": true
+  },
+  "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G01\\work",
+  "index_dir": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G01\\index",
+  "elapsed_s": 30.04
+}

@@ -1,0 +1,25 @@
+{
+  "case_id": "Z3_zephyr_workq",
+  "phase": "V2_PUBLIC_REAL",
+  "platform": "wsl",
+  "scenario": "Z3 work queue test app: async/register semantics \u2014 no invented CALL edges across the queue boundary",
+  "fixture": "zephyr v4.4.2 tests/kernel/workq/work_queue BOARD=native_sim CONFIG_ASSERT=y (host toolchain)",
+  "build": {
+    "tu_count": 89
+  },
+  "queries": {
+    "k_work_init": "kernel/work.c:153 is_definition=true \u2713",
+    "k_work_submit": "kernel/work.c:414 is_definition=true \u2713",
+    "work_queue_main": "kernel/work.c:674 is_definition=true \u2713",
+    "find_callers work_queue_main": "No callers found \u2014 CORRECT (thread entry, registered not called); honest warning: 3 generated TUs (syscall_dispatch.c) outside compile_commands, reports 'run fw-context index --build'; unresolved_count=1315 honest",
+    "find_call_path k_work_submit\u2192work_queue_main": "No path within depth 10 \u2014 CORRECT: the submit\u2192queue\u2192thread hand-off is ASYNC; product must not invent a direct CALL edge \u2713\u2713",
+    "find_callees_recursive k_work_submit": "k_work_submit_to_queue (depth 1, real call) \u2713"
+  },
+  "observations": [
+    "k_work_submit_to_queue appears twice at depth 1 in the recursive callees list (cosmetic dedup gap; likely decl+def dual USR \u2014 low severity note, no semantic error)"
+  ],
+  "status": "PASS",
+  "notes": [
+    "VERIFIER SCOPING NOTE: find_call_path ran include_possible=false (product hinted 2661 possible rows, not traversed); the no-invented-edge claim is scoped to PROVEN edges. Traversing possible edges would test a different, weaker property and was intentionally not archived."
+  ]
+}

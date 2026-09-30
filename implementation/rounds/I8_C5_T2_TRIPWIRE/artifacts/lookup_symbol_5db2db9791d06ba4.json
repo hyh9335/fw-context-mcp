@@ -1,0 +1,1 @@
+[{"docstring": "", "file": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I8_C5_T2_TRIPWIRE\\work\\proj_f3afa378\\fixture\\link_mgr.c", "is_definition": true, "is_pure_virtual": false, "is_template": false, "is_virtual": false, "kind": "function", "line": 6, "name": "link_is_down", "qualified_name": "link_is_down", "signature": "int link_is_down(int state)"}]

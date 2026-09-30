@@ -1,0 +1,72 @@
+{
+  "case_id": "G04",
+  "platform": "wsl",
+  "command": {
+    "index": "/home/h00969597/fwctx-venv311/bin/python -m fw_context_mcp.cli index --build --variants A,B,C --project /home/h00969597/fwctx-v1-work/G04/work --no-analyze --no-embeddings"
+  },
+  "exit_code": 0,
+  "expected": {
+    "equivalent_groups": [
+      [
+        "A",
+        "C"
+      ],
+      [
+        "B"
+      ]
+    ],
+    "A_vs_B": {
+      "removed_call": "transport_send -> uart_send",
+      "added_call": "transport_send -> usb_send"
+    },
+    "A_vs_C": {
+      "semantic_delta": []
+    },
+    "provenance_required": [
+      "variant",
+      "config_hash"
+    ]
+  },
+  "observed": {
+    "multi": true,
+    "variants": [
+      "A",
+      "B",
+      "C"
+    ],
+    "transport_send_groups": [
+      [
+        "A",
+        "B",
+        "C"
+      ]
+    ],
+    "app_entry_groups": [
+      [
+        "A",
+        "B",
+        "C"
+      ]
+    ],
+    "A_vs_B": {
+      "edges_equal": true,
+      "only_in_a": [],
+      "only_in_b": []
+    },
+    "A_vs_C": {
+      "edges_equal": true,
+      "only_in_a": [],
+      "only_in_b": []
+    }
+  },
+  "comparison": {
+    "equivalent_groups_AC_B": false,
+    "A_vs_B_callee_flip": false,
+    "A_vs_C_no_delta": true,
+    "app_entry_single_group": true,
+    "multi_variant_true": true,
+    "variants_declared": true,
+    "all_match": false
+  },
+  "status": "FAIL_PRODUCT"
+}

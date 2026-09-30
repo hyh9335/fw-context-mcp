@@ -1,0 +1,49 @@
+{
+ "abstentions": [
+  {
+   "kind": "insufficient_evidence",
+   "missing_evidence": [
+    {
+     "channel": "none",
+     "what": "gate refusal",
+     "why_needed": "E3: single-line step S2 has 1 surface(s) (<2): ['fw_context_lookup_symbol']"
+    }
+   ]
+  }
+ ],
+ "accepted_fault_cards": [],
+ "build_id": "BUILD-C5",
+ "case_id": "C5",
+ "executor": "k2-deterministic-loop (T2-tripwire driver)",
+ "freeze_id": "FRZ-C5-20260921T062841Z",
+ "lineage": "C (planted tripwire, single-line surface)",
+ "quarantine_proof": {
+  "no_degraded_promotion": true,
+  "refusal_is_first_class": true,
+  "same_mechanism_passes_with_second_surface": true
+ },
+ "rejected_candidates": [],
+ "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety",
+ "semantic_coherence_violations": [],
+ "t2_scenarios": [
+  {
+   "code": "E3",
+   "detail": "tripwire 1: T2-only promotion refused (see I8-style receipt below)"
+  }
+ ],
+ "terminal_class": "safety_only",
+ "traversal": {
+  "fact_records": 3,
+  "faultness_gate_demoted": 0,
+  "faultness_gate_evaluated": 0,
+  "mechanism_hypotheses": 1,
+  "rulecards_accepted": 0,
+  "source_staged": true
+ },
+ "tripwire_2_two_surfaces": {
+  "gate_two_surface_refused": false,
+  "gate_two_surface_rules": [],
+  "second_surface_fact_id": "F-0003",
+  "second_surface_trust": "T1"
+ }
+}

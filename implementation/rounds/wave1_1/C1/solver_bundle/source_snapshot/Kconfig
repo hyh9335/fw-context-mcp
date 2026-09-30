@@ -1,0 +1,32 @@
+# DERIVED_FROM: zephyrproject-rtos/zephyr tag v3.7.0, drivers/sensor/st/lis2dh/Kconfig
+# (trigger-mode choice structure preserved; symbols renamed accel_*; trimmed standalone
+#  slice for corpus case C1)
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig ACCEL_SAMPLE
+	bool "Accelerometer sample driver (derived slice)"
+	default y
+	depends on GPIO
+
+if ACCEL_SAMPLE
+
+choice ACCEL_TRIGGER_MODE
+	prompt "Trigger mode"
+	default ACCEL_TRIGGER_GLOBAL_THREAD
+	help
+	  Specify the type of triggering to be used by the driver.
+
+config ACCEL_TRIGGER_NONE
+	bool "No trigger"
+
+config ACCEL_TRIGGER_GLOBAL_THREAD
+	bool "Use global work queue"
+	depends on GPIO
+	select ACCEL_TRIGGER
+
+endchoice
+
+config ACCEL_TRIGGER
+	bool
+
+endif # ACCEL_SAMPLE

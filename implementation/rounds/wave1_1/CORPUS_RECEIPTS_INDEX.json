@@ -1,0 +1,60 @@
+{
+ "phase": "WAVE1_1_CORPUS_RERUN",
+ "rounds": [
+  {
+   "accepted_fault_cards": [
+    "RC-C1-ACCEL-TRIGGER-47",
+    "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR"
+   ],
+   "case_id": "C1",
+   "freeze_id": "FRZ-C1-20260921T062833Z",
+   "lineage": "A (Zephyr-derived)",
+   "receipt_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C1\\ROUND_RECEIPT.json",
+   "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C1",
+   "terminal_class": "e2e_positive"
+  },
+  {
+   "accepted_fault_cards": [
+    "RC-C7-SENSOR-MODULE-19",
+    "RC-C7-API-SENSOR-SUBMIT",
+    "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR"
+   ],
+   "case_id": "C7",
+   "freeze_id": "FRZ-C7-20260921T062835Z",
+   "lineage": "D (planted-source-deterministic)",
+   "receipt_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\ROUND_RECEIPT.json",
+   "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted",
+   "terminal_class": "e2e_positive"
+  },
+  {
+   "accepted_fault_cards": [
+    "RC-C4C6-A-LIB-GETCWD-38",
+    "RC-C4C6-A-API-GETCWD"
+   ],
+   "case_id": "C4C6_A",
+   "freeze_id": "FRZ-C4C6-A-20260921T062837Z",
+   "lineage": "B (public NuttX snapshot pair)",
+   "receipt_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C4C6_A\\ROUND_RECEIPT.json",
+   "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C4C6_A",
+   "terminal_class": "e2e_positive"
+  },
+  {
+   "accepted_fault_cards": [],
+   "case_id": "C4C6_B",
+   "freeze_id": "FRZ-C4C6-B-20260921T062838Z",
+   "lineage": "B (public NuttX snapshot pair)",
+   "receipt_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C4C6_B\\ROUND_RECEIPT.json",
+   "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C4C6_B",
+   "terminal_class": "e2e_negative"
+  },
+  {
+   "accepted_fault_cards": [],
+   "case_id": "C5",
+   "freeze_id": "FRZ-C5-20260921T062841Z",
+   "lineage": "C (planted tripwire, single-line surface)",
+   "receipt_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\ROUND_RECEIPT.json",
+   "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety",
+   "terminal_class": "safety_only"
+  }
+ ]
+}

@@ -1,0 +1,58 @@
+exit: 0
+Project: work_p  path=C:\Users\h00969597\fwctx-validation-work\V1\G13\n10\work_p  build=unknown
+Indexed. config_hash=966a40fe4785ab5a…  db=C:\Users\h00969597\fwctx-validation-work\V1\G13\n10\index_p\4060c9a853f6446f97695ddcb121413a\index.db
+
+11:26:39 INFO TUs to index: 10
+11:26:39 INFO vendor patterns for work_p: none
+11:26:39 INFO manifest.json (preliminary): 10 TUs, config_hash=966a40fe4785
+11:26:39 INFO 
+11:26:39 INFO project=work_p project_id=4060c9a853f6446f97695ddcb121413a config_hash=966a40fe4785
+11:26:39 INFO 
+11:26:39 INFO content fill: 2 files from TU tu_000.c in 0.0s
+11:26:39 INFO [1/10] tu_000.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_001.c in 0.0s
+11:26:39 INFO [2/10] tu_001.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_002.c in 0.0s
+11:26:39 INFO [3/10] tu_002.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_003.c in 0.0s
+11:26:39 INFO [4/10] tu_003.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_004.c in 0.0s
+11:26:39 INFO [5/10] tu_004.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_005.c in 0.0s
+11:26:39 INFO [6/10] tu_005.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_006.c in 0.0s
+11:26:39 INFO [7/10] tu_006.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_007.c in 0.0s
+11:26:39 INFO [8/10] tu_007.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_008.c in 0.0s
+11:26:39 INFO [9/10] tu_008.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO content fill: 2 files from TU tu_009.c in 0.0s
+11:26:39 INFO [10/10] tu_009.c: 2 syms, 2 refs, 0.0s
+11:26:39 INFO linker script: none found for this build
+11:26:39 INFO Post-process: purge_missing (0.0s)
+11:26:39 INFO Post-process: fts5 (0.0s)
+11:26:39 INFO Post-process: orphans (0.0s)
+11:26:39 INFO Post-process: is_project (0.0s)
+11:26:39 INFO Building manifest.json from 10 pre-collected TU headers...
+11:26:39 INFO manifest.json: 10 updated (from tu_headers), 0 reused, 0 needs_reparse
+11:26:39 INFO manifest.json saved: 10 TUs, 1 distinct headers (10 references), config_hash=966a40fe4785
+11:26:39 INFO Post-process: manifest (0.0s)
+11:26:39 INFO Post-process: generated_flag (0.0s)
+11:26:39 INFO Post-process: coverage_purge (0.0s)
+11:26:39 INFO Post-process: macros (0.3s)
+11:26:39 INFO Post-process: dispatch_edges (0.0s)
+11:26:39 INFO No virtual methods found — skipping override analysis
+11:26:39 INFO Post-process: overrides (0.0s)
+11:26:39 INFO Post-process: cross_tu_refs (0.0s)
+11:26:39 INFO Post-process: variant_switches (0.0s)
+11:26:39 INFO PageRank converged after 3 iterations
+11:26:39 INFO PageRank stored: 11 nodes
+11:26:39 INFO Hotspot cache stored: 1 entries
+11:26:39 INFO Post-process: pagerank_hotspot (0.0s)
+11:26:39 INFO Post-process: verify_integrity (0.0s)
+11:26:39 INFO Post-process: finalize_manifest (0.0s)
+11:26:39 INFO Post-process: cleanup_old (0.0s)
+11:26:39 INFO Post-process: wal_checkpoint (0.0s)
+11:26:39 INFO 
+11:26:39 INFO 10 updated, 0 unchanged, 0 skipped  config_hash=966a40fe4785
+11:26:39 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V1\G13\n10\work_p

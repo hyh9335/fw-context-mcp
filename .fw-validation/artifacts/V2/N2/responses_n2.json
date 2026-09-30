@@ -1,0 +1,278 @@
+{
+  "n1:get_active_build": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 3.757,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2\",\n  \"project_id\": \"7d06d19fb017426d878a13775f11ec44\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N1\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 09:27:28\",\n  \"symbol_count\": 1494310,\n  \"file_count\": 58254,\n  \"reference_count\": 437177,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 315085\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2575\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 04:09:47\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"reindexing\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is usable — background reindex in progress. All queries return accurate results. | LLM analysis: project 0/315085 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\",\n    \"NDEBUG\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": true,\n  \"reindex_progress\": null,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2\",\n  \"project_id\": \"7d06d19fb017426d878a13775f11ec44\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N1\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 09:27:28\",\n  \"symbol_count\": 1494310,\n  \"file_count\": 58254,\n  \"reference_count\": 437177,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 315085\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2575\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 04:09:47\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"reindexing\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is usable — background reindex in progress. All queries return accurate results. | LLM analysis: project 0/315085 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\",\n    \"NDEBUG\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": true,\n  \"reindex_progress\": null,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2",
+      "project_id": "7d06d19fb017426d878a13775f11ec44",
+      "project_root": "/home/h00969597/fwctx-v2-work/N1",
+      "build_system": "unknown",
+      "compile_commands": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json",
+      "indexed_at": "2026-09-18 09:27:28",
+      "symbol_count": 1494310,
+      "file_count": 58254,
+      "reference_count": 437177,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 315085
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 2575
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 04:09:47",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "reindexing",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is usable — background reindex in progress. All queries return accurate results. | LLM analysis: project 0/315085 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {
+        "__NuttX__": "",
+        "NDEBUG": ""
+      },
+      "defines_varying": 5,
+      "bg_reindex_running": true,
+      "reindex_progress": null,
+      "vec_available": true
+    }
+  },
+  "n1:find_hotspots": {
+    "tool": "find_hotspots",
+    "arguments": {
+      "limit": 3
+    },
+    "elapsed_s": 0.089,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 937015,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 914352,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_lock\",\n  \"qualified_name\": \"nxmutex_lock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_lock(mutex_t * mutex)\",\n  \"line\": 504,\n  \"caller_count\": 879798,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "up_current_regs",
+              "qualified_name": "up_current_regs",
+              "kind": "function",
+              "signature": "xcpt_reg_t * up_current_regs()",
+              "line": 124,
+              "caller_count": 937015,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h"
+            },
+            {
+              "name": "nxmutex_unlock",
+              "qualified_name": "nxmutex_unlock",
+              "kind": "function",
+              "signature": "int nxmutex_unlock(mutex_t * mutex)",
+              "line": 571,
+              "caller_count": 914352,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h"
+            },
+            {
+              "name": "nxmutex_lock",
+              "qualified_name": "nxmutex_lock",
+              "kind": "function",
+              "signature": "int nxmutex_lock(mutex_t * mutex)",
+              "line": 504,
+              "caller_count": 879798,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 937015,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h\"\n}\n{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 914352,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}\n{\n  \"name\": \"nxmutex_lock\",\n  \"qualified_name\": \"nxmutex_lock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_lock(mutex_t * mutex)\",\n  \"line\": 504,\n  \"caller_count\": 879798,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}",
+    "json": null
+  },
+  "n2:get_active_build": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 3.766,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"c543f8bd28fef7d705ba58b2a3f7f49a49558506bcf6ec4d45bc66e86a8646c2\",\n  \"project_id\": \"0ac4a8d001014f58b2b10cfac7ed11d7\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src\",\n  \"build_system\": \"cmake\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:18:50\",\n  \"symbol_count\": 1431214,\n  \"file_count\": 55602,\n  \"reference_count\": 449371,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 305702\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2668\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"tag: nuttx-13.0.0\",\n  \"first_indexed_at\": \"2026-09-18 04:57:56\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (1431214 symbols) | LLM analysis: project 0/305702 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"c543f8bd28fef7d705ba58b2a3f7f49a49558506bcf6ec4d45bc66e86a8646c2\",\n  \"project_id\": \"0ac4a8d001014f58b2b10cfac7ed11d7\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src\",\n  \"build_system\": \"cmake\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:18:50\",\n  \"symbol_count\": 1431214,\n  \"file_count\": 55602,\n  \"reference_count\": 449371,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 305702\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2668\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"tag: nuttx-13.0.0\",\n  \"first_indexed_at\": \"2026-09-18 04:57:56\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (1431214 symbols) | LLM analysis: project 0/305702 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "c543f8bd28fef7d705ba58b2a3f7f49a49558506bcf6ec4d45bc66e86a8646c2",
+      "project_id": "0ac4a8d001014f58b2b10cfac7ed11d7",
+      "project_root": "/home/h00969597/fwctx-v2-work/N2/nuttx-src",
+      "build_system": "cmake",
+      "compile_commands": "/home/h00969597/fwctx-v2-work/N2/nuttx-src/build/compile_commands.json",
+      "indexed_at": "2026-09-18 10:18:50",
+      "symbol_count": 1431214,
+      "file_count": 55602,
+      "reference_count": 449371,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 305702
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 2668
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "tag: nuttx-13.0.0",
+      "first_indexed_at": "2026-09-18 04:57:56",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (1431214 symbols) | LLM analysis: project 0/305702 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {
+        "__NuttX__": ""
+      },
+      "defines_varying": 5,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "n2:find_hotspots": {
+    "tool": "find_hotspots",
+    "arguments": {
+      "limit": 3
+    },
+    "elapsed_s": 0.051,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 859313,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/arch/sim/include/irq.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 764784,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/mutex.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"invdiv_umulh64\",\n  \"qualified_name\": \"invdiv_umulh64\",\n  \"kind\": \"function\",\n  \"signature\": \"uint64_t invdiv_umulh64(uint64_t a, uint64_t b)\",\n  \"line\": 469,\n  \"caller_count\": 758641,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/lib/math32.h\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "up_current_regs",
+              "qualified_name": "up_current_regs",
+              "kind": "function",
+              "signature": "xcpt_reg_t * up_current_regs()",
+              "line": 124,
+              "caller_count": 859313,
+              "file": "/home/h00969597/fwctx-v2-work/N2/nuttx-src/arch/sim/include/irq.h"
+            },
+            {
+              "name": "nxmutex_unlock",
+              "qualified_name": "nxmutex_unlock",
+              "kind": "function",
+              "signature": "int nxmutex_unlock(mutex_t * mutex)",
+              "line": 571,
+              "caller_count": 764784,
+              "file": "/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/mutex.h"
+            },
+            {
+              "name": "invdiv_umulh64",
+              "qualified_name": "invdiv_umulh64",
+              "kind": "function",
+              "signature": "uint64_t invdiv_umulh64(uint64_t a, uint64_t b)",
+              "line": 469,
+              "caller_count": 758641,
+              "file": "/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/lib/math32.h"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 859313,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/arch/sim/include/irq.h\"\n}\n{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 764784,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/mutex.h\"\n}\n{\n  \"name\": \"invdiv_umulh64\",\n  \"qualified_name\": \"invdiv_umulh64\",\n  \"kind\": \"function\",\n  \"signature\": \"uint64_t invdiv_umulh64(uint64_t a, uint64_t b)\",\n  \"line\": 469,\n  \"caller_count\": 758641,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N2/nuttx-src/include/nuttx/lib/math32.h\"\n}",
+    "json": null
+  }
+}

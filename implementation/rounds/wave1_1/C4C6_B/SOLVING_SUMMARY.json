@@ -1,0 +1,21 @@
+{
+ "cards": [
+  {
+   "detail": "R1_pattern_compiled_out=OK; R2_config_symbol_guard=OK; R3_harmful_consequence=FAIL",
+   "failed_roles": [
+    "R3_harmful_consequence"
+   ],
+   "family": "condition_config_gated",
+   "kind": "rejected",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C4C6-B-LIB-GETCWD-107"
+  },
+  {
+   "kind": "insufficient_evidence",
+   "missing_evidence": []
+  }
+ ],
+ "case_id": "C4C6-B",
+ "coherence_violations": [],
+ "freeze_id": "FRZ-C4C6-B-20260921T062838Z"
+}

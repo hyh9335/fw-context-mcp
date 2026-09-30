@@ -1,0 +1,19 @@
+{
+  "G06": {
+    "ok": true,
+    "checks": {
+      "global_cb_targets_plus2": true,
+      "fn_targets_plus1": true,
+      "registered_never_plus1": true,
+      "registered_param_cb_visible": true,
+      "site_call_global": true,
+      "site_call_ops": true,
+      "site_invoke_registered": true,
+      "plus1_indirect_reachable": true,
+      "plus2_indirect_reachable": true,
+      "ALL": true
+    },
+    "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G06\\work",
+    "elapsed_s": 29.72
+  }
+}

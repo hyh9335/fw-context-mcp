@@ -1,0 +1,33 @@
+[2026-09-18T10:12:07+08:00] clone job start
+== PUB-ZEPHYR: clone v4.4.2 ==
+RESULT|PUB-ZEPHYR|https://github.com/zephyrproject-rtos/zephyr.git|v4.4.2|dccb09599635bdff17633fa7e9dab014b91dce90|LICENSE|OK
+== PUB-NUTTX: clone nuttx-13.0.0 ==
+RESULT|PUB-NUTTX|https://github.com/apache/nuttx.git|nuttx-13.0.0|||TAG_CLONE_FAILED
+RESULT|PUB-NUTTX|https://github.com/apache/nuttx.git|default|||DEFAULT_CLONE_FAILED
+== PUB-NUTTX-APPS: clone nuttx-13.0.0 ==
+RESULT|PUB-NUTTX-APPS|https://github.com/apache/nuttx-apps.git|nuttx-13.0.0|||TAG_CLONE_FAILED
+RESULT|PUB-NUTTX-APPS|https://github.com/apache/nuttx-apps.git|default|||DEFAULT_CLONE_FAILED
+== PUB-FREERTOS: clone V11.3.1 ==
+RESULT|PUB-FREERTOS|https://github.com/FreeRTOS/FreeRTOS-Kernel.git|V11.3.1|||TAG_CLONE_FAILED
+== PUB-CMSIS: clone v6.3.0 ==
+RESULT|PUB-CMSIS|https://github.com/ARM-software/CMSIS_6.git|v6.3.0|||TAG_CLONE_FAILED
+== PUB-RIOT: clone 2026.07 ==
+RESULT|PUB-RIOT|https://github.com/RIOT-OS/RIOT.git|2026.07|||TAG_CLONE_FAILED
+== RIOT tag missing, fallback commit 50ae2eb ==
+RESULT|PUB-RIOT|https://github.com/RIOT-OS/RIOT.git|default|||DEFAULT_CLONE_FAILED
+[2026-09-18T10:15:09+08:00] clone job end
+CLONE_JOB_DONE
+[2026-09-18T10:15:39+08:00] retry clone job start (git -c http.sslVerify=false)
+NUTTX_TAG_MISSING_OR_NETWORK refs/tags/nuttx-13.0.0 (probe; later shown flapping — tag exists per Windows-side ls-remote)
+== retry PUB-NUTTX: clone nuttx-13.0.0 ==
+RESULT|PUB-NUTTX|https://github.com/apache/nuttx.git|nuttx-13.0.0|273c77128b6698f0c95f0d7cde1d0bb803782021|LICENSE|OK
+== retry PUB-NUTTX-APPS: clone nuttx-13.0.0 ==
+RESULT|PUB-NUTTX-APPS|https://github.com/apache/nuttx-apps.git|nuttx-13.0.0|20ffb1a3a3b590d52890ee865a28442390e5d16c|LICENSE|OK
+== retry PUB-FREERTOS: clone V11.3.1 ==
+RESULT|PUB-FREERTOS|https://github.com/FreeRTOS/FreeRTOS-Kernel.git|V11.3.1|3a22924e0a9ddbbc8b0758881c33b3422a5cc20d|LICENSE.md|OK
+== retry PUB-CMSIS: clone v6.3.0 ==
+RESULT|PUB-CMSIS|https://github.com/ARM-software/CMSIS_6.git|v6.3.0|45dab712ad84f8cbbf2b7bfc089c19088507df6f|LICENSE|OK
+== retry PUB-RIOT: clone 2026.07 ==
+RESULT|PUB-RIOT|https://github.com/RIOT-OS/RIOT.git|2026.07|50ae2eba8fe3c533539e68f1a64fd34d66c8d14b|LICENSE|OK
+[2026-09-18T10:20:19+08:00] retry clone job end
+RETRY_CLONE_JOB_DONE

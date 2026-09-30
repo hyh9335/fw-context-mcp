@@ -1,0 +1,105 @@
+{
+  "fixture": "tests/fixtures/legacy_rows2/index.db",
+  "what": "Real historical rows/2 index DB captured for AUD-R7 (checked-in, per D7: checked-in real fixture, generator test REJECTED). Built by the d2666dc indexer over a 1-TU C project; NOT synthesized.",
+  "builder_commit": "d2666dc",
+  "builder_commit_title": "T14 SLICE-B RED: consolidated schema migration oracle (failing)",
+  "builder_is_last_rows2_indexer": true,
+  "capture_host": {
+    "os": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "capture_cmds": [
+    "python -m fw_context_mcp.cli init --project <fixture>",
+    "python -m fw_context_mcp.cli index <cc.json> --project <fixture> --no-embeddings --no-analyze -v"
+  ],
+  "source_fixture": {
+    "file": "old_fixture.c",
+    "symbols_declared": [
+      "old_fn (static, defined)",
+      "caller_fn (defined, calls old_fn)"
+    ]
+  },
+  "compile_commands_json": [
+    {
+      "directory": "C:/Users/h00969597/AppData/Local/Temp/w7_fixtures/r7_capture",
+      "file": "old_fixture.c",
+      "arguments": [
+        "gcc",
+        "-std=c11",
+        "-c",
+        "old_fixture.c",
+        "-o",
+        "old_fixture.o"
+      ]
+    }
+  ],
+  "row_format": "fw-context-rows/2",
+  "config_hash": "1d9e303aceda02870d5537aeba0e7f5f84a06f1012b1cfca06a9167d967be714",
+  "pragmas": {
+    "user_version": 667528123
+  },
+  "schema_shape": {
+    "symbols_has_context_id_column": false,
+    "call_sites_table_present": false,
+    "tables": [
+      "build_configs",
+      "embeddings",
+      "files",
+      "files_fts",
+      "files_fts_config",
+      "files_fts_data",
+      "files_fts_docsize",
+      "files_fts_idx",
+      "fp_assignments",
+      "hotspot_cache",
+      "indirect_call_sites",
+      "inheritance",
+      "llm_analysis",
+      "macros",
+      "macros_fts",
+      "macros_fts_config",
+      "macros_fts_data",
+      "macros_fts_docsize",
+      "macros_fts_idx",
+      "memory_regions",
+      "overrides",
+      "projects",
+      "refs",
+      "sqlite_sequence",
+      "sqlite_stat1",
+      "sqlite_stat4",
+      "symbols",
+      "symbols_fts",
+      "symbols_fts_config",
+      "symbols_fts_data",
+      "symbols_fts_docsize",
+      "symbols_fts_idx",
+      "vec_symbols",
+      "vec_symbols_chunks",
+      "vec_symbols_info",
+      "vec_symbols_metadatachunks00",
+      "vec_symbols_metadatachunks01",
+      "vec_symbols_metadatachunks02",
+      "vec_symbols_metadatatext00",
+      "vec_symbols_rowids",
+      "vec_symbols_vector_chunks00"
+    ]
+  },
+  "expected_counts": {
+    "symbols": 2,
+    "symbol_names": [
+      "caller_fn",
+      "old_fn"
+    ],
+    "refs": 4,
+    "files": 1
+  },
+  "sha256": "038cb0d4d4ce22afe0c4bfe98070ce839aa2b84cb315133bb16a6020847d4c59",
+  "size_bytes": 372736,
+  "capture_date": "2026-09-16",
+  "migration_expectation": {
+    "head_read": "reindex_needed with a row_format_mismatch reason",
+    "incremental_index": "migrates in place rows/2->rows/3, data preserved, status ready",
+    "evidence": ".fw-closeout/artifacts/W0/R7_*.log (W0) + artifacts/W7/R7_green_*.log (W7)"
+  }
+}

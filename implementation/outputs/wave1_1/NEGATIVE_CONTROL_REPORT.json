@@ -1,0 +1,92 @@
+{
+ "cards": [
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "condition_config_gated",
+   "round": "C1",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "init_submit_pairing",
+   "round": "C1",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "existence_absence",
+   "round": "C7",
+   "rulecard_id": "RC-C7-API-SENSOR-SUBMIT"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "condition_config_gated",
+   "round": "C7",
+   "rulecard_id": "RC-C7-SENSOR-MODULE-19"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "init_submit_pairing",
+   "round": "C7",
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "existence_absence",
+   "round": "C4C6_A",
+   "rulecard_id": "RC-C4C6-A-API-GETCWD"
+  },
+  {
+   "checks": {
+    "cited_facts_exist_and_pinned": true,
+    "forbidden_overclaims_nonempty": true,
+    "no_oracle_paths_in_evidence": true,
+    "statement_structurally_coherent": true
+   },
+   "family": "condition_config_gated",
+   "round": "C4C6_A",
+   "rulecard_id": "RC-C4C6-A-LIB-GETCWD-38"
+  }
+ ],
+ "mechanism_module_scan": {
+  "hits": [],
+  "modules": [
+   "faultness_gate.py",
+   "statement_render.py",
+   "terminal_receipt.py"
+  ]
+ },
+ "pass": true,
+ "phase": "WAVE1_1_NEGATIVE_CONTROL",
+ "scope": "ALL accepted fault cards across ALL rounds (family-agnostic); mechanism modules scanned for case-specific hardcoding"
+}

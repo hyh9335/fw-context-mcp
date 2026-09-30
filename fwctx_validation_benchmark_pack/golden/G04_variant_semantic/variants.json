@@ -1,0 +1,18 @@
+{
+  "A": {
+    "defines": [],
+    "semantic_group": "UART"
+  },
+  "B": {
+    "defines": [
+      "USE_USB=1"
+    ],
+    "semantic_group": "USB"
+  },
+  "C": {
+    "defines": [
+      "UNRELATED=1"
+    ],
+    "semantic_group": "UART"
+  }
+}

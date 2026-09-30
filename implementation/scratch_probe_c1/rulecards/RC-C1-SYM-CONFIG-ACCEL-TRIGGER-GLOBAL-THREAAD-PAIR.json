@@ -1,0 +1,197 @@
+{
+ "evidence": [
+  {
+   "fact_id": "F-0001",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0002",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0005",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0006",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0012",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0003",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0007",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0013",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0014",
+   "trust_class": "T0"
+  }
+ ],
+ "fault_class": "init_submit_pairing",
+ "forbidden_overclaims": [
+  "no complete-enumeration claims",
+  "T2 rows never load-bearing",
+  "runtime queue-exhaustion claims",
+  "submission was lost at runtime",
+  "any claim that the work item never executes at runtime"
+ ],
+ "hypothesis_ref": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+ "mechanism_id": "M-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+ "oracle_provenance": "none",
+ "polarity": "negative",
+ "provenance": {
+  "certainty": "measured",
+  "derived_from": [
+   "fw_context_explain_condition",
+   "fw_context_find_callers",
+   "fw_context_list_conditional_regions",
+   "fw_context_read_file"
+  ],
+  "k1_mediated": true
+ },
+ "refutation_protocol": {
+  "oracle_requirement": "none",
+  "steps": [
+   {
+    "action": "query_substrate_via_k1",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "any trigger fact fails to re-derive or changes polarity",
+     "rule_holds_when": "every trigger fact re-derives identically under the same freeze"
+    },
+    "inputs": {
+     "fact_refs": [
+      "F-0001",
+      "F-0002",
+      "F-0005",
+      "F-0006",
+      "F-0012",
+      "F-0003",
+      "F-0007",
+      "F-0013",
+      "F-0014"
+     ],
+     "freeze_id": "FRZ-C1-20260921T062406Z"
+    },
+    "step_id": "RS1"
+   },
+   {
+    "action": "independent_crosscheck",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "the independent surface contradicts the trigger",
+     "rule_holds_when": "independent grep / clang -E region-survival agrees with the trigger"
+    },
+    "inputs": {
+     "surfaces": [
+      "fw_context_explain_condition",
+      "fw_context_find_callers",
+      "fw_context_list_conditional_regions",
+      "fw_context_read_file"
+     ]
+    },
+    "step_id": "RS2"
+   },
+   {
+    "action": "construct_counterexample_search",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "a counterexample configuration survives and satisfies the trigger",
+     "rule_holds_when": "no counterexample configuration survives"
+    },
+    "inputs": {
+     "flip": "pinned config value; re-run region check"
+    },
+    "step_id": "RS3"
+   }
+  ]
+ },
+ "refutation_result": {
+  "adjudicated_at": null,
+  "counterexample_ref": null,
+  "missing_evidence_refs": [],
+  "protocol_completed": false,
+  "state": "UNEXECUTED"
+ },
+ "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+ "scope_stamp": {
+  "corpus_case": "C1",
+  "goal_item": "G-6",
+  "lineage": "A",
+  "schema_version": "wave1-design-gate-1"
+ },
+ "trigger_conditions": [
+  {
+   "fact_refs": [
+    {
+     "fact_id": "F-0001",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0002",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0005",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0006",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0012",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0003",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0007",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0013",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0014",
+     "trust_class": "T0"
+    }
+   ],
+   "kind": "call_reachable",
+   "negatable": true,
+   "predicate_id": "P-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR-1",
+   "statement": "the k_work_submit call at k_work_submit:48 is guarded by dead config symbol CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD; under the pinned build it has no live caller (init/submit pairing broken at source level)"
+  }
+ ],
+ "validation": {
+  "evidence_integrity_status": "PASS",
+  "faultness_adjudicated_at": "FRZ-C1-20260921T062406Z",
+  "faultness_roles": {
+   "P1_config_mismatch_condition": {
+    "evidence": "condition fact for 'fixture/accel_trigger.c': F-SWEEP-0002",
+    "satisfied": true
+   },
+   "P2_pairing_definition": {
+    "evidence": "definition-window facts: F-0003, F-0007, F-0013, F-COV-0010",
+    "satisfied": true
+   },
+   "P3_pairing_call_flow_broken": {
+    "evidence": "negative call-flow fact for 'k_work_submit': F-0014",
+    "satisfied": true
+   }
+  },
+  "faultness_status": "PASS",
+  "refutation_state": "UNEXECUTED"
+ },
+ "validation_status": "unvalidated"
+}

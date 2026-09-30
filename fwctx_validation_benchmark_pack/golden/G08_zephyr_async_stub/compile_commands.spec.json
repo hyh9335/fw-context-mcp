@@ -1,0 +1,13 @@
+[
+  {
+    "file": "app.c",
+    "arguments": [
+      "clang",
+      "-c",
+      "${ROOT}/app.c",
+      "-o",
+      "app.o"
+    ],
+    "output": "app.o"
+  }
+]

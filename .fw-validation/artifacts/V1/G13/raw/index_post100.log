@@ -1,0 +1,237 @@
+exit: 0
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V1\G13\n100\work  build=unknown
+Indexed. config_hash=44cd588575687b30…  db=C:\Users\h00969597\fwctx-validation-work\V1\G13\n100\index_inc\1364c96d22d549a6ac19a437ff3528d7\index.db
+
+11:18:56 INFO TUs to index: 100
+11:18:56 INFO vendor patterns for work: none
+11:18:56 INFO 
+11:18:56 INFO project=work project_id=1364c96d22d549a6ac19a437ff3528d7 config_hash=44cd58857568
+11:18:56 INFO 1 changed header(s) -> 100 TU(s) queued for reparse, 0 more queued by needs_reparse
+11:18:56 INFO 
+11:18:56 INFO content fill: 2 files from TU tu_000.c in 0.0s
+11:18:56 INFO [1/100] tu_000.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_001.c in 0.0s
+11:18:56 INFO [2/100] tu_001.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_002.c in 0.0s
+11:18:56 INFO [3/100] tu_002.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_003.c in 0.0s
+11:18:56 INFO [4/100] tu_003.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_004.c in 0.0s
+11:18:56 INFO [5/100] tu_004.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_005.c in 0.0s
+11:18:56 INFO [6/100] tu_005.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_006.c in 0.0s
+11:18:56 INFO [7/100] tu_006.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_007.c in 0.0s
+11:18:56 INFO [8/100] tu_007.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_008.c in 0.0s
+11:18:56 INFO [9/100] tu_008.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_009.c in 0.0s
+11:18:56 INFO [10/100] tu_009.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_010.c in 0.0s
+11:18:56 INFO [11/100] tu_010.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_011.c in 0.0s
+11:18:56 INFO [12/100] tu_011.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_012.c in 0.0s
+11:18:56 INFO [13/100] tu_012.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_013.c in 0.0s
+11:18:56 INFO [14/100] tu_013.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_014.c in 0.0s
+11:18:56 INFO [15/100] tu_014.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_015.c in 0.0s
+11:18:56 INFO [16/100] tu_015.c: 2 syms, 2 refs, 0.0s
+11:18:56 INFO content fill: 2 files from TU tu_016.c in 0.0s
+11:18:56 INFO [17/100] tu_016.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_017.c in 0.0s
+11:18:57 INFO [18/100] tu_017.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_018.c in 0.0s
+11:18:57 INFO [19/100] tu_018.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_019.c in 0.0s
+11:18:57 INFO [20/100] tu_019.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_020.c in 0.0s
+11:18:57 INFO [21/100] tu_020.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_021.c in 0.0s
+11:18:57 INFO [22/100] tu_021.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_022.c in 0.0s
+11:18:57 INFO [23/100] tu_022.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_023.c in 0.0s
+11:18:57 INFO [24/100] tu_023.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_024.c in 0.0s
+11:18:57 INFO [25/100] tu_024.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_025.c in 0.0s
+11:18:57 INFO [26/100] tu_025.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_026.c in 0.0s
+11:18:57 INFO [27/100] tu_026.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_027.c in 0.0s
+11:18:57 INFO [28/100] tu_027.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_028.c in 0.0s
+11:18:57 INFO [29/100] tu_028.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_029.c in 0.0s
+11:18:57 INFO [30/100] tu_029.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_030.c in 0.0s
+11:18:57 INFO [31/100] tu_030.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_031.c in 0.0s
+11:18:57 INFO [32/100] tu_031.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_032.c in 0.0s
+11:18:57 INFO [33/100] tu_032.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_033.c in 0.0s
+11:18:57 INFO [34/100] tu_033.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_034.c in 0.0s
+11:18:57 INFO [35/100] tu_034.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_035.c in 0.0s
+11:18:57 INFO [36/100] tu_035.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_036.c in 0.0s
+11:18:57 INFO [37/100] tu_036.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_037.c in 0.0s
+11:18:57 INFO [38/100] tu_037.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_038.c in 0.0s
+11:18:57 INFO [39/100] tu_038.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_039.c in 0.0s
+11:18:57 INFO [40/100] tu_039.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_040.c in 0.0s
+11:18:57 INFO [41/100] tu_040.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_041.c in 0.0s
+11:18:57 INFO [42/100] tu_041.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_042.c in 0.0s
+11:18:57 INFO [43/100] tu_042.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_043.c in 0.0s
+11:18:57 INFO [44/100] tu_043.c: 2 syms, 2 refs, 0.0s
+11:18:57 INFO content fill: 2 files from TU tu_044.c in 0.0s
+11:18:57 INFO [45/100] tu_044.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_045.c in 0.0s
+11:18:58 INFO [46/100] tu_045.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_046.c in 0.0s
+11:18:58 INFO [47/100] tu_046.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_047.c in 0.0s
+11:18:58 INFO [48/100] tu_047.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_048.c in 0.0s
+11:18:58 INFO [49/100] tu_048.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_049.c in 0.0s
+11:18:58 INFO [50/100] tu_049.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_050.c in 0.0s
+11:18:58 INFO [51/100] tu_050.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_051.c in 0.0s
+11:18:58 INFO [52/100] tu_051.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_052.c in 0.0s
+11:18:58 INFO [53/100] tu_052.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_053.c in 0.0s
+11:18:58 INFO [54/100] tu_053.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_054.c in 0.0s
+11:18:58 INFO [55/100] tu_054.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_055.c in 0.0s
+11:18:58 INFO [56/100] tu_055.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_056.c in 0.0s
+11:18:58 INFO [57/100] tu_056.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_057.c in 0.0s
+11:18:58 INFO [58/100] tu_057.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_058.c in 0.0s
+11:18:58 INFO [59/100] tu_058.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_059.c in 0.0s
+11:18:58 INFO [60/100] tu_059.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_060.c in 0.0s
+11:18:58 INFO [61/100] tu_060.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_061.c in 0.0s
+11:18:58 INFO [62/100] tu_061.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_062.c in 0.0s
+11:18:58 INFO [63/100] tu_062.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_063.c in 0.0s
+11:18:58 INFO [64/100] tu_063.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_064.c in 0.0s
+11:18:58 INFO [65/100] tu_064.c: 2 syms, 2 refs, 0.0s
+11:18:58 INFO content fill: 2 files from TU tu_065.c in 0.0s
+11:18:58 INFO [66/100] tu_065.c: 2 syms, 2 refs, 0.1s
+11:18:58 INFO content fill: 2 files from TU tu_066.c in 0.0s
+11:18:58 INFO [67/100] tu_066.c: 2 syms, 2 refs, 0.1s
+11:18:58 INFO content fill: 2 files from TU tu_067.c in 0.0s
+11:18:58 INFO [68/100] tu_067.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_068.c in 0.0s
+11:18:59 INFO [69/100] tu_068.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_069.c in 0.0s
+11:18:59 INFO [70/100] tu_069.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_070.c in 0.0s
+11:18:59 INFO [71/100] tu_070.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_071.c in 0.0s
+11:18:59 INFO [72/100] tu_071.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_072.c in 0.0s
+11:18:59 INFO [73/100] tu_072.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_073.c in 0.0s
+11:18:59 INFO [74/100] tu_073.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_074.c in 0.0s
+11:18:59 INFO [75/100] tu_074.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_075.c in 0.0s
+11:18:59 INFO [76/100] tu_075.c: 2 syms, 2 refs, 0.1s
+11:18:59 INFO content fill: 2 files from TU tu_076.c in 0.0s
+11:18:59 INFO [77/100] tu_076.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_077.c in 0.0s
+11:19:00 INFO [78/100] tu_077.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_078.c in 0.0s
+11:19:00 INFO [79/100] tu_078.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_079.c in 0.0s
+11:19:00 INFO [80/100] tu_079.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_080.c in 0.0s
+11:19:00 INFO [81/100] tu_080.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_081.c in 0.0s
+11:19:00 INFO [82/100] tu_081.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_082.c in 0.0s
+11:19:00 INFO [83/100] tu_082.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_083.c in 0.0s
+11:19:00 INFO [84/100] tu_083.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_084.c in 0.0s
+11:19:00 INFO [85/100] tu_084.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_085.c in 0.0s
+11:19:00 INFO [86/100] tu_085.c: 2 syms, 2 refs, 0.1s
+11:19:00 INFO content fill: 2 files from TU tu_086.c in 0.0s
+11:19:00 INFO [87/100] tu_086.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_087.c in 0.0s
+11:19:01 INFO [88/100] tu_087.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_088.c in 0.0s
+11:19:01 INFO [89/100] tu_088.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_089.c in 0.0s
+11:19:01 INFO [90/100] tu_089.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_090.c in 0.0s
+11:19:01 INFO [91/100] tu_090.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_091.c in 0.0s
+11:19:01 INFO [92/100] tu_091.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_092.c in 0.0s
+11:19:01 INFO [93/100] tu_092.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_093.c in 0.0s
+11:19:01 INFO [94/100] tu_093.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_094.c in 0.0s
+11:19:01 INFO [95/100] tu_094.c: 2 syms, 2 refs, 0.1s
+11:19:01 INFO content fill: 2 files from TU tu_095.c in 0.0s
+11:19:01 INFO [96/100] tu_095.c: 2 syms, 2 refs, 0.0s
+11:19:01 INFO content fill: 2 files from TU tu_096.c in 0.0s
+11:19:01 INFO [97/100] tu_096.c: 2 syms, 2 refs, 0.1s
+11:19:02 INFO content fill: 2 files from TU tu_097.c in 0.0s
+11:19:02 INFO [98/100] tu_097.c: 2 syms, 2 refs, 0.1s
+11:19:02 INFO content fill: 2 files from TU tu_098.c in 0.0s
+11:19:02 INFO [99/100] tu_098.c: 2 syms, 2 refs, 0.1s
+11:19:02 INFO content fill: 2 files from TU tu_099.c in 0.0s
+11:19:02 INFO [100/100] tu_099.c: 2 syms, 2 refs, 0.1s
+11:19:02 INFO linker script: none found for this build
+11:19:02 INFO Post-process: purge_missing (0.0s)
+11:19:02 INFO Post-process: fts5 (0.0s)
+11:19:02 INFO Post-process: orphans (0.0s)
+11:19:02 INFO Post-process: is_project (0.0s)
+11:19:02 INFO Building manifest.json from 100 pre-collected TU headers...
+11:19:02 INFO manifest.json: 100 updated (from tu_headers), 0 reused, 0 needs_reparse
+11:19:02 INFO manifest.json saved: 100 TUs, 1 distinct headers (100 references), config_hash=44cd58857568
+11:19:02 INFO Post-process: manifest (0.2s)
+11:19:02 INFO Post-process: generated_flag (0.0s)
+11:19:02 INFO Post-process: coverage_purge (0.1s)
+11:19:06 INFO Post-process: macros (3.7s)
+11:19:06 INFO Post-process: dispatch_edges (0.0s)
+11:19:06 INFO No virtual methods found — skipping override analysis
+11:19:06 INFO Post-process: overrides (0.0s)
+11:19:06 INFO Post-process: cross_tu_refs (0.0s)
+11:19:06 INFO Post-process: variant_switches (0.0s)
+11:19:06 INFO PageRank converged after 3 iterations
+11:19:06 INFO PageRank stored: 101 nodes
+11:19:06 INFO Hotspot cache stored: 1 entries
+11:19:06 INFO Post-process: pagerank_hotspot (0.0s)
+11:19:06 INFO Post-process: verify_integrity (0.0s)
+11:19:06 INFO Post-process: finalize_manifest (0.0s)
+11:19:06 INFO Post-process: cleanup_old (0.0s)
+11:19:06 INFO Post-process: wal_checkpoint (0.0s)
+11:19:06 INFO 
+11:19:06 INFO 100 updated, 0 unchanged, 0 skipped  config_hash=44cd58857568

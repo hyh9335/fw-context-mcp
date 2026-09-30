@@ -1,0 +1,33 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_dbg\\work\\proj_83b1a180\\%ROOT%\\fixture",
+      "-DPOLL_INTERVAL=250",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_dbg\\work\\proj_83b1a180\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "c4aa35ded2a32e7c54043fe1dd93927ad129999bc50dbd4915bab483b62bfd98",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "bce23a5538df81b0",
+      "directory": "%ROOT%",
+      "file": "%ROOT%/fixture/poller.c",
+      "headers": [],
+      "source_hash": ""
+    },
+    {
+      "arg_set": 0,
+      "context_id": "466bf736cfc7a150",
+      "directory": "%ROOT%",
+      "file": "%ROOT%/fixture/main.c",
+      "headers": [],
+      "source_hash": ""
+    }
+  ],
+  "headers": {},
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_dbg\\work\\proj_83b1a180",
+  "vendor_patterns": []
+}

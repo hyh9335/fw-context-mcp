@@ -1,0 +1,30 @@
+{
+ "phase": "I8_C5_T2_TRIPWIRE",
+ "quarantine_proof": {
+  "no_degraded_promotion": true,
+  "refusal_is_first_class": true,
+  "same_mechanism_passes_with_second_surface": true
+ },
+ "tripwire_1_t2_only": {
+  "gate_refusals": [],
+  "loop_outcome_kind": "insufficient_evidence",
+  "missing_evidence": [
+   {
+    "channel": "none",
+    "what": "gate refusal",
+    "why_needed": "E3: single-line step S2 has 1 surface(s) (<2): ['fw_context_lookup_symbol']"
+   }
+  ],
+  "promoted": false
+ },
+ "tripwire_2_two_surfaces": {
+  "gate_only_t2_refused": true,
+  "gate_only_t2_rules": [
+   "E3"
+  ],
+  "gate_two_surface_refused": false,
+  "gate_two_surface_rules": [],
+  "second_surface_fact_id": "F-0003",
+  "second_surface_trust": "T1"
+ }
+}

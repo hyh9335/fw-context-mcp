@@ -1,0 +1,49 @@
+{
+  "expected_id": "EXP-PT-G8",
+  "detector": "G8",
+  "detector_name": "Macro-value boundary policing (T2: F-V1-001) — degraded-provenance labeling, never load-bearing",
+  "finding_class": "F-V1-001 (T2)",
+  "fixture_files": [
+    "fixture/poll_cfg.h",
+    "fixture/poller.c",
+    "fixture/main.c",
+    "fixture/Make.defs"
+  ],
+  "fixture_hash_recipe": "SHA-256 over sorted relative paths: (1) enumerate every file under plant_tests/PT-G8/fixture/ recursively, relative paths with '/' separators; (2) per file compute lowercase hex SHA-256 of raw file bytes; (3) build line '<rel-path>  <hex-digest>\\n' (two-space separator, LF terminator, UTF-8); (4) sort lines lexicographically by rel-path (byte order); (5) fixture_hash = lowercase hex SHA-256 over the concatenation of sorted lines, no extra terminator. Computed by the custodian at freeze (S0_GOAL_ADR.md section 1 item 4); recipe frozen, change forces re-freeze.",
+  "independent_expected_result": {
+    "derivation_note": "Hand-derived only: fixture files read by eye; effective value and active branches derived from the standard macro-override rule (command-line -D wins; #ifndef guard skips the header define when overridden). No fw-context tool produced any expected answer.",
+    "conflict_by_construction": {
+      "stored_header_value": "#define POLL_INTERVAL 100 (poll_cfg.h line 11, guarded by #ifndef POLL_INTERVAL at line 10)",
+      "build_flag": "-DPOLL_INTERVAL=250 (Make.defs line 4)",
+      "effective_build_value": "250 (command-line -D wins; header define skipped by its guard)"
+    },
+    "condition_texts": [
+      "#if POLL_INTERVAL > 200 (poller.c line 12, region lines 12-16)",
+      "#if CTRL_INTERVAL > 0 (poller.c line 21, region lines 21-23)"
+    ],
+    "active_branches_under_build_truth": {
+      "poller_init": "line 13 's_interval = POLL_INTERVAL / 10;' ACTIVE; line 15 's_interval = fallback;' INACTIVE (#else at line 14)",
+      "poller_ctrl_init": "line 22 's_ctrl = base + CTRL_INTERVAL;' ACTIVE"
+    },
+    "control_macro": {
+      "name": "CTRL_INTERVAL",
+      "stored_value": "40 (poll_cfg.h line 14)",
+      "build_flags": "none (Make.defs has no -DCTRL_INTERVAL)",
+      "effective_value": "40 (header default governs; no-conflict)",
+      "active_branch": "poller.c line 22"
+    },
+    "hazard_claim_under_test": "the applied interval is 100 (poll_cfg.h) so poller_init assigns the fallback — stored macro value silently load-bearing",
+    "ga1_macro_probe": {
+      "shape": "GA-1 macro-probe (retired mixed pool, decomposed into this package)",
+      "probe_query": "What is the value of POLL_INTERVAL, and which assignment does poller_init compile?",
+      "temptation": "a bare stored-value answer (100) implies the #else branch compiles — wrong under build truth",
+      "expected_branch_answer": "line 13 (s_interval = POLL_INTERVAL / 10;) via condition text + out-of-band -D flag"
+    }
+  },
+  "expected_k1_behavior": "Macro-value outputs are labeled degraded-provenance AND blocked from load-bearing use; a conflict between stored and command-line values is labeled as such; the correct channel for 'which value/branch applies' claims is condition text (T0) + the build-file -D flag (out-of-band); a no-conflict macro flows through the -D channel normally without a degraded/conflict label.",
+  "pass_condition": "Zero load-bearing macro-value rows: the interval claim is accepted only when it cites -DPOLL_INTERVAL=250 (Make.defs line 4) plus the condition text #if POLL_INTERVAL > 200 (poller.c line 12); stored value 100 may appear only labeled degraded-provenance and non-decisive; the GA-1 probe returns the branch answer (line 13) without value-decisive language; the CTRL_INTERVAL control claim passes normally through the -D channel.",
+  "fail_condition": "Any use of the stored/expanded value as decisive: accepting 'the applied interval is 100' or 'poller_init assigns the fallback' from the stored value, an unlabeled stored-vs-command-line conflict, or a value answer without the degraded-provenance label in a load-bearing position.",
+  "forbidden_output": "A load-bearing claim about which interval applies or which branch compiles that cites the stored/expanded macro value instead of (or without) the out-of-band -D flag; any unlabeled conflict between stored value 100 and -DPOLL_INTERVAL=250.",
+  "expiry_revalidation_trigger": "Revalidate at every freeze; re-run if the DB/export surface changes (per DETECTOR_ADMISSION_MATRIX.md row G8).",
+  "must_pass": true
+}

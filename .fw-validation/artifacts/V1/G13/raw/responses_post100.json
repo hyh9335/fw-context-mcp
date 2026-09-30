@@ -1,0 +1,1845 @@
+{
+  "lookup_symbol::{\"exact\": true, \"name\": \"shared_value\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "shared_value",
+      "exact": true
+    },
+    "elapsed_s": 0.019,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "search_bodies::{\"query\": \"shared_value\"}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "shared_value"
+    },
+    "elapsed_s": 0.095,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false
+      }
+    },
+    "text": "",
+    "json": null
+  },
+  "lookup_symbol::{\"exact\": false, \"name\": \"f_\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "f_",
+      "exact": false
+    },
+    "elapsed_s": 0.028,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_099\",\n  \"qualified_name\": \"f_099\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_099.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_099()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_098\",\n  \"qualified_name\": \"f_098\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_098.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_098()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_097\",\n  \"qualified_name\": \"f_097\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_097.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_097()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_096\",\n  \"qualified_name\": \"f_096\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_096.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_096()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_095\",\n  \"qualified_name\": \"f_095\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_095.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_095()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_094\",\n  \"qualified_name\": \"f_094\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_094.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_094()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_093\",\n  \"qualified_name\": \"f_093\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_093.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_093()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_092\",\n  \"qualified_name\": \"f_092\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_092.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_092()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_091\",\n  \"qualified_name\": \"f_091\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_091.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_091()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_090\",\n  \"qualified_name\": \"f_090\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_090.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_090()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_089\",\n  \"qualified_name\": \"f_089\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_089.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_089()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_088\",\n  \"qualified_name\": \"f_088\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_088.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_088()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_087\",\n  \"qualified_name\": \"f_087\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_087.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_087()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_086\",\n  \"qualified_name\": \"f_086\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_086.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_086()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_085\",\n  \"qualified_name\": \"f_085\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_085.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_085()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_084\",\n  \"qualified_name\": \"f_084\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_084.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_084()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_083\",\n  \"qualified_name\": \"f_083\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_083.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_083()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_082\",\n  \"qualified_name\": \"f_082\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_082.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_082()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_081\",\n  \"qualified_name\": \"f_081\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_081.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_081()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_080\",\n  \"qualified_name\": \"f_080\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_080.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_080()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_079\",\n  \"qualified_name\": \"f_079\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_079.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_079()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_078\",\n  \"qualified_name\": \"f_078\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_078.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_078()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_077\",\n  \"qualified_name\": \"f_077\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_077.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_077()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_076\",\n  \"qualified_name\": \"f_076\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_076.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_076()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_075\",\n  \"qualified_name\": \"f_075\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_075.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_075()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_074\",\n  \"qualified_name\": \"f_074\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_074.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_074()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_073\",\n  \"qualified_name\": \"f_073\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_073.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_073()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_072\",\n  \"qualified_name\": \"f_072\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_072.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_072()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_071\",\n  \"qualified_name\": \"f_071\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_071.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_071()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_070\",\n  \"qualified_name\": \"f_070\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_070.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_070()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_069\",\n  \"qualified_name\": \"f_069\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_069.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_069()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_068\",\n  \"qualified_name\": \"f_068\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_068.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_068()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_067\",\n  \"qualified_name\": \"f_067\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_067.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_067()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_066\",\n  \"qualified_name\": \"f_066\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_066.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_066()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_065\",\n  \"qualified_name\": \"f_065\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_065.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_065()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_064\",\n  \"qualified_name\": \"f_064\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_064.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_064()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_063\",\n  \"qualified_name\": \"f_063\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_063.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_063()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_062\",\n  \"qualified_name\": \"f_062\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_062.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_062()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_061\",\n  \"qualified_name\": \"f_061\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_061.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_061()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_060\",\n  \"qualified_name\": \"f_060\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_060.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_060()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_059\",\n  \"qualified_name\": \"f_059\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_059.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_059()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_058\",\n  \"qualified_name\": \"f_058\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_058.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_058()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_057\",\n  \"qualified_name\": \"f_057\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_057.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_057()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_056\",\n  \"qualified_name\": \"f_056\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_056.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_056()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_055\",\n  \"qualified_name\": \"f_055\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_055.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_055()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_054\",\n  \"qualified_name\": \"f_054\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_054.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_054()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_053\",\n  \"qualified_name\": \"f_053\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_053.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_053()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_052\",\n  \"qualified_name\": \"f_052\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_052.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_052()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_051\",\n  \"qualified_name\": \"f_051\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_051.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_051()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_050\",\n  \"qualified_name\": \"f_050\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_050.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_050()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "f_099",
+              "qualified_name": "f_099",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_099.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_099()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_098",
+              "qualified_name": "f_098",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_098.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_098()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_097",
+              "qualified_name": "f_097",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_097.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_097()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_096",
+              "qualified_name": "f_096",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_096.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_096()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_095",
+              "qualified_name": "f_095",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_095.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_095()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_094",
+              "qualified_name": "f_094",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_094.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_094()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_093",
+              "qualified_name": "f_093",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_093.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_093()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_092",
+              "qualified_name": "f_092",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_092.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_092()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_091",
+              "qualified_name": "f_091",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_091.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_091()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_090",
+              "qualified_name": "f_090",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_090.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_090()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_089",
+              "qualified_name": "f_089",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_089.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_089()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_088",
+              "qualified_name": "f_088",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_088.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_088()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_087",
+              "qualified_name": "f_087",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_087.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_087()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_086",
+              "qualified_name": "f_086",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_086.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_086()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_085",
+              "qualified_name": "f_085",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_085.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_085()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_084",
+              "qualified_name": "f_084",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_084.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_084()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_083",
+              "qualified_name": "f_083",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_083.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_083()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_082",
+              "qualified_name": "f_082",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_082.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_082()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_081",
+              "qualified_name": "f_081",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_081.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_081()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_080",
+              "qualified_name": "f_080",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_080.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_080()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_079",
+              "qualified_name": "f_079",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_079.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_079()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_078",
+              "qualified_name": "f_078",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_078.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_078()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_077",
+              "qualified_name": "f_077",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_077.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_077()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_076",
+              "qualified_name": "f_076",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_076.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_076()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_075",
+              "qualified_name": "f_075",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_075.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_075()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_074",
+              "qualified_name": "f_074",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_074.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_074()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_073",
+              "qualified_name": "f_073",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_073.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_073()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_072",
+              "qualified_name": "f_072",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_072.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_072()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_071",
+              "qualified_name": "f_071",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_071.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_071()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_070",
+              "qualified_name": "f_070",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_070.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_070()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_069",
+              "qualified_name": "f_069",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_069.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_069()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_068",
+              "qualified_name": "f_068",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_068.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_068()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_067",
+              "qualified_name": "f_067",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_067.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_067()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_066",
+              "qualified_name": "f_066",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_066.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_066()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_065",
+              "qualified_name": "f_065",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_065.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_065()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_064",
+              "qualified_name": "f_064",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_064.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_064()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_063",
+              "qualified_name": "f_063",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_063.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_063()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_062",
+              "qualified_name": "f_062",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_062.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_062()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_061",
+              "qualified_name": "f_061",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_061.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_061()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_060",
+              "qualified_name": "f_060",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_060.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_060()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_059",
+              "qualified_name": "f_059",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_059.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_059()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_058",
+              "qualified_name": "f_058",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_058.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_058()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_057",
+              "qualified_name": "f_057",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_057.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_057()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_056",
+              "qualified_name": "f_056",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_056.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_056()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_055",
+              "qualified_name": "f_055",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_055.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_055()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_054",
+              "qualified_name": "f_054",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_054.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_054()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_053",
+              "qualified_name": "f_053",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_053.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_053()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_052",
+              "qualified_name": "f_052",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_052.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_052()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_051",
+              "qualified_name": "f_051",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_051.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_051()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "f_050",
+              "qualified_name": "f_050",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\tu_050.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_050()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"f_099\",\n  \"qualified_name\": \"f_099\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_099.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_099()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_098\",\n  \"qualified_name\": \"f_098\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_098.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_098()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_097\",\n  \"qualified_name\": \"f_097\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_097.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_097()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_096\",\n  \"qualified_name\": \"f_096\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_096.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_096()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_095\",\n  \"qualified_name\": \"f_095\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_095.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_095()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_094\",\n  \"qualified_name\": \"f_094\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_094.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_094()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_093\",\n  \"qualified_name\": \"f_093\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_093.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_093()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_092\",\n  \"qualified_name\": \"f_092\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_092.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_092()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_091\",\n  \"qualified_name\": \"f_091\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_091.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_091()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_090\",\n  \"qualified_name\": \"f_090\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_090.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_090()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_089\",\n  \"qualified_name\": \"f_089\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_089.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_089()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_088\",\n  \"qualified_name\": \"f_088\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_088.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_088()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_087\",\n  \"qualified_name\": \"f_087\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_087.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_087()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_086\",\n  \"qualified_name\": \"f_086\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_086.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_086()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_085\",\n  \"qualified_name\": \"f_085\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_085.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_085()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_084\",\n  \"qualified_name\": \"f_084\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_084.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_084()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_083\",\n  \"qualified_name\": \"f_083\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_083.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_083()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_082\",\n  \"qualified_name\": \"f_082\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_082.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_082()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_081\",\n  \"qualified_name\": \"f_081\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_081.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_081()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_080\",\n  \"qualified_name\": \"f_080\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_080.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_080()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_079\",\n  \"qualified_name\": \"f_079\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_079.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_079()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_078\",\n  \"qualified_name\": \"f_078\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_078.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_078()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_077\",\n  \"qualified_name\": \"f_077\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_077.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_077()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_076\",\n  \"qualified_name\": \"f_076\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_076.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_076()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_075\",\n  \"qualified_name\": \"f_075\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_075.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_075()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_074\",\n  \"qualified_name\": \"f_074\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_074.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_074()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_073\",\n  \"qualified_name\": \"f_073\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_073.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_073()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_072\",\n  \"qualified_name\": \"f_072\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_072.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_072()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_071\",\n  \"qualified_name\": \"f_071\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_071.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_071()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_070\",\n  \"qualified_name\": \"f_070\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_070.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_070()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_069\",\n  \"qualified_name\": \"f_069\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_069.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_069()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_068\",\n  \"qualified_name\": \"f_068\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_068.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_068()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_067\",\n  \"qualified_name\": \"f_067\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_067.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_067()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_066\",\n  \"qualified_name\": \"f_066\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_066.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_066()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_065\",\n  \"qualified_name\": \"f_065\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_065.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_065()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_064\",\n  \"qualified_name\": \"f_064\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_064.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_064()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_063\",\n  \"qualified_name\": \"f_063\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_063.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_063()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_062\",\n  \"qualified_name\": \"f_062\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_062.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_062()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_061\",\n  \"qualified_name\": \"f_061\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_061.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_061()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_060\",\n  \"qualified_name\": \"f_060\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_060.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_060()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_059\",\n  \"qualified_name\": \"f_059\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_059.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_059()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_058\",\n  \"qualified_name\": \"f_058\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_058.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_058()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_057\",\n  \"qualified_name\": \"f_057\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_057.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_057()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_056\",\n  \"qualified_name\": \"f_056\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_056.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_056()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_055\",\n  \"qualified_name\": \"f_055\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_055.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_055()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_054\",\n  \"qualified_name\": \"f_054\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_054.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_054()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_053\",\n  \"qualified_name\": \"f_053\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_053.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_053()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_052\",\n  \"qualified_name\": \"f_052\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_052.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_052()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_051\",\n  \"qualified_name\": \"f_051\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_051.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_051()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"f_050\",\n  \"qualified_name\": \"f_050\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\tu_050.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_050()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "get_active_build::{}": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 0.146,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"44cd588575687b307b74627ad941898d230877bc168b42ab967f1604e81a03d7\",\n  \"project_id\": \"1364c96d22d549a6ac19a437ff3528d7\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 03:19:06\",\n  \"symbol_count\": 200,\n  \"file_count\": 200,\n  \"reference_count\": 200,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 200\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 03:18:16\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (200 symbols) | LLM analysis: project 0/200 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 0,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"44cd588575687b307b74627ad941898d230877bc168b42ab967f1604e81a03d7\",\n  \"project_id\": \"1364c96d22d549a6ac19a437ff3528d7\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n100\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 03:19:06\",\n  \"symbol_count\": 200,\n  \"file_count\": 200,\n  \"reference_count\": 200,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 200\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 03:18:16\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (200 symbols) | LLM analysis: project 0/200 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 0,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "44cd588575687b307b74627ad941898d230877bc168b42ab967f1604e81a03d7",
+      "project_id": "1364c96d22d549a6ac19a437ff3528d7",
+      "project_root": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work",
+      "build_system": "unknown",
+      "compile_commands": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n100\\work\\compile_commands.json",
+      "indexed_at": "2026-09-18 03:19:06",
+      "symbol_count": 200,
+      "file_count": 200,
+      "reference_count": 200,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 200
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 0
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 03:18:16",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (200 symbols) | LLM analysis: project 0/200 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {},
+      "defines_varying": 0,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "server_exit_code": 0
+}

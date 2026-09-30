@@ -1,0 +1,2 @@
+pattern='CONFIG_SENSOR_IRQ_PATH' glob=None truncated=False
+sensor_module.c:19: #if defined(CONFIG_SENSOR_IRQ_PATH)

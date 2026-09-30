@@ -1,0 +1,73 @@
+{
+  "initialize": {
+    "ok": true,
+    "protocolVersion": "2024-11-05",
+    "serverInfo": {
+      "name": "fw-context",
+      "version": "1.30.0"
+    }
+  },
+  "tools_list": {
+    "ok": true,
+    "count": 42,
+    "names": [
+      "check_dependencies",
+      "check_ollama",
+      "configure_llm",
+      "get_active_build",
+      "get_environment_status",
+      "get_project_info",
+      "list_projects",
+      "list_variants",
+      "reindex_file",
+      "reset_index",
+      "lookup_symbol",
+      "search_code",
+      "search_bodies",
+      "search_content",
+      "semantic_search",
+      "smart_search",
+      "find_all_callers_recursive",
+      "find_call_path",
+      "get_vector_table",
+      "find_callees_recursive",
+      "find_callers",
+      "find_dead_code",
+      "find_hotspots",
+      "find_indirect_call_sites",
+      "find_indirect_targets",
+      "find_references",
+      "find_wrapper_callers",
+      "trace_data_flow",
+      "explain_symbol",
+      "get_file_map",
+      "get_source",
+      "get_symbol_context",
+      "read_file",
+      "get_class_members",
+      "get_inheritance_chain",
+      "get_method_overrides",
+      "get_template_instances",
+      "find_variables",
+      "explain_condition",
+      "list_conditional_regions",
+      "compare_variants",
+      "group_equivalent_variants"
+    ]
+  },
+  "tools_call_list_projects": {
+    "ok": true,
+    "isError": false,
+    "content_head": "{\n  \"project_id\": \"6bb4866903b341da836e3924a7bef083\",\n  \"name\": \"w0_stdio\",\n  \"root_path\": \"/home/h00969597/fw-closeout-scratch/w0_stdio\",\n  \"build_system\": \"unknown\",\n  \"symbol_count\": 3,\n  \"file_count\": 4,\n  \"indexed_at\": \"2026-09-16 04:03:20\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-16 04:03:20\",\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"reindex_needed\": false,\n  \"status\": \"ready\",\n  \"db\": \"/home/h00969597/.fw-context/index/6bb4866903b341da836e3924a7bef083/i"
+  },
+  "exit_code": 0,
+  "stderr_tail": [
+    "2026-09-18 10:26:18,851 INFO __main__: fw-context MCP server starting",
+    "2026-09-18 10:26:18,863 INFO __main__: Project not ready at startup: No index found at /home/h00969597/.fw-context/index/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/index.db.  Run:",
+    "  fw-context index --build",
+    "2026-09-18 10:26:18,985 INFO __main__: No index found at /home/h00969597/.fw-context/index/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6/index.db — get_active_build() will report no_index",
+    "2026-09-18 10:26:19,009 INFO mcp.server.lowlevel.server: Processing request of type ListToolsRequest",
+    "2026-09-18 10:26:19,013 INFO mcp.server.lowlevel.server: Processing request of type CallToolRequest",
+    "2026-09-18 10:26:24,272 INFO fw_context_mcp.llm.auto_model: Auto-detected embed model: qwen3-embedding:0.6b (GPU=False, pull skipped — auto_pull=False, skip_pull=False)"
+  ]
+}

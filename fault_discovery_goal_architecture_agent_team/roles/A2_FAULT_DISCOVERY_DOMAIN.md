@@ -1,0 +1,2 @@
+# A2 — Firmware Fault Discovery Domain Expert
+Work backwards from real firmware faults: init/config/order, state machine, resource exhaustion, timer/workqueue/task, callback registration, IRQ/exception, driver/device binding, concurrency/ownership, variant misconfig, error/retry/fallback. Determine necessary source facts, which relations must be exact vs may, what rules can be derived, source-only limits, and which current fw-context defects break reasoning. Do not assume fw-context is the only acquisition mechanism.

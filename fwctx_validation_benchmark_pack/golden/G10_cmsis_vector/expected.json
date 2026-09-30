@@ -1,0 +1,25 @@
+{
+  "slots": {
+    "0": "INITIAL_SP_DATA",
+    "1": "Reset_Handler",
+    "2": "NMI_Handler",
+    "3": "HardFault_Handler",
+    "11": "SVC_Handler",
+    "14": "PendSV_Handler",
+    "15": "SysTick_Handler",
+    "16": "IRQ0_Handler",
+    "17": "IRQ1_Handler"
+  },
+  "reserved_zero_slots": [
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    12,
+    13
+  ],
+  "architecture": "Cortex-M pointer table"
+}

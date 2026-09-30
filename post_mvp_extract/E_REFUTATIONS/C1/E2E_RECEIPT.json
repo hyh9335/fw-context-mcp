@@ -1,0 +1,247 @@
+{
+ "case": "C1",
+ "custody_log": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\custody_log.jsonl",
+ "fact_log": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\fact_log.jsonl",
+ "freeze_id": "FRZ-C1-20260920T092024Z",
+ "outcomes": [
+  {
+   "gate": [],
+   "hypothesis_id": "H-C1-ACCEL-TRIGGER-33",
+   "kind": "rulecard",
+   "missing_evidence": [],
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33"
+  },
+  {
+   "gate": [],
+   "hypothesis_id": "H-C1-ACCEL-TRIGGER-47",
+   "kind": "rulecard",
+   "missing_evidence": [],
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47"
+  },
+  {
+   "gate": [],
+   "hypothesis_id": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "kind": "rulecard",
+   "missing_evidence": [],
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+  },
+  {
+   "gate": [],
+   "hypothesis_id": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "kind": "rulecard",
+   "missing_evidence": [],
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR"
+  }
+ ],
+ "refutations": [
+  {
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33",
+   "state": "NOT_REFUTED_WITHIN_SCOPE",
+   "steps": [
+    {
+     "holds": true,
+     "step_id": "RS1"
+    },
+    {
+     "holds": true,
+     "step_id": "RS2",
+     "symbol_hits": {
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAD": 3
+     }
+    },
+    {
+     "flipped": [],
+     "holds": true,
+     "scope_note": "no out-of-scope flip required; pinned build confirms",
+     "step_id": "RS3",
+     "survival": {
+      "cmd": [
+       "C:\\Program Files\\LLVM\\bin\\clang.exe",
+       "-E",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot\\accel_trigger.c",
+       "-I",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot",
+       "-DCONFIG_ACCEL_SAMPLE=1",
+       "-DCONFIG_ACCEL_TRIGGER=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+      ],
+      "regions": {
+       "submit_call": false
+      }
+     }
+    }
+   ]
+  },
+  {
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "state": "NOT_REFUTED_WITHIN_SCOPE",
+   "steps": [
+    {
+     "holds": true,
+     "step_id": "RS1"
+    },
+    {
+     "holds": true,
+     "step_id": "RS2",
+     "symbol_hits": {
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD": 1
+     }
+    },
+    {
+     "flipped": [
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD"
+     ],
+     "holds": true,
+     "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) — recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+     "step_id": "RS3",
+     "survival": {
+      "cmd": [
+       "C:\\Program Files\\LLVM\\bin\\clang.exe",
+       "-E",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot\\accel_trigger.c",
+       "-I",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot",
+       "-DCONFIG_ACCEL_SAMPLE=1",
+       "-DCONFIG_ACCEL_TRIGGER=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+      ],
+      "regions": {
+       "submit_call": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "state": "NOT_REFUTED_WITHIN_SCOPE",
+   "steps": [
+    {
+     "holds": true,
+     "step_id": "RS1"
+    },
+    {
+     "holds": true,
+     "step_id": "RS2",
+     "symbol_hits": {
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD": 1
+     }
+    },
+    {
+     "flipped": [
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD"
+     ],
+     "holds": true,
+     "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) — recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+     "step_id": "RS3",
+     "survival": {
+      "cmd": [
+       "C:\\Program Files\\LLVM\\bin\\clang.exe",
+       "-E",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot\\accel_trigger.c",
+       "-I",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot",
+       "-DCONFIG_ACCEL_SAMPLE=1",
+       "-DCONFIG_ACCEL_TRIGGER=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+      ],
+      "regions": {
+       "submit_call": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "state": "NOT_REFUTED_WITHIN_SCOPE",
+   "steps": [
+    {
+     "holds": true,
+     "step_id": "RS1"
+    },
+    {
+     "holds": true,
+     "step_id": "RS2",
+     "symbol_hits": {
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD": 1
+     }
+    },
+    {
+     "flipped": [
+      "CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD"
+     ],
+     "holds": true,
+     "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) — recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+     "step_id": "RS3",
+     "survival": {
+      "cmd": [
+       "C:\\Program Files\\LLVM\\bin\\clang.exe",
+       "-E",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot\\accel_trigger.c",
+       "-I",
+       "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1\\source_snapshot",
+       "-DCONFIG_ACCEL_SAMPLE=1",
+       "-DCONFIG_ACCEL_TRIGGER=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD=1",
+       "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+      ],
+      "regions": {
+       "submit_call": true
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I6_C1",
+ "scores": [
+  {
+   "overclaims": [],
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "sampled": 2,
+   "verdict": "PASS"
+  },
+  {
+   "overclaims": [],
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "sampled": 4,
+   "verdict": "PASS"
+  },
+  {
+   "overclaims": [],
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "sampled": 2,
+   "verdict": "PASS"
+  },
+  {
+   "overclaims": [],
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "sampled": 6,
+   "verdict": "PASS"
+  }
+ ],
+ "targets": 4,
+ "two_part_separation": {
+  "runtime_occurrence": "required_but_unavailable — never asserted (CASE_DESIGN §2)",
+  "source_level": "mechanism provable from T0/T1 surfaces (recorded in promoted RuleCards)"
+ }
+}

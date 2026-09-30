@@ -1,0 +1,25 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_9a61f1b3\\fixture\\variant_b",
+      "-DFEATURE=0",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_9a61f1b3\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "fc92f91c6cef4aa53b2f8b16e2f3f199213104d3215dda265da39e4761e687f8",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "7d7afcaa32f62c14",
+      "directory": ".",
+      "file": "fixture/variant_b/main.c",
+      "headers": [],
+      "source_hash": ""
+    }
+  ],
+  "headers": {},
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_9a61f1b3",
+  "vendor_patterns": []
+}

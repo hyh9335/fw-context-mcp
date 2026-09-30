@@ -1,0 +1,45 @@
+exit: 0
+stdout:
+Project: work  path=/home/h00969597/fwctx-validation-work/V3-WSL/G03/work  build=unknown
+Indexed. config_hash=5bac1be8b0eb33ca…  db=/home/h00969597/fwctx-validation-work/V3-WSL/G03/index/6226ff8c382947f0bf0fe1d80fb8868b/index.db
+
+stderr:
+18:36:42 INFO TUs to index: 3
+18:36:42 INFO vendor patterns for work: none
+18:36:42 INFO manifest.json (preliminary): 3 TUs, config_hash=5bac1be8b0eb
+18:36:42 INFO 
+18:36:42 INFO project=work project_id=6226ff8c382947f0bf0fe1d80fb8868b config_hash=5bac1be8b0eb
+18:36:42 INFO 
+18:36:42 INFO content fill: 1 files from TU config.c in 0.0s
+18:36:42 INFO [1/3] config.c: 2 syms, 2 refs, 0.0s
+18:36:42 INFO content fill: 1 files from TU config.c in 0.0s
+18:36:42 INFO [2/3] config.c: 1 syms, 0 refs, 0.0s
+18:36:42 INFO content fill: 1 files from TU config.c in 0.0s
+18:36:42 INFO [3/3] config.c: 2 syms, 2 refs, 0.0s
+18:36:42 INFO linker script: none found for this build
+18:36:42 INFO Post-process: purge_missing (0.0s)
+18:36:42 INFO Post-process: fts5 (0.0s)
+18:36:42 INFO Post-process: orphans (0.0s)
+18:36:42 INFO Post-process: is_project (0.0s)
+18:36:42 INFO manifest.json incremental: 3 updated, 0 reused, 0 needs_reparse
+18:36:42 INFO manifest.json saved: 3 TUs, 0 distinct headers (0 references), config_hash=5bac1be8b0eb
+18:36:42 INFO Post-process: manifest (0.0s)
+18:36:42 INFO Post-process: generated_flag (0.0s)
+18:36:42 INFO Post-process: coverage_purge (0.0s)
+18:36:42 INFO Post-process: macros (0.4s)
+18:36:42 INFO Post-process: dispatch_edges (0.0s)
+18:36:42 INFO No virtual methods found — skipping override analysis
+18:36:42 INFO Post-process: overrides (0.0s)
+18:36:42 INFO Post-process: cross_tu_refs (0.0s)
+18:36:42 INFO Post-process: variant_switches (0.0s)
+18:36:42 INFO PageRank converged after 3 iterations
+18:36:42 INFO PageRank stored: 2 nodes
+18:36:42 INFO Hotspot cache stored: 1 entries
+18:36:42 INFO Post-process: pagerank_hotspot (0.0s)
+18:36:42 INFO Post-process: verify_integrity (0.0s)
+18:36:42 INFO Post-process: finalize_manifest (0.0s)
+18:36:42 INFO Post-process: cleanup_old (0.0s)
+18:36:42 INFO Post-process: wal_checkpoint (0.0s)
+18:36:42 INFO 
+18:36:42 INFO 3 updated, 0 unchanged, 0 skipped  config_hash=5bac1be8b0eb
+18:36:42 INFO Spawning watcher daemon for /home/h00969597/fwctx-validation-work/V3-WSL/G03/work

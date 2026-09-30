@@ -1,0 +1,26 @@
+{
+  "case_id": "Z1_zephyr_hello",
+  "phase": "V2_PUBLIC_REAL",
+  "platform": "wsl",
+  "scenario": "Z1 native_sim hello_world via plain cmake (host toolchain), compile-DB truth check",
+  "fixture": "zephyr v4.4.2@dccb0959 samples/hello_world BOARD=native_sim ZEPHYR_TOOLCHAIN_VARIANT=host",
+  "env_fixes": [
+    "python 3.12.10 source-built with libssl (zephyr requires >=3.12)",
+    "gcc-multilib (32-bit native)",
+    "west+jsonschema+pyyaml venv"
+  ],
+  "build": {
+    "tu_count": 75,
+    "qemu": "n/a (native_sim)"
+  },
+  "index": {
+    "db_size_gb": 1.7,
+    "note": "zephyr per-TU generated-header closure makes the DB ~1.7GB for 75 TUs \u2014 scale observation"
+  },
+  "queries": {
+    "main": "samples/hello_world/src/main.c:9 is_definition=true (correct)",
+    "config_hash": "24ffaf0390f6ca58\u2026",
+    "build_system_detected": "unknown (cosmetic: cmake build not classified)"
+  },
+  "status": "PASS"
+}

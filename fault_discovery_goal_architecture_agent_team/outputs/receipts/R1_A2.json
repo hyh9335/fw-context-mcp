@@ -1,0 +1,51 @@
+{
+  "round": "R1_INDEPENDENT_RESEARCH",
+  "agent": "A2",
+  "status": "COMPLETE",
+  "inputs": [
+    "fault_discovery_goal_architecture_agent_team/roles/A2_FAULT_DISCOVERY_DOMAIN.md",
+    "fault_discovery_goal_architecture_agent_team/workflow/EVIDENCE_RULES.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/GOAL_CONTRACT.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/CURRENT_STATE_SEED.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/OPEN_QUESTIONS.md",
+    "fault_discovery_goal_architecture_agent_team/outputs/FACT_LEDGER.json",
+    "fault_discovery_goal_architecture_agent_team/outputs/CONTRADICTIONS.json",
+    "web: https://arxiv.org/html/2405.17238v3 (IRIS: LLM-Assisted Static Analysis)",
+    "web: https://asq.org/quality-resources/fmea and https://en.wikipedia.org/wiki/Failure_mode_and_effects_analysis (FMEA)",
+    "web: https://www.mathworks.com/help/bugfinder/ref/misrac2012rule2.1.html and https://learn.adacore.com/courses/SPARK_for_the_MISRA_C_Developer/chapters/08_unreachable_and_dead_code.html (MISRA source-only rules)"
+  ],
+  "outputs": [
+    "fault_discovery_goal_architecture_agent_team/outputs/R1_A2.md"
+  ],
+  "evidence_paths": [
+    ".fw-validation/FINDINGS.json (F-V1-001..008, F-V2-001..002)",
+    ".fw-validation/FINAL_VALIDATION_RESULTS.json",
+    ".fw-final/FINAL_REPAIR_AUDIT.md",
+    "KNOWN_LIMITATIONS.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/GOAL_CONTRACT.md",
+    "fault_discovery_goal_architecture_agent_team/outputs/FACT_LEDGER.json",
+    "fault_discovery_goal_architecture_agent_team/outputs/CONTRADICTIONS.json"
+  ],
+  "claims_fact_ids": [
+    "F-R0-02",
+    "F-R0-04",
+    "F-R0-05",
+    "F-R0-06",
+    "F-R0-07",
+    "F-R0-08",
+    "F-R0-09",
+    "F-R0-13",
+    "F-R0-14",
+    "F-R0-15",
+    "F-R0-16",
+    "F-R0-17",
+    "F-R0-18"
+  ],
+  "uncertainties": [
+    "A2-U1: explain_condition nondeterminism (F-R0-15) — condition-binding verification protocol undesigned",
+    "A2-U2: LLM contextual-triage FP rate on firmware records unknown (IRIS 46-85% FDR is Java security)",
+    "A2-U3: search_content raw mode as partial F-V1-007 mitigation — coverage/cost unmeasured",
+    "A2-U4: which of the ten fault classes have source-only decidable signal vs need runtime corroboration — needs per-class pilot",
+    "A2-U5: clang co-oracle deployability in target user environments (Windows here lacks clang)"
+  ]
+}

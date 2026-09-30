@@ -1,0 +1,40 @@
+exit: 0
+Project: work_p  path=C:\Users\h00969597\fwctx-validation-work\V1\G13\n1\work_p  build=unknown
+Indexed. config_hash=7539014bbdb2b106…  db=C:\Users\h00969597\fwctx-validation-work\V1\G13\n1\index_p\70e58bf8953a413ba9a8b3441028b54b\index.db
+
+11:26:09 INFO TUs to index: 1
+11:26:09 INFO vendor patterns for work_p: none
+11:26:09 INFO manifest.json (preliminary): 1 TUs, config_hash=7539014bbdb2
+11:26:09 INFO 
+11:26:09 INFO project=work_p project_id=70e58bf8953a413ba9a8b3441028b54b config_hash=7539014bbdb2
+11:26:09 INFO 
+11:26:09 INFO content fill: 2 files from TU tu_000.c in 0.0s
+11:26:09 INFO [1/1] tu_000.c: 2 syms, 2 refs, 0.0s
+11:26:09 INFO linker script: none found for this build
+11:26:09 INFO Post-process: purge_missing (0.0s)
+11:26:09 INFO Post-process: fts5 (0.0s)
+11:26:09 INFO Post-process: orphans (0.0s)
+11:26:09 INFO Post-process: is_project (0.0s)
+11:26:09 INFO Building manifest.json from 1 pre-collected TU headers...
+11:26:09 INFO manifest.json: 1 updated (from tu_headers), 0 reused, 0 needs_reparse
+11:26:09 INFO manifest.json saved: 1 TUs, 1 distinct headers (1 references), config_hash=7539014bbdb2
+11:26:09 INFO Post-process: manifest (0.0s)
+11:26:09 INFO Post-process: generated_flag (0.0s)
+11:26:09 INFO Post-process: coverage_purge (0.0s)
+11:26:09 INFO Post-process: macros (0.0s)
+11:26:09 INFO Post-process: dispatch_edges (0.0s)
+11:26:09 INFO No virtual methods found — skipping override analysis
+11:26:09 INFO Post-process: overrides (0.0s)
+11:26:09 INFO Post-process: cross_tu_refs (0.0s)
+11:26:09 INFO Post-process: variant_switches (0.0s)
+11:26:09 INFO PageRank converged after 3 iterations
+11:26:09 INFO PageRank stored: 2 nodes
+11:26:09 INFO Hotspot cache stored: 1 entries
+11:26:09 INFO Post-process: pagerank_hotspot (0.0s)
+11:26:09 INFO Post-process: verify_integrity (0.0s)
+11:26:09 INFO Post-process: finalize_manifest (0.0s)
+11:26:09 INFO Post-process: cleanup_old (0.0s)
+11:26:09 INFO Post-process: wal_checkpoint (0.0s)
+11:26:09 INFO 
+11:26:09 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=7539014bbdb2
+11:26:09 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V1\G13\n1\work_p

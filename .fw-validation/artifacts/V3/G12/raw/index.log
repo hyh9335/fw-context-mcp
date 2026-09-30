@@ -1,0 +1,40 @@
+exit: 0
+stdout:
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V3\G12\work  build=unknown
+Indexed. config_hash=40feee10d4249943…  db=C:\Users\h00969597\fwctx-validation-work\V3\G12\index\432165aa913a4ec18e700209bcd19703\index.db
+
+stderr:
+18:26:01 INFO TUs to index: 1
+18:26:01 INFO vendor patterns for work: none
+18:26:01 INFO manifest.json (preliminary): 1 TUs, config_hash=40feee10d424
+18:26:01 INFO 
+18:26:01 INFO project=work project_id=432165aa913a4ec18e700209bcd19703 config_hash=40feee10d424
+18:26:01 INFO 
+18:26:01 INFO content fill: 1 files from TU source.c in 0.0s
+18:26:01 INFO [1/1] source.c: 1 syms, 0 refs, 0.0s
+18:26:01 INFO linker script: none found for this build
+18:26:01 INFO Post-process: purge_missing (0.0s)
+18:26:01 INFO Post-process: fts5 (0.0s)
+18:26:01 INFO Post-process: orphans (0.0s)
+18:26:01 INFO Post-process: is_project (0.0s)
+18:26:01 INFO manifest.json incremental: 1 updated, 0 reused, 0 needs_reparse
+18:26:01 INFO manifest.json saved: 1 TUs, 0 distinct headers (0 references), config_hash=40feee10d424
+18:26:01 INFO Post-process: manifest (0.0s)
+18:26:01 INFO Post-process: generated_flag (0.0s)
+18:26:01 INFO Post-process: coverage_purge (0.0s)
+18:26:01 INFO Post-process: macros (0.0s)
+18:26:01 INFO Post-process: dispatch_edges (0.0s)
+18:26:01 INFO No virtual methods found — skipping override analysis
+18:26:01 INFO Post-process: overrides (0.0s)
+18:26:01 INFO Post-process: cross_tu_refs (0.0s)
+18:26:01 INFO Post-process: variant_switches (0.0s)
+18:26:01 INFO No call graph edges — skipping PageRank
+18:26:01 INFO Hotspot cache stored: 0 entries
+18:26:01 INFO Post-process: pagerank_hotspot (0.0s)
+18:26:01 INFO Post-process: verify_integrity (0.0s)
+18:26:01 INFO Post-process: finalize_manifest (0.0s)
+18:26:01 INFO Post-process: cleanup_old (0.0s)
+18:26:01 INFO Post-process: wal_checkpoint (0.0s)
+18:26:01 INFO 
+18:26:01 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=40feee10d424
+18:26:01 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V3\G12\work

@@ -1,0 +1,45 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_6d67251b\\fixture",
+      "-DSCALE=10",
+      "-DCAL_V2=3",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_6d67251b\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "94c53afc75fd380948ce4eaae376299f28934fd8bc06c836262b256367cbb7ab",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "d915d4b8cc84206b",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_6d67251b",
+      "file": "fixture/main.c",
+      "flags_hash": "c963c5beea614f43f3a584dcb5d9f335390c4b06f31c9412b7951b51b96360e6",
+      "headers": [
+        "fixture\\sensor_api.h"
+      ],
+      "source_hash": "855428ec72ee9f01522a603dff90e4efb6b5bab8c576f8bccf13d667c39eac90"
+    },
+    {
+      "arg_set": 0,
+      "context_id": "f8db11b0f76a0649",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_6d67251b",
+      "file": "fixture/sensor_impl.c",
+      "flags_hash": "c963c5beea614f43f3a584dcb5d9f335390c4b06f31c9412b7951b51b96360e6",
+      "headers": [
+        "fixture\\sensor_api.h"
+      ],
+      "source_hash": "214574353921bb08488394010279b92aaed07723d2d5061ee406d1a8c3db286c"
+    }
+  ],
+  "headers": {
+    "fixture\\sensor_api.h": {
+      "generated": false,
+      "hash": "e27b117ec0cc3686f270e924cb2fdee29d128e4380aa3026fbc8c1e729bfb056"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_6d67251b",
+  "vendor_patterns": []
+}

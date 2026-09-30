@@ -1,0 +1,278 @@
+{
+  "get_vector_table::{}": {
+    "tool": "get_vector_table",
+    "arguments": {},
+    "elapsed_s": 0.01,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild.\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild."
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild.\"\n}",
+    "json": {
+      "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild."
+    }
+  },
+  "lookup_symbol::{\"exact\": false, \"name\": \"irq\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "irq",
+      "exact": false
+    },
+    "elapsed_s": 0.025,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"irq1_handler\",\n  \"qualified_name\": \"irq1_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 12,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"irq2_handler\",\n  \"qualified_name\": \"irq2_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"irq3_handler\",\n  \"qualified_name\": \"irq3_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 16,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "irq1_handler",
+              "qualified_name": "irq1_handler",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+              "line": 12,
+              "is_definition": true,
+              "signature": "",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "irq2_handler",
+              "qualified_name": "irq2_handler",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+              "line": 14,
+              "is_definition": true,
+              "signature": "",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "irq3_handler",
+              "qualified_name": "irq3_handler",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+              "line": 16,
+              "is_definition": true,
+              "signature": "",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"irq1_handler\",\n  \"qualified_name\": \"irq1_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 12,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"irq2_handler\",\n  \"qualified_name\": \"irq2_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"irq3_handler\",\n  \"qualified_name\": \"irq3_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 16,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "lookup_symbol::{\"exact\": true, \"name\": \"trap_base\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "trap_base",
+      "exact": true
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"trap_base\",\n  \"qualified_name\": \"trap_base\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "trap_base",
+              "qualified_name": "trap_base",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+              "line": 4,
+              "is_definition": true,
+              "signature": "",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"trap_base\",\n  \"qualified_name\": \"trap_base\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": {
+      "name": "trap_base",
+      "qualified_name": "trap_base",
+      "kind": "function",
+      "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+      "line": 4,
+      "is_definition": true,
+      "signature": "",
+      "docstring": "",
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false
+    }
+  },
+  "lookup_symbol::{\"exact\": true, \"name\": \"exception_handler\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "exception_handler",
+      "exact": true
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"exception_handler\",\n  \"qualified_name\": \"exception_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 10,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "exception_handler",
+              "qualified_name": "exception_handler",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+              "line": 10,
+              "is_definition": true,
+              "signature": "",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"exception_handler\",\n  \"qualified_name\": \"exception_handler\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v1-work/G11/work/vector.S\",\n  \"line\": 10,\n  \"is_definition\": true,\n  \"signature\": \"\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": {
+      "name": "exception_handler",
+      "qualified_name": "exception_handler",
+      "kind": "function",
+      "file": "/home/h00969597/fwctx-v1-work/G11/work/vector.S",
+      "line": 10,
+      "is_definition": true,
+      "signature": "",
+      "docstring": "",
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false
+    }
+  },
+  "find_references::{\"name\": \"exception_handler\"}": {
+    "tool": "find_references",
+    "arguments": {
+      "name": "exception_handler"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled.\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled."
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled.\"\n}",
+    "json": {
+      "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled."
+    }
+  },
+  "find_references::{\"name\": \"irq1_handler\"}": {
+    "tool": "find_references",
+    "arguments": {
+      "name": "irq1_handler"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled.\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled."
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"info\": \"No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled.\"\n}",
+    "json": {
+      "info": "No references indexed. Refs are on by default — they may have been disabled with [index] index_refs = false. Re-run 'fw-context index' to rebuild with refs enabled."
+    }
+  },
+  "server_exit_code": 0
+}

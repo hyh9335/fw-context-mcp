@@ -1,0 +1,102 @@
+ninja: Entering directory `build'
+[1/98] Preparing syscall dependency handling
+
+[2/98] Generating include/generated/zephyr/version.h
+-- Zephyr version: 4.4.2 (/home/h00969597/fwctx-bench/public/zephyr), build: v4.4.2
+[3/98] Generating misc/generated/syscalls_subdirs.trigger
+[4/98] Generating misc/generated/syscalls.json, misc/generated/struct_tags.json
+[5/98] Generating include/generated/device-api-sections.ld, include/generated/device-api-sections.cmake
+[6/98] Generating include/generated/zephyr/syscall_dispatch.c, include/generated/zephyr/syscall_exports_llext.c, syscall_weakdefs_llext.c, include/generated/zephyr/syscall_list.h
+[7/98] Generating include/generated/zephyr/driver-validation.h
+[8/98] Generating include/generated/zephyr/kobj-types-enum.h, include/generated/zephyr/otype-to-str.h, include/generated/zephyr/otype-to-size.h
+[9/98] Building C object zephyr/lib/heap/CMakeFiles/heap_constants.dir/heap_constants.c.obj
+[10/98] Generating ../../include/generated/zephyr/heap_constants.h
+[11/98] Building C object zephyr/CMakeFiles/offsets.dir/arch/posix/core/offsets/offsets.c.obj
+[12/98] Generating include/generated/zephyr/offsets.h
+[13/98] Building C object CMakeFiles/app.dir/src/main.c.obj
+[14/98] Building C object zephyr/CMakeFiles/zephyr.dir/misc/generated/configs.c.obj
+[15/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/set.c.obj
+[16/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/dec.c.obj
+[17/98] Building C object zephyr/soc/soc/native/CMakeFiles/soc__native__inf_clock.dir/native_remap.c.obj
+[18/98] Building C object zephyr/soc/soc/native/CMakeFiles/soc__native__inf_clock.dir/native_tasks.c.obj
+[19/98] Building C object zephyr/arch/common/CMakeFiles/arch__common.dir/init.c.obj
+[20/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/libc/validate_libc.c.obj
+[21/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/cbprintf.c.obj
+[22/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/posix_core_nsi.c.obj
+[23/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/irq.c.obj
+[24/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/assert.c.obj
+[25/98] Generating linker_zephyr_pre0.cmd
+[26/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/cpuhalt.c.obj
+[27/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/cmdline.c.obj
+[28/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/misc.c.obj
+[29/98] Building C object zephyr/CMakeFiles/zephyr_pre0.dir/misc/empty_file.c.obj
+[30/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/thread_entry.c.obj
+[31/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/fatal.c.obj
+[32/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/getopt/getopt_common.c.obj
+[33/98] Building C object zephyr/CMakeFiles/zephyr.dir/subsys/tracing/tracing_none.c.obj
+[34/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/printk.c.obj
+[35/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/posix_arch_if.c.obj
+[36/98] Linking C static library app/libapp.a
+[37/98] Building C object zephyr/soc/soc/native/CMakeFiles/soc__native__inf_clock.dir/soc.c.obj
+[38/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/sem.c.obj
+[39/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/hex.c.obj
+[40/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/ring_buffer.c.obj
+[41/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/bitmask.c.obj
+[42/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/getopt/getopt.c.obj
+[43/98] Linking C static library zephyr/arch/common/libarch__common.a
+[44/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/cpu_wait.c.obj
+[45/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/nsi_if.c.obj
+[46/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/clock.c.obj
+[47/98] Building C object zephyr/drivers/timer/CMakeFiles/drivers__timer.dir/sys_clock_init.c.obj
+[48/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/version.c.obj
+[49/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/timeutil.c.obj
+[50/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/banner.c.obj
+[51/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/busy_wait.c.obj
+[52/98] Building C object zephyr/drivers/console/CMakeFiles/drivers__console.dir/posix_arch_console.c.obj
+[53/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/swap.c.obj
+[54/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/errno.c.obj
+[55/98] Building C object zephyr/boards/native/native_sim/CMakeFiles/boards__native__native_sim.dir/irq_handler.c.obj
+[56/98] Building C object zephyr/arch/arch/posix/core/CMakeFiles/arch__posix__core.dir/thread.c.obj
+[57/98] Linking C static library zephyr/soc/soc/native/libsoc__native__inf_clock.a
+[58/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/main_weak.c.obj
+[59/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/cbprintf_packaged.c.obj
+[60/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/rb.c.obj
+[61/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/heap/heap.c.obj
+[62/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/fatal.c.obj
+[63/98] Building C object zephyr/drivers/timer/CMakeFiles/drivers__timer.dir/native_sim_timer.c.obj
+[64/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/device.c.obj
+[65/98] Linking C static library zephyr/arch/arch/posix/core/libarch__posix__core.a
+[66/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/idle.c.obj
+[67/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/init.c.obj
+[68/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/os/cbprintf_complete.c.obj
+[69/98] Linking C static library zephyr/drivers/console/libdrivers__console.a
+[70/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/system_work_q.c.obj
+[71/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/mem_slab.c.obj
+[72/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/float.c.obj
+[73/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/kheap.c.obj
+[74/98] Linking C static library zephyr/boards/native/native_sim/libboards__native__native_sim.a
+[75/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/mailbox.c.obj
+[76/98] Linking C static library zephyr/drivers/timer/libdrivers__timer.a
+[77/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/sem.c.obj
+[78/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/spinlock_validate.c.obj
+[79/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/mutex.c.obj
+[80/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/dynamic_disabled.c.obj
+[81/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/stack.c.obj
+[82/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/condvar.c.obj
+[83/98] Building C object zephyr/CMakeFiles/zephyr.dir/lib/utils/bitarray.c.obj
+[84/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/msg_q.c.obj
+[85/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/timeslicing.c.obj
+[86/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/thread.c.obj
+[87/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/mempool.c.obj
+[88/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/timer.c.obj
+[89/98] Linking C static library zephyr/libzephyr.a
+[90/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/pipe.c.obj
+[91/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/queue.c.obj
+[92/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/timeout.c.obj
+[93/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/work.c.obj
+[94/98] Building C object zephyr/kernel/CMakeFiles/kernel.dir/sched.c.obj
+[95/98] Linking C static library zephyr/kernel/libkernel.a
+[96/98] Linking C executable zephyr/zephyr.elf
+Generating files from /home/h00969597/fwctx-v2-work/Z2/build/zephyr/zephyr.elf for board: native_sim/native
+[97/98] Building native simulator runner, and linking final executable
+[98/98] Running utility command for native_runner_executable

@@ -1,0 +1,71 @@
+{
+ "abstentions": [],
+ "accepted_fault_cards": [
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "condition_config_gated",
+   "faultness_status": "PASS",
+   "polarity": "positive",
+   "refutation_state": "NOT_REFUTED_WITHIN_SCOPE",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "validation_status": "refutation_executed"
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "init_submit_pairing",
+   "faultness_status": "PASS",
+   "polarity": "negative",
+   "refutation_state": "NOT_REFUTED_WITHIN_SCOPE",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "validation_status": "refutation_executed"
+  }
+ ],
+ "build_id": "BUILD-C1-PINNED",
+ "case_id": "C1",
+ "executor": "",
+ "freeze_id": "FRZ-C1-20260921T064343Z",
+ "lineage": "",
+ "refutations": [
+  {
+   "evidence_classification": [],
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "state": "NOT_REFUTED_WITHIN_SCOPE"
+  },
+  {
+   "evidence_classification": [],
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "state": "NOT_REFUTED_WITHIN_SCOPE"
+  }
+ ],
+ "rejected_candidates": [
+  {
+   "failed_roles": [
+    "R1_pattern_compiled_out",
+    "R3_harmful_consequence"
+   ],
+   "family": "condition_config_gated",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33"
+  },
+  {
+   "failed_roles": [
+    "A3_config_causal_cutoff"
+   ],
+   "family": "existence_absence",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+  }
+ ],
+ "round_dir": "D:\\github\\fw-context-mcp\\implementation\\scratch_i6_c1",
+ "semantic_coherence_violations": [],
+ "t2_scenarios": [],
+ "terminal_class": "e2e_positive",
+ "traversal": {
+  "fact_records": 19,
+  "faultness_gate_demoted": 2,
+  "faultness_gate_evaluated": 4,
+  "mechanism_hypotheses": 4,
+  "rulecards_accepted": 2,
+  "source_staged": true
+ }
+}

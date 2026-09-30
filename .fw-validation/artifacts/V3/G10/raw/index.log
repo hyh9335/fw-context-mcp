@@ -1,0 +1,40 @@
+exit: 0
+stdout:
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V3\G10\work  build=unknown
+Indexed. config_hash=a92dd2ec3a17c288…  db=C:\Users\h00969597\fwctx-validation-work\V3\G10\index\1e2f5136e7b34ec3ac0222dcee8b69c0\index.db
+
+stderr:
+18:25:31 INFO TUs to index: 1
+18:25:31 INFO vendor patterns for work: none
+18:25:31 INFO manifest.json (preliminary): 1 TUs, config_hash=a92dd2ec3a17
+18:25:31 INFO 
+18:25:31 INFO project=work project_id=1e2f5136e7b34ec3ac0222dcee8b69c0 config_hash=a92dd2ec3a17
+18:25:31 INFO 
+18:25:31 INFO content fill: 1 files from TU startup.c in 0.0s
+18:25:31 INFO [1/1] startup.c: 11 syms, 17 refs, 0.1s
+18:25:31 INFO linker script: none found for this build
+18:25:31 INFO Post-process: purge_missing (0.0s)
+18:25:31 INFO Post-process: fts5 (0.0s)
+18:25:31 INFO Post-process: orphans (0.0s)
+18:25:31 INFO Post-process: is_project (0.0s)
+18:25:31 INFO manifest.json incremental: 1 updated, 0 reused, 0 needs_reparse
+18:25:31 INFO manifest.json saved: 1 TUs, 0 distinct headers (0 references), config_hash=a92dd2ec3a17
+18:25:31 INFO Post-process: manifest (0.0s)
+18:25:31 INFO Post-process: generated_flag (0.0s)
+18:25:31 INFO Post-process: coverage_purge (0.0s)
+18:25:31 INFO Post-process: macros (0.0s)
+18:25:31 INFO Post-process: dispatch_edges (0.0s)
+18:25:31 INFO No virtual methods found — skipping override analysis
+18:25:31 INFO Post-process: overrides (0.0s)
+18:25:31 INFO Post-process: cross_tu_refs (0.0s)
+18:25:31 INFO Post-process: variant_switches (0.0s)
+18:25:31 INFO No call graph edges — skipping PageRank
+18:25:31 INFO Hotspot cache stored: 8 entries
+18:25:31 INFO Post-process: pagerank_hotspot (0.0s)
+18:25:31 INFO Post-process: verify_integrity (0.0s)
+18:25:31 INFO Post-process: finalize_manifest (0.0s)
+18:25:31 INFO Post-process: cleanup_old (0.0s)
+18:25:31 INFO Post-process: wal_checkpoint (0.0s)
+18:25:31 INFO 
+18:25:31 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=a92dd2ec3a17
+18:25:31 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V3\G10\work

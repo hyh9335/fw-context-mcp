@@ -1,0 +1,44 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_610cd411\\fixture",
+      "-DPOLL_INTERVAL=250",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_610cd411\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "6f9c71624f6051c53c798dd6999528572b57c644d8ab75f217e208eae6620cdd",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "10636a24368848af",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_610cd411",
+      "file": "fixture/poller.c",
+      "flags_hash": "55d0670fac04647556f49b40cea3153fa9fd393cb767a1d99849a3844205321d",
+      "headers": [
+        "fixture\\poll_cfg.h"
+      ],
+      "source_hash": "1d79daed0038116bea5730fc7ee3634767509b81b50618d1614f3a63e2ec1113"
+    },
+    {
+      "arg_set": 0,
+      "context_id": "c54b57a5df2bb1fb",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_610cd411",
+      "file": "fixture/main.c",
+      "flags_hash": "55d0670fac04647556f49b40cea3153fa9fd393cb767a1d99849a3844205321d",
+      "headers": [
+        "fixture\\poll_cfg.h"
+      ],
+      "source_hash": "6833c7d85e5056fecd9af1c01d10b196cc223c095e656e0104f0e59b2e379871"
+    }
+  ],
+  "headers": {
+    "fixture\\poll_cfg.h": {
+      "generated": false,
+      "hash": "74b9efa422bc46de4412856775ff8eaf903757da9bfec7eb8f9543027674971c"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_610cd411",
+  "vendor_patterns": []
+}

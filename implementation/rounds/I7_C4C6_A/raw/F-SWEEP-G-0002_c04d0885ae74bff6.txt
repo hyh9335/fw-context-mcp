@@ -1,0 +1,5 @@
+pattern='CONFIG_DISABLE_ENVIRON' glob=None truncated=False
+libs/libc/unistd/CMakeLists.txt:67: if(NOT CONFIG_DISABLE_ENVIRON)
+libs/libc/unistd/lib_getcwd.c:38: #ifndef CONFIG_DISABLE_ENVIRON
+libs/libc/unistd/lib_getcwd.c:138: #endif /* !CONFIG_DISABLE_ENVIRON */
+libs/libc/unistd/Make.defs:27: ifneq ($(CONFIG_DISABLE_ENVIRON),y)

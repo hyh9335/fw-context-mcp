@@ -1,0 +1,46 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5373a8b5\\fixture",
+      "-DGATE_ENABLE=1",
+      "-DTHRESH=64",
+      "-DOFFSET=8",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5373a8b5\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "f1bcf213b6ea66497923e485d50fd662b358c96495c3e55213c7e1e7c5a90202",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "b1d74413bc0cd7e3",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5373a8b5",
+      "file": "fixture/file1.c",
+      "flags_hash": "095049d80e9a784db9efcf25b821c951906c2036928aebad4c4e5af319363714",
+      "headers": [
+        "fixture\\gate_cfg.h"
+      ],
+      "source_hash": "0d9db95c28867a1fc5fe392678b491b24c4db9806bae6852cc4ae8d7f8f3c383"
+    },
+    {
+      "arg_set": 0,
+      "context_id": "f99187d9875d10a1",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5373a8b5",
+      "file": "fixture/file2.c",
+      "flags_hash": "095049d80e9a784db9efcf25b821c951906c2036928aebad4c4e5af319363714",
+      "headers": [
+        "fixture\\gate_cfg.h"
+      ],
+      "source_hash": "3d450443f88838ccfdb7532dfb6a0c405e5ed1eb99e86addedd28074687bc54c"
+    }
+  ],
+  "headers": {
+    "fixture\\gate_cfg.h": {
+      "generated": false,
+      "hash": "ff665d259a087d17771620238d899a2d2916c052c24c588231f89c761452aa3c"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5373a8b5",
+  "vendor_patterns": []
+}

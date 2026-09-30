@@ -1,0 +1,107 @@
+{
+ "demoted": 1,
+ "demotions": [
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "failed_roles": [
+    "A3_config_causal_cutoff"
+   ],
+   "family": "existence_absence",
+   "hypothesis_id": "H-C7-SYM-CONFIG-SENSOR-IRQ-PATH",
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH"
+  }
+ ],
+ "evaluated": 4,
+ "passed": 3,
+ "phase": "ROUND_FAULTNESS_GATE",
+ "results": [
+  {
+   "detail": "R1_pattern_compiled_out=OK; R2_config_symbol_guard=OK; R3_harmful_consequence=OK",
+   "family": "condition_config_gated",
+   "hypothesis_id": "H-C7-SENSOR-MODULE-19",
+   "passed": true,
+   "roles": {
+    "R1_pattern_compiled_out": {
+     "evidence": "untaken region overlapping [19,26] in 'fixture/sensor_module.c': {'fact_id': 'F-SWEEP-0001', 'region': [19, 26], 'condition': 'defined(CONFIG_SENSOR_IRQ_PATH)', 'branch_taken': [-1]}",
+     "satisfied": true
+    },
+    "R2_config_symbol_guard": {
+     "evidence": "guard symbols of region: ['CONFIG_SENSOR_IRQ_PATH']",
+     "satisfied": true
+    },
+    "R3_harmful_consequence": {
+     "evidence": "{\"absence_probe_file\": \"fixture/sensor_module.c\", \"site\": \"fixture/sensor_module.c:None\", \"symbol\": \"sensor_submit\", \"via\": \"definition_cutoff\"}",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C7-SENSOR-MODULE-19",
+   "target_tag": "sensor_module-19"
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=OK",
+   "family": "existence_absence",
+   "hypothesis_id": "H-C7-API-SENSOR-SUBMIT",
+   "passed": true,
+   "roles": {
+    "A1_absence_in_pinned_build": {
+     "evidence": "negative facts for 'sensor_submit': F-0005",
+     "satisfied": true
+    },
+    "A2_definition_file_located": {
+     "evidence": "probe file 'fixture/sensor_module.c' in frozen snapshot, coverage fact=True",
+     "satisfied": true
+    },
+    "A3_config_causal_cutoff": {
+     "evidence": "config-caused compiled-out condition fact on 'fixture/sensor_module.c': {'fact_id': 'F-SWEEP-0001', 'condition': 'defined(CONFIG_SENSOR_IRQ_PATH)'}; subject is itself a guard symbol=False (a missing CONFIG_* macro is the cause, not a consequence)",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C7-API-SENSOR-SUBMIT",
+   "target_tag": "api-sensor_submit"
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "family": "existence_absence",
+   "hypothesis_id": "H-C7-SYM-CONFIG-SENSOR-IRQ-PATH",
+   "passed": false,
+   "roles": {
+    "A1_absence_in_pinned_build": {
+     "evidence": "negative facts for 'CONFIG_SENSOR_IRQ_PATH': F-0008",
+     "satisfied": true
+    },
+    "A2_definition_file_located": {
+     "evidence": "probe file 'fixture/sensor_module.c' in frozen snapshot, coverage fact=True",
+     "satisfied": true
+    },
+    "A3_config_causal_cutoff": {
+     "evidence": "config-caused compiled-out condition fact on 'fixture/sensor_module.c': {'fact_id': 'F-SWEEP-0001', 'condition': 'defined(CONFIG_SENSOR_IRQ_PATH)'}; subject is itself a guard symbol=True (a missing CONFIG_* macro is the cause, not a consequence)",
+     "satisfied": false
+    }
+   },
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH",
+   "target_tag": "sym-CONFIG_SENSOR_IRQ_PATH"
+  },
+  {
+   "detail": "P1_config_mismatch_condition=OK; P2_pairing_definition=OK; P3_pairing_call_flow_broken=OK",
+   "family": "init_submit_pairing",
+   "hypothesis_id": "H-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR",
+   "passed": true,
+   "roles": {
+    "P1_config_mismatch_condition": {
+     "evidence": "condition fact for 'fixture/sensor_module.c': F-SWEEP-0001",
+     "satisfied": true
+    },
+    "P2_pairing_definition": {
+     "evidence": "definition-window facts: F-0003, F-0012, F-COV-0006, F-COV-0009",
+     "satisfied": true
+    },
+    "P3_pairing_call_flow_broken": {
+     "evidence": "negative call-flow fact for 'work_submit': F-0013",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR",
+   "target_tag": "sym-CONFIG_SENSOR_IRQ_PATH-pair"
+  }
+ ]
+}

@@ -1,0 +1,94 @@
+{
+  "library_version": "wave1-families-1",
+  "wave": 1,
+  "families": {
+    "condition_config_gated": {
+      "family_id": "condition_config_gated",
+      "wave": 1,
+      "goal_mapping": "R3a",
+      "runtime_overclaim_bars": [
+        "runtime queue-exhaustion claims",
+        "any claim about runtime occurrence of the guarded behavior"
+      ],
+      "query_templates": [
+        {"template_id": "ccg-1", "request": "CONDITION_CHAIN", "k1_calls": [
+          {"call": "query_conditional_skeleton", "params": {"file_path": "{file}"}},
+          {"call": "query_condition_context", "params": {"file_path": "{file}", "line": "{line}"}},
+          {"call": "query_definition_window", "params": {"file_path": "{file}", "start_line": "{start_line}", "end_line": "{end_line}"}}
+        ], "expected_fact_kinds": ["condition", "definition"]},
+        {"template_id": "ccg-2", "request": "RAW_TEXT_CROSSCHECK", "k1_calls": [
+          {"call": "submit_independent_grep", "params": {"pattern": "{condition_text_head}", "root": "{root}"}}
+        ], "expected_fact_kinds": ["condition"]}
+      ],
+      "required_fact_kinds": ["condition", "definition"],
+      "missing_evidence_prompts": {
+        "condition": "fw_context_explain_condition",
+        "definition": "fw_context_read_file",
+        "config": "build_manifest_diff",
+        "absence": "independent_grep",
+        "call_flow": "fw_context_find_callers"
+      }
+    },
+    "init_submit_pairing": {
+      "family_id": "init_submit_pairing",
+      "wave": 1,
+      "goal_mapping": "R6 (C1 class)",
+      "runtime_overclaim_bars": [
+        "runtime queue-exhaustion claims",
+        "submission was lost at runtime",
+        "any claim that the work item never executes at runtime"
+      ],
+      "query_templates": [
+        {"template_id": "isp-1", "request": "CONDITION_CHAIN", "k1_calls": [
+          {"call": "query_condition_context", "params": {"file_path": "{file}", "line": "{line}"}},
+          {"call": "query_definition_window", "params": {"file_path": "{file}", "start_line": "{start_line}", "end_line": "{end_line}"}}
+        ], "expected_fact_kinds": ["condition", "definition"]},
+        {"template_id": "isp-2", "request": "CALL_FLOW", "k1_calls": [
+          {"call": "query_call_flow_direct", "params": {"name": "{symbol}", "direction": "callers"}}
+        ], "expected_fact_kinds": ["call_flow"]}
+      ],
+      "required_fact_kinds": ["condition", "definition", "call_flow"],
+      "missing_evidence_prompts": {
+        "condition": "fw_context_explain_condition",
+        "definition": "fw_context_read_file",
+        "call_flow": "fw_context_find_callers"
+      }
+    },
+    "existence_absence": {
+      "family_id": "existence_absence",
+      "wave": 1,
+      "goal_mapping": "R4",
+      "query_templates": [
+        {"template_id": "ea-1", "request": "SYMBOL_EXISTENCE", "k1_calls": [
+          {"call": "query_exact_symbol", "params": {"name": "{symbol}"}}
+        ], "expected_fact_kinds": ["absence", "definition"]},
+        {"template_id": "ea-2", "request": "RAW_TEXT_CROSSCHECK", "k1_calls": [
+          {"call": "submit_independent_grep", "params": {"pattern": "{symbol_definition_pattern}", "root": "{root}"}}
+        ], "expected_fact_kinds": ["absence"]}
+      ],
+      "required_fact_kinds": ["absence"],
+      "missing_evidence_prompts": {
+        "absence": "independent_grep",
+        "definition": "fw_context_lookup_symbol"
+      }
+    },
+    "direct_flow_presence": {
+      "family_id": "direct_flow_presence",
+      "wave": 1,
+      "goal_mapping": "R1",
+      "query_templates": [
+        {"template_id": "dfp-1", "request": "CALL_FLOW", "k1_calls": [
+          {"call": "query_call_flow_direct", "params": {"name": "{symbol}", "direction": "callers"}}
+        ], "expected_fact_kinds": ["call_flow"]},
+        {"template_id": "dfp-2", "request": "SYMBOL_EXISTENCE", "k1_calls": [
+          {"call": "query_exact_symbol", "params": {"name": "{symbol}"}}
+        ], "expected_fact_kinds": ["definition"]}
+      ],
+      "required_fact_kinds": ["call_flow", "definition"],
+      "missing_evidence_prompts": {
+        "call_flow": "fw_context_find_callers",
+        "definition": "fw_context_lookup_symbol"
+      }
+    }
+  }
+}

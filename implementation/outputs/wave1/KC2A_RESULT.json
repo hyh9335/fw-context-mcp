@@ -1,0 +1,126 @@
+{
+ "acceptance_impact": "NONE \u2014 diagnostic only",
+ "agreement": 1.0,
+ "correct": 12,
+ "incorrect": [],
+ "interpretation": "All 12 units agree with the custodian-held case truths: 7 promoted cards carry PASS s5 verdicts with zero overclaims, the C6 twin produced no false absence, and the C5 T2-only attempt was quarantined without a degraded promotion. Under the recorded underpowered condition this is a consistency signal only.",
+ "n": 12,
+ "phase": "I10_KC2A_DIAGNOSTIC",
+ "prereg_deviation_receipt": {
+  "actual": {
+   "n": 12,
+   "pool": "wave-1 corpus (same case-rounds as acceptance)"
+  },
+  "consequence": "UNDERPOWERED \u2014 results are agreement diagnostics, not rate estimates",
+  "deviation": "reduced N and pooled pool",
+  "gating": "KC-2A never gates acceptance (frozen design constraint)",
+  "preregistered": {
+   "n_min": 20,
+   "pool": "independent held-out corpus"
+  },
+  "reason": "wave-1 budget: no independent held-out corpus was provisioned; all corpus went into acceptance case-rounds"
+ },
+ "units": [
+  {
+   "correct": true,
+   "expected": 1,
+   "kind": "absence_count",
+   "observed": 1,
+   "unit": "C4-twin:absence-count"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C4-twin:RC-I7-A-LIB-GETCWD-38"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C4-twin:RC-I7-A-API-GETCWD"
+  },
+  {
+   "correct": true,
+   "expected": 0,
+   "kind": "absence_count",
+   "observed": 0,
+   "unit": "C6-twin:no-false-absence"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C6-twin:RC-I7-B-LIB-GETCWD-107"
+  },
+  {
+   "correct": true,
+   "kind": "abstention",
+   "note": "abstention with no missing-evidence fabrication",
+   "unit": "C6-twin:abstention"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C1:RC-C1-ACCEL-TRIGGER-33"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C1:RC-C1-ACCEL-TRIGGER-47"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C1:RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR"
+  },
+  {
+   "correct": true,
+   "kind": "card",
+   "overclaims": [],
+   "s5_verdict": "PASS",
+   "unit": "C1:RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+  },
+  {
+   "correct": true,
+   "expected": [
+    "RC-C1-ACCEL-TRIGGER-33",
+    "RC-C1-ACCEL-TRIGGER-47",
+    "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+    "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR"
+   ],
+   "kind": "card_set",
+   "observed": [
+    "RC-C1-ACCEL-TRIGGER-33",
+    "RC-C1-ACCEL-TRIGGER-47",
+    "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+    "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+   ],
+   "unit": "C1:promoted-card-set"
+  },
+  {
+   "correct": true,
+   "expected": {
+    "no_degraded_promotion": true,
+    "refusal_is_first_class": true,
+    "same_mechanism_passes_with_second_surface": true
+   },
+   "kind": "quarantine",
+   "observed": {
+    "no_degraded_promotion": true,
+    "refusal_is_first_class": true,
+    "same_mechanism_passes_with_second_surface": true
+   },
+   "unit": "C5-tripwire:t2-quarantine"
+  }
+ ]
+}

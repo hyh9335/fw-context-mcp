@@ -1,0 +1,477 @@
+{
+  "serverInfo": {
+    "name": "fw-context",
+    "version": "1.30.0"
+  },
+  "find_indirect_targets::{\"name\": \"global_cb\"}": {
+    "tool": "find_indirect_targets",
+    "arguments": {
+      "name": "global_cb"
+    },
+    "elapsed_s": 0.044,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"rhs_name\": \"plus2\",\n  \"rhs_qname\": \"plus2\",\n  \"fn_ptr_type\": \"int (*)(int)\",\n  \"method\": \"var_init\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 7,\n  \"assign_caller\": \"<file scope>\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 9,\n  \"call_expr_text\": \"global_cb\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "rhs_name": "plus2",
+              "rhs_qname": "plus2",
+              "fn_ptr_type": "int (*)(int)",
+              "method": "var_init",
+              "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "assign_line": 7,
+              "assign_caller": "<file scope>",
+              "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "call_line": 9,
+              "call_expr_text": "global_cb",
+              "certainty": "exact",
+              "resolution_kind": "usr_join",
+              "order_index": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"rhs_name\": \"plus2\",\n  \"rhs_qname\": \"plus2\",\n  \"fn_ptr_type\": \"int (*)(int)\",\n  \"method\": \"var_init\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 7,\n  \"assign_caller\": \"<file scope>\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 9,\n  \"call_expr_text\": \"global_cb\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}",
+    "json": {
+      "rhs_name": "plus2",
+      "rhs_qname": "plus2",
+      "fn_ptr_type": "int (*)(int)",
+      "method": "var_init",
+      "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "assign_line": 7,
+      "assign_caller": "<file scope>",
+      "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "call_line": 9,
+      "call_expr_text": "global_cb",
+      "certainty": "exact",
+      "resolution_kind": "usr_join",
+      "order_index": 0
+    }
+  },
+  "find_indirect_targets::{\"name\": \"fn\"}": {
+    "tool": "find_indirect_targets",
+    "arguments": {
+      "name": "fn"
+    },
+    "elapsed_s": 0.004,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"rhs_name\": \"plus1\",\n  \"rhs_qname\": \"plus1\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"init_list\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 6,\n  \"assign_caller\": \"<file scope>\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 10,\n  \"call_expr_text\": \"table . fn\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "rhs_name": "plus1",
+              "rhs_qname": "plus1",
+              "fn_ptr_type": "cb_t",
+              "method": "init_list",
+              "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "assign_line": 6,
+              "assign_caller": "<file scope>",
+              "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "call_line": 10,
+              "call_expr_text": "table . fn",
+              "certainty": "exact",
+              "resolution_kind": "usr_join",
+              "order_index": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"rhs_name\": \"plus1\",\n  \"rhs_qname\": \"plus1\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"init_list\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 6,\n  \"assign_caller\": \"<file scope>\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 10,\n  \"call_expr_text\": \"table . fn\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}",
+    "json": {
+      "rhs_name": "plus1",
+      "rhs_qname": "plus1",
+      "fn_ptr_type": "cb_t",
+      "method": "init_list",
+      "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "assign_line": 6,
+      "assign_caller": "<file scope>",
+      "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "call_line": 10,
+      "call_expr_text": "table . fn",
+      "certainty": "exact",
+      "resolution_kind": "usr_join",
+      "order_index": 0
+    }
+  },
+  "find_indirect_targets::{\"name\": \"registered\"}": {
+    "tool": "find_indirect_targets",
+    "arguments": {
+      "name": "registered"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"rhs_name\": \"cb\",\n  \"rhs_qname\": \"cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"assignment\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 13,\n  \"assign_caller\": \"register_cb\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 14,\n  \"call_expr_text\": \"registered\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "rhs_name": "cb",
+              "rhs_qname": "cb",
+              "fn_ptr_type": "cb_t",
+              "method": "assignment",
+              "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "assign_line": 13,
+              "assign_caller": "register_cb",
+              "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "call_line": 14,
+              "call_expr_text": "registered",
+              "certainty": "exact",
+              "resolution_kind": "usr_join",
+              "order_index": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"rhs_name\": \"cb\",\n  \"rhs_qname\": \"cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"assignment\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 13,\n  \"assign_caller\": \"register_cb\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 14,\n  \"call_expr_text\": \"registered\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}",
+    "json": {
+      "rhs_name": "cb",
+      "rhs_qname": "cb",
+      "fn_ptr_type": "cb_t",
+      "method": "assignment",
+      "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "assign_line": 13,
+      "assign_caller": "register_cb",
+      "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "call_line": 14,
+      "call_expr_text": "registered",
+      "certainty": "exact",
+      "resolution_kind": "usr_join",
+      "order_index": 0
+    }
+  },
+  "find_indirect_targets::{\"name\": \"cb\"}": {
+    "tool": "find_indirect_targets",
+    "arguments": {
+      "name": "cb"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"rhs_name\": \"cb\",\n  \"rhs_qname\": \"cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"assignment\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 13,\n  \"assign_caller\": \"register_cb\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 14,\n  \"call_expr_text\": \"registered\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "rhs_name": "cb",
+              "rhs_qname": "cb",
+              "fn_ptr_type": "cb_t",
+              "method": "assignment",
+              "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "assign_line": 13,
+              "assign_caller": "register_cb",
+              "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "call_line": 14,
+              "call_expr_text": "registered",
+              "certainty": "exact",
+              "resolution_kind": "usr_join",
+              "order_index": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"rhs_name\": \"cb\",\n  \"rhs_qname\": \"cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"method\": \"assignment\",\n  \"assign_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"assign_line\": 13,\n  \"assign_caller\": \"register_cb\",\n  \"call_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"call_line\": 14,\n  \"call_expr_text\": \"registered\",\n  \"certainty\": \"exact\",\n  \"resolution_kind\": \"usr_join\",\n  \"order_index\": 0\n}",
+    "json": {
+      "rhs_name": "cb",
+      "rhs_qname": "cb",
+      "fn_ptr_type": "cb_t",
+      "method": "assignment",
+      "assign_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "assign_line": 13,
+      "assign_caller": "register_cb",
+      "call_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "call_line": 14,
+      "call_expr_text": "registered",
+      "certainty": "exact",
+      "resolution_kind": "usr_join",
+      "order_index": 0
+    }
+  },
+  "find_indirect_call_sites::{\"name\": \"global_cb\"}": {
+    "tool": "find_indirect_call_sites",
+    "arguments": {
+      "name": "global_cb"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 9,\n  \"expr_text\": \"global_cb\",\n  \"target_usr\": \"c:callbacks.c@global_cb\",\n  \"target_name\": \"global_cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"call_global\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 9,
+              "expr_text": "global_cb",
+              "target_usr": "c:callbacks.c@global_cb",
+              "target_name": "global_cb",
+              "fn_ptr_type": "cb_t",
+              "caller": "call_global",
+              "caller_kind": "function",
+              "certainty": "exact",
+              "evidence": "ast"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 9,\n  \"expr_text\": \"global_cb\",\n  \"target_usr\": \"c:callbacks.c@global_cb\",\n  \"target_name\": \"global_cb\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"call_global\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}",
+    "json": {
+      "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "line": 9,
+      "expr_text": "global_cb",
+      "target_usr": "c:callbacks.c@global_cb",
+      "target_name": "global_cb",
+      "fn_ptr_type": "cb_t",
+      "caller": "call_global",
+      "caller_kind": "function",
+      "certainty": "exact",
+      "evidence": "ast"
+    }
+  },
+  "find_indirect_call_sites::{\"name\": \"fn\"}": {
+    "tool": "find_indirect_call_sites",
+    "arguments": {
+      "name": "fn"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 10,\n  \"expr_text\": \"table . fn\",\n  \"target_usr\": \"c:@S@ops@FI@fn\",\n  \"target_name\": \"fn\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"call_ops\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 10,
+              "expr_text": "table . fn",
+              "target_usr": "c:@S@ops@FI@fn",
+              "target_name": "fn",
+              "fn_ptr_type": "cb_t",
+              "caller": "call_ops",
+              "caller_kind": "function",
+              "certainty": "exact",
+              "evidence": "ast"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 10,\n  \"expr_text\": \"table . fn\",\n  \"target_usr\": \"c:@S@ops@FI@fn\",\n  \"target_name\": \"fn\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"call_ops\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}",
+    "json": {
+      "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "line": 10,
+      "expr_text": "table . fn",
+      "target_usr": "c:@S@ops@FI@fn",
+      "target_name": "fn",
+      "fn_ptr_type": "cb_t",
+      "caller": "call_ops",
+      "caller_kind": "function",
+      "certainty": "exact",
+      "evidence": "ast"
+    }
+  },
+  "find_indirect_call_sites::{\"name\": \"registered\"}": {
+    "tool": "find_indirect_call_sites",
+    "arguments": {
+      "name": "registered"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 14,\n  \"expr_text\": \"registered\",\n  \"target_usr\": \"c:callbacks.c@registered\",\n  \"target_name\": \"registered\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"invoke_registered\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 14,
+              "expr_text": "registered",
+              "target_usr": "c:callbacks.c@registered",
+              "target_name": "registered",
+              "fn_ptr_type": "cb_t",
+              "caller": "invoke_registered",
+              "caller_kind": "function",
+              "certainty": "exact",
+              "evidence": "ast"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 14,\n  \"expr_text\": \"registered\",\n  \"target_usr\": \"c:callbacks.c@registered\",\n  \"target_name\": \"registered\",\n  \"fn_ptr_type\": \"cb_t\",\n  \"caller\": \"invoke_registered\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\",\n  \"evidence\": \"ast\"\n}",
+    "json": {
+      "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+      "line": 14,
+      "expr_text": "registered",
+      "target_usr": "c:callbacks.c@registered",
+      "target_name": "registered",
+      "fn_ptr_type": "cb_t",
+      "caller": "invoke_registered",
+      "caller_kind": "function",
+      "certainty": "exact",
+      "evidence": "ast"
+    }
+  },
+  "find_callers::{\"name\": \"plus1\"}": {
+    "tool": "find_callers",
+    "arguments": {
+      "name": "plus1"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 9,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 6,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"<file scope>\",\n  \"caller_kind\": null,\n  \"certainty\": \"exact\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 16,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"setup\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"unresolved_count\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 6,
+              "ref_kind": "indirect",
+              "caller": "<file scope>",
+              "caller_kind": null,
+              "certainty": "exact"
+            },
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 16,
+              "ref_kind": "indirect",
+              "caller": "setup",
+              "caller_kind": "function",
+              "certainty": "exact"
+            },
+            {
+              "unresolved_count": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 6,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"<file scope>\",\n  \"caller_kind\": null,\n  \"certainty\": \"exact\"\n}\n{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 16,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"setup\",\n  \"caller_kind\": \"function\",\n  \"certainty\": \"exact\"\n}\n{\n  \"unresolved_count\": 0\n}",
+    "json": null
+  },
+  "find_callers::{\"name\": \"plus2\"}": {
+    "tool": "find_callers",
+    "arguments": {
+      "name": "plus2"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 10,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 7,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"<file scope>\",\n  \"caller_kind\": null,\n  \"certainty\": \"exact\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"unresolved_count\": 0\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c",
+              "line": 7,
+              "ref_kind": "indirect",
+              "caller": "<file scope>",
+              "caller_kind": null,
+              "certainty": "exact"
+            },
+            {
+              "unresolved_count": 0
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G06/work/callbacks.c\",\n  \"line\": 7,\n  \"ref_kind\": \"indirect\",\n  \"caller\": \"<file scope>\",\n  \"caller_kind\": null,\n  \"certainty\": \"exact\"\n}\n{\n  \"unresolved_count\": 0\n}",
+    "json": null
+  },
+  "server_exit_code": 0
+}

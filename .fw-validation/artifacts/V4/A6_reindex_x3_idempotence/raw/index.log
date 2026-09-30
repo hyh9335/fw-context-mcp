@@ -1,0 +1,42 @@
+exit: 0
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A6_reindex_x3_idempotence\work  build=unknown
+Indexed. config_hash=baa4927d701bfc1c…  db=C:\Users\h00969597\fwctx-validation-work\V4\A6_reindex_x3_idempotence\index\0ec5fcad754f4d66bc929bc1f7f1959e\index.db
+
+18:36:16 INFO TUs to index: 2
+18:36:16 INFO vendor patterns for work: none
+18:36:16 INFO manifest.json (preliminary): 2 TUs, config_hash=baa4927d701b
+18:36:16 INFO 
+18:36:16 INFO project=work project_id=0ec5fcad754f4d66bc929bc1f7f1959e config_hash=baa4927d701b
+18:36:17 INFO 
+18:36:17 INFO content fill: 2 files from TU master.c in 0.0s
+18:36:17 INFO [1/2] master.c: 3 syms, 4 refs, 0.1s
+18:36:17 INFO content fill: 2 files from TU slave.c in 0.0s
+18:36:17 INFO [2/2] slave.c: 3 syms, 4 refs, 0.0s
+18:36:17 INFO linker script: none found for this build
+18:36:17 INFO Post-process: purge_missing (0.0s)
+18:36:17 INFO Post-process: fts5 (0.0s)
+18:36:17 INFO Post-process: orphans (0.0s)
+18:36:17 INFO Post-process: is_project (0.0s)
+18:36:17 INFO Building manifest.json from 2 pre-collected TU headers...
+18:36:17 INFO manifest.json: 2 updated (from tu_headers), 0 reused, 0 needs_reparse
+18:36:17 INFO manifest.json saved: 2 TUs, 1 distinct headers (2 references), config_hash=baa4927d701b
+18:36:17 INFO Post-process: manifest (0.0s)
+18:36:17 INFO Post-process: generated_flag (0.0s)
+18:36:17 INFO Post-process: coverage_purge (0.0s)
+18:36:17 INFO Post-process: macros (0.1s)
+18:36:17 INFO Post-process: dispatch_edges (0.0s)
+18:36:17 INFO No virtual methods found — skipping override analysis
+18:36:17 INFO Post-process: overrides (0.0s)
+18:36:17 INFO Post-process: cross_tu_refs (0.0s)
+18:36:17 INFO Post-process: variant_switches (0.0s)
+18:36:17 INFO PageRank converged after 3 iterations
+18:36:17 INFO PageRank stored: 4 nodes
+18:36:17 INFO Hotspot cache stored: 2 entries
+18:36:17 INFO Post-process: pagerank_hotspot (0.0s)
+18:36:17 INFO Post-process: verify_integrity (0.0s)
+18:36:17 INFO Post-process: finalize_manifest (0.0s)
+18:36:17 INFO Post-process: cleanup_old (0.0s)
+18:36:17 INFO Post-process: wal_checkpoint (0.0s)
+18:36:17 INFO 
+18:36:17 INFO 2 updated, 0 unchanged, 0 skipped  config_hash=baa4927d701b
+18:36:17 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V4\A6_reindex_x3_idempotence\work

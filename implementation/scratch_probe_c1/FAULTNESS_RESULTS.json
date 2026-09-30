@@ -1,0 +1,117 @@
+{
+ "demoted": 2,
+ "demotions": [
+  {
+   "detail": "C1_pattern_compiled_out=FAIL; C2_config_symbol_guard=OK; C3_harmful_consequence=FAIL",
+   "failed_roles": [
+    "C1_pattern_compiled_out",
+    "C3_harmful_consequence"
+   ],
+   "family": "condition_config_gated",
+   "hypothesis_id": "H-C1-ACCEL-TRIGGER-33",
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33"
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "failed_roles": [
+    "A3_config_causal_cutoff"
+   ],
+   "family": "existence_absence",
+   "hypothesis_id": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD"
+  }
+ ],
+ "evaluated": 4,
+ "passed": 2,
+ "phase": "ROUND_FAULTNESS_GATE",
+ "results": [
+  {
+   "detail": "C1_pattern_compiled_out=FAIL; C2_config_symbol_guard=OK; C3_harmful_consequence=FAIL",
+   "family": "condition_config_gated",
+   "hypothesis_id": "H-C1-ACCEL-TRIGGER-33",
+   "passed": false,
+   "roles": {
+    "C1_pattern_compiled_out": {
+     "evidence": "untaken region overlapping [33,35] in 'fixture/accel_trigger.c': None",
+     "satisfied": false
+    },
+    "C2_config_symbol_guard": {
+     "evidence": "guard symbols of region: ['CONFIG_ACCEL_TRIGGER_GLOBAL_THREAD']",
+     "satisfied": true
+    },
+    "C3_harmful_consequence": {
+     "evidence": "{}",
+     "satisfied": false
+    }
+   },
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-33",
+   "target_tag": "accel_trigger-33"
+  },
+  {
+   "detail": "C1_pattern_compiled_out=OK; C2_config_symbol_guard=OK; C3_harmful_consequence=OK",
+   "family": "condition_config_gated",
+   "hypothesis_id": "H-C1-ACCEL-TRIGGER-47",
+   "passed": true,
+   "roles": {
+    "C1_pattern_compiled_out": {
+     "evidence": "untaken region overlapping [47,49] in 'fixture/accel_trigger.c': {'fact_id': 'F-SWEEP-0002', 'region': [47, 49], 'condition': 'defined(CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD)', 'branch_taken': [-1]}",
+     "satisfied": true
+    },
+    "C2_config_symbol_guard": {
+     "evidence": "guard symbols of region: ['CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD']",
+     "satisfied": true
+    },
+    "C3_harmful_consequence": {
+     "evidence": "{\"absence_probe_file\": \"fixture/accel_trigger.c\", \"site\": \"fixture/accel_trigger.c:48\", \"symbol\": \"k_work_submit\", \"via\": \"pairing_cutoff\"}",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C1-ACCEL-TRIGGER-47",
+   "target_tag": "accel_trigger-47"
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "family": "existence_absence",
+   "hypothesis_id": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "passed": false,
+   "roles": {
+    "A1_absence_in_pinned_build": {
+     "evidence": "negative facts for 'CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD': F-0009",
+     "satisfied": true
+    },
+    "A2_definition_file_located": {
+     "evidence": "probe file 'fixture/accel_trigger.c' in frozen snapshot, coverage fact=True",
+     "satisfied": true
+    },
+    "A3_config_causal_cutoff": {
+     "evidence": "config-caused compiled-out condition fact on 'fixture/accel_trigger.c': {'fact_id': 'F-SWEEP-0002', 'condition': 'defined(CONFIG_ACCEL_TRIGGER_GLOBAL_THREAD)'}; subject is itself a guard symbol=True (a missing CONFIG_* macro is the cause, not a consequence)",
+     "satisfied": false
+    }
+   },
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD",
+   "target_tag": "sym-CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD"
+  },
+  {
+   "detail": "P1_config_mismatch_condition=OK; P2_pairing_definition=OK; P3_pairing_call_flow_broken=OK",
+   "family": "init_submit_pairing",
+   "hypothesis_id": "H-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "passed": true,
+   "roles": {
+    "P1_config_mismatch_condition": {
+     "evidence": "condition fact for 'fixture/accel_trigger.c': F-SWEEP-0002",
+     "satisfied": true
+    },
+    "P2_pairing_definition": {
+     "evidence": "definition-window facts: F-0003, F-0007, F-0013, F-COV-0010",
+     "satisfied": true
+    },
+    "P3_pairing_call_flow_broken": {
+     "evidence": "negative call-flow fact for 'k_work_submit': F-0014",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C1-SYM-CONFIG-ACCEL-TRIGGER-GLOBAL-THREAAD-PAIR",
+   "target_tag": "sym-CONFIG_ACCEL_TRIGGER_GLOBAL_THREAAD-pair"
+  }
+ ]
+}

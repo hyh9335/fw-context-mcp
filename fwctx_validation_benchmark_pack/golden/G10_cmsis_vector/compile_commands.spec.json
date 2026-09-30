@@ -1,0 +1,13 @@
+[
+  {
+    "file": "startup.c",
+    "arguments": [
+      "clang",
+      "-c",
+      "${ROOT}/startup.c",
+      "-o",
+      "startup.o"
+    ],
+    "output": "startup.o"
+  }
+]

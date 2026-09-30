@@ -1,0 +1,13 @@
+pattern='POLL_INTERVAL' glob=None truncated=False
+.fw-context/build/compile_commands.json:8:    "-DPOLL_INTERVAL=250",
+.fw-context/build/compile_commands.json:20:    "-DPOLL_INTERVAL=250",
+compile_commands.json:8:    "-DPOLL_INTERVAL=250",
+compile_commands.json:20:    "-DPOLL_INTERVAL=250",
+fixture/Make.defs:2: # -DPOLL_INTERVAL=250 overrides the stored header default 100 (poll_cfg.h);
+fixture/Make.defs:4: CFLAGS += -DPOLL_INTERVAL=250
+fixture/poll_cfg.h:2:  * POLL_INTERVAL: stored default 100; the build passes -DPOLL_INTERVAL=250
+fixture/poll_cfg.h:10: #ifndef POLL_INTERVAL
+fixture/poll_cfg.h:11: #define POLL_INTERVAL 100
+fixture/poller.c:2:  * Two #if sites: the POLL_INTERVAL conflict site and the CTRL_INTERVAL
+fixture/poller.c:12: #if POLL_INTERVAL > 200
+fixture/poller.c:13: 	s_interval = POLL_INTERVAL / 10;

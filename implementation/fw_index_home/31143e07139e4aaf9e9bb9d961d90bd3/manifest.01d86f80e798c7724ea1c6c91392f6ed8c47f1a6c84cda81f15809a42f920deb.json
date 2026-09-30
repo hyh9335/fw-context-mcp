@@ -1,0 +1,33 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b60412c6\\fixture\\variant_b",
+      "-DVARIANT_TAG=3",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b60412c6\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "01d86f80e798c7724ea1c6c91392f6ed8c47f1a6c84cda81f15809a42f920deb",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "f03be39454c9dfdb",
+      "directory": ".",
+      "file": "fixture/shared/mode_select.c",
+      "flags_hash": "4549e30948120f3dcc977b9a40da47b766440d7a8ea2300de85ac02d442713c5",
+      "headers": [
+        "fixture\\variant_b\\feat_cfg.h"
+      ],
+      "source_hash": "2aa6defe450f57edef51c738f31f5eaa648b63e4281e9e51b110db73fa55d996"
+    }
+  ],
+  "headers": {
+    "fixture\\variant_b\\feat_cfg.h": {
+      "generated": false,
+      "hash": "8dcafb7971c0e734b6c2d536d10afc6e8c26411846a7bc320423f11b81bf437e"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b60412c6",
+  "vendor_patterns": []
+}

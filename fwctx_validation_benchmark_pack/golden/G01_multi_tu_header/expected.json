@@ -1,0 +1,21 @@
+{
+  "contexts": 2,
+  "master": {
+    "role_value": 11,
+    "feature_value": 100,
+    "master_entry": 111
+  },
+  "slave": {
+    "role_value": 22,
+    "feature_value": 200,
+    "slave_entry": 222
+  },
+  "mutation": {
+    "replace": [
+      "return 11; -> return 111;",
+      "return 22; -> return 222;"
+    ],
+    "affected_contexts": 2
+  },
+  "invariant": "incremental_after_header_mutation == clean_full_after_same_mutation"
+}

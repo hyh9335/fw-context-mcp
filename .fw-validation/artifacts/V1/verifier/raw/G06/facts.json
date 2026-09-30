@@ -1,0 +1,73 @@
+{
+  "facts": {
+    "targets_global_cb": [
+      "plus2"
+    ],
+    "targets_fn": [
+      "plus1"
+    ],
+    "targets_registered": [
+      "cb"
+    ],
+    "targets_cb": [
+      "cb"
+    ],
+    "registered_rows": [
+      {
+        "rhs_name": "cb",
+        "rhs_qname": "cb",
+        "fn_ptr_type": "cb_t",
+        "method": "assignment",
+        "assign_file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G06\\work\\callbacks.c",
+        "assign_line": 13,
+        "assign_caller": "register_cb",
+        "call_file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G06\\work\\callbacks.c",
+        "call_line": 14,
+        "call_expr_text": "registered",
+        "certainty": "exact",
+        "resolution_kind": "usr_join",
+        "order_index": 0
+      }
+    ],
+    "sites_global_cb": [
+      "call_global"
+    ],
+    "sites_fn": [
+      "call_ops"
+    ],
+    "sites_registered": [
+      "invoke_registered"
+    ],
+    "callers_plus1": [
+      [
+        "<file scope>",
+        "indirect"
+      ],
+      [
+        "setup",
+        "indirect"
+      ]
+    ],
+    "callers_plus2": [
+      [
+        "<file scope>",
+        "indirect"
+      ]
+    ]
+  },
+  "checks": {
+    "global_cb_targets_plus2": true,
+    "fn_targets_plus1": true,
+    "registered_never_plus1": true,
+    "registered_param_cb_visible": true,
+    "site_call_global": true,
+    "site_call_ops": true,
+    "site_invoke_registered": true,
+    "plus1_indirect_reachable": true,
+    "plus2_indirect_reachable": true,
+    "ALL": true
+  },
+  "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G06\\work",
+  "index_dir": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G06\\index",
+  "elapsed_s": 29.71
+}

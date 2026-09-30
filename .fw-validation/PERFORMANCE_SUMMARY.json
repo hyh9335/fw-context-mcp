@@ -1,0 +1,21 @@
+{
+  "generated_for": "V5_RELEASE",
+  "note": "Aggregate performance/scale facts from V2 public-real runs (Windows venv-win); sources cited per entry",
+  "golden_fixtures": {
+    "index_time": "seconds per case (2-3 TU fixtures)",
+    "source": "artifacts/V1, V3, V4 index logs"
+  },
+  "public_real": [
+    {"repo": "nuttx (N1)", "tus": 1194, "symbols": 1494309, "files": 58254, "refs": 437176, "db_size_gb": 4.6, "wall_time_h": 5.0, "source": "artifacts/V2/N1 + V2_SUMMARY.md"},
+    {"repo": "nuttx smp variant (N2)", "tus": null, "symbols": 1431214, "distinct_config_hash": true, "hotspots_inverted_vs_N1": true, "source": "artifacts/V2/N2"},
+    {"repo": "nuttx N3 no-op reindex probe", "delta_symbols": 1, "note": "probe symbol re-derived with is_definition=1 after source edit; no-op reindex base case delta=0", "source": "artifacts/V2/N3/n3_post_db_corrected.json"},
+    {"repo": "zephyr (Z1-Z4)", "tus": 75, "db_size_gb": 1.7, "notes": "Z2 exact=True silent _fallback disclosure; Z4 CMSIS assembly table 97 slots recognized (45 c + 43 dispatcher + 8 assembly + 1 data)", "source": "artifacts/V2/Z*"},
+    {"repo": "RIOT-OS (R1/R2)", "tus": 98, "db_size_gb": 0.4, "notes": "R1 file_count 9755 (corrected from transcription 10721)", "source": "artifacts/V2/R*"},
+    {"repo": "CMSIS6 C-template (C1)", "result": "FAIL_PRODUCT F-V2-001", "source": "artifacts/V2/C1"}
+  ],
+  "reindex_cost": {
+    "noop_reindex_small": "seconds (V4-A5/A6)",
+    "noop_reindex_nuttx": "N3 pattern: count-stable reindex after probe edit",
+    "full_nuttx_index": "~5h for 1194 TUs / 1.49M symbols"
+  }
+}

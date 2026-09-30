@@ -1,0 +1,65 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A\\work\\proj_22493a62\\fixture\\libs\\libc\\unistd",
+      "-ID:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A\\work\\proj_22493a62\\fixture\\stubs",
+      "-DCONFIG_DISABLE_ENVIRON=1",
+      "-DCONFIG_LIBC_HOMEDIR=\"/home\"",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A\\work\\proj_22493a62\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "32a4dc5c4defd8f3405fc807e99275b3aa57d9d3b8e6838c9f4177bffaf1fe15",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "f99c83e18b709bc5",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A\\work\\proj_22493a62",
+      "file": "fixture/libs/libc/unistd/lib_getcwd.c",
+      "flags_hash": "057c7aa63c703bd9b28cf4791ba69a4f7a1d1fa9e54a24ed4668158f7847082e",
+      "headers": [
+        "fixture\\stubs\\nuttx\\config.h",
+        "fixture\\stubs\\sys\\types.h",
+        "fixture\\stubs\\stdlib.h",
+        "fixture\\stubs\\string.h",
+        "fixture\\stubs\\unistd.h",
+        "fixture\\stubs\\errno.h",
+        "fixture\\stubs\\libc.h"
+      ],
+      "source_hash": "045e69017f0db87c7c13e1f51dfe5e3da3f25ec6012340a64a895c84dd7d2657"
+    }
+  ],
+  "headers": {
+    "fixture\\stubs\\errno.h": {
+      "generated": false,
+      "hash": "1d5012c9f785229a12ecee3c888cb7b27278dc683f636c5525e2309ee542e936"
+    },
+    "fixture\\stubs\\libc.h": {
+      "generated": false,
+      "hash": "7799f7dceba1dcf0a040ba65c581de6e216e43641f427744d9b6a0c1847a4dce"
+    },
+    "fixture\\stubs\\nuttx\\config.h": {
+      "generated": false,
+      "hash": "8917897fc52dd507f3ccfd343f442947f6c1a007036d6eb35fcf54fe5d2667fb"
+    },
+    "fixture\\stubs\\stdlib.h": {
+      "generated": false,
+      "hash": "ef85e4ef8766f77c33b8a70084a75052872f4bea5ce32551b1c9789667833aca"
+    },
+    "fixture\\stubs\\string.h": {
+      "generated": false,
+      "hash": "8f8e2abb2ca9f58e30f08abf9bd836007311e1dc51606fb9fd6956b434e03b52"
+    },
+    "fixture\\stubs\\sys\\types.h": {
+      "generated": false,
+      "hash": "7ae048d08d4482295814e61b1656e12378c39bb587cd8b6033f46634d7a5df0c"
+    },
+    "fixture\\stubs\\unistd.h": {
+      "generated": false,
+      "hash": "c801d3ada4fb95b13938e63aee98329e133669a0fa872787e675384e20f57f67"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A\\work\\proj_22493a62",
+  "vendor_patterns": []
+}

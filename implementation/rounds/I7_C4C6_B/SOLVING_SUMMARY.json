@@ -1,0 +1,21 @@
+{
+ "cards": [
+  {
+   "family": "condition_config_gated",
+   "overclaims": [],
+   "polarity": "positive",
+   "rulecard_id": "RC-I7-B-LIB-GETCWD-107",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  },
+  {
+   "kind": "insufficient_evidence",
+   "missing_evidence": []
+  }
+ ],
+ "freeze_id": "FRZ-I7-B-20260920T094227Z"
+}

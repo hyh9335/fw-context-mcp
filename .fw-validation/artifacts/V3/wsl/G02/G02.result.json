@@ -1,0 +1,78 @@
+{
+  "case_id": "G02",
+  "command": {
+    "index": "/home/h00969597/fwctx-venv311/bin/python -m fw_context_mcp.cli index /home/h00969597/fwctx-validation-work/V3-WSL/G02/work/compile_commands.json --project /home/h00969597/fwctx-validation-work/V3-WSL/G02/work --no-analyze --no-embeddings",
+    "queries": [
+      "search_bodies",
+      "lookup_symbol",
+      "lookup_symbol",
+      "get_active_build",
+      "explain_condition"
+    ],
+    "index_time_s": 0.43
+  },
+  "exit_code": 0,
+  "expected": {
+    "compile_actions": 2,
+    "same_file": true,
+    "distinct_contexts": true,
+    "values_by_action": [
+      1,
+      2
+    ],
+    "forbidden": "collapse both compile actions into one semantic observation context"
+  },
+  "observed": {
+    "num_compile_commands": 2,
+    "mode_value_bodies": [],
+    "mode_value_lookup_rows": 2,
+    "MODE_VALUE_macro_rows": [],
+    "defines_varying": 1,
+    "explain_cond": [
+      {
+        "file": "same.c",
+        "line": 1,
+        "context_id": "9ca6d7a9f8338d81",
+        "config_hash": "b49cfa0e8ba28d1a1668e3931e476bad5a2b0b101655548d3271b7a3da21ff55",
+        "chain": [
+          {
+            "file": "same.c",
+            "line": 1,
+            "directive": "ifndef",
+            "condition": "MODE_VALUE",
+            "end_line": 3,
+            "taken": 0,
+            "branch_states": [
+              {
+                "line": 1,
+                "kind": "if",
+                "condition": "MODE_VALUE",
+                "taken": 0
+              }
+            ],
+            "macro_inputs": [
+              {
+                "name": "MODE_VALUE",
+                "def_source": "command_line",
+                "def_file": "",
+                "def_line": null
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "comparison": {
+    "compile_actions_2": true,
+    "MODE_VALUE_macro_rows_2": false,
+    "values_1_and_2_present": false,
+    "defines_varying_gte1": true,
+    "no_collapse_two_rows": true,
+    "all_match": false
+  },
+  "status": "FAIL_PRODUCT",
+  "notes": [
+    "work_dir=/home/h00969597/fwctx-validation-work/V3-WSL/G02/work"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "equivalent_groups": [
+    [
+      "A",
+      "C"
+    ],
+    [
+      "B"
+    ]
+  ],
+  "A_vs_B": {
+    "removed_call": "transport_send -> uart_send",
+    "added_call": "transport_send -> usb_send"
+  },
+  "A_vs_C": {
+    "semantic_delta": []
+  },
+  "provenance_required": [
+    "variant",
+    "config_hash"
+  ]
+}

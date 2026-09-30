@@ -1,0 +1,56 @@
+{
+  "phase": "I11_RELEASE_AUDIT",
+  "verifier_identity": "independent fresh subagent, no prior conversation context; all commands below were run by the verifier itself (not the audited script)",
+  "timestamp_local": "2026-09-20 17:53:09 +08:00",
+  "timestamp_utc": "2026-09-20T09:53:11Z",
+  "spot_checks": [
+    {
+      "id": "S1",
+      "description": "pytest suite really passes, run independently of the verifier script",
+      "command": "Set-Location D:\\github\\fw-context-mcp\\implementation; python -m pytest tests -q",
+      "raw_output": "52 passed, 2 warnings in 11.06s",
+      "result": "PASS",
+      "notes": "Summary line shows 52 passed, 0 failed, 0 error. Matches C01 detail of the audited run."
+    },
+    {
+      "id": "S2",
+      "description": "substrate untouched: pinned HEAD and clean src/",
+      "command": "git -C D:\\github\\fw-context-mcp rev-parse HEAD; git -C D:\\github\\fw-context-mcp status --porcelain -- src",
+      "raw_output": "d8f08a41d3fb9df6de255a187720f6332ed0f1c9\n---porcelain-exit:0--- (no lines between HEAD hash and marker = empty porcelain output)",
+      "result": "PASS",
+      "notes": "HEAD equals the pin d8f08a41d3fb9df6de255a187720f6332ed0f1c9; `git status --porcelain -- src` produced zero lines (src clean)."
+    },
+    {
+      "id": "S3",
+      "description": "oracle isolation, independently: SHA-256 of every FAULT_ORACLE.json / PAIRING_NOTE.md / SOURCE_LOCK.json / PLANT_DIFF.md / EVIDENCE_MAP.json under fault_discovery_goal_architecture_agent_team\\outputs\\corpus vs SHA-256 + name of every file under each implementation\\rounds\\*\\solver_bundle recursively",
+      "command": "python (inline script): walk corpus rglob(*), keep files whose name is in the 5-name set, sha256 each; walk each rounds\\*\\solver_bundle rglob(*), sha256 each; report name overlaps and hash overlaps",
+      "raw_output": "ORACLE_COUNT 9\nORACLE FAULT_ORACLE.json d1f90980e31305748351cfd560d476d1da25dfbe1639219a5b81cc88c5e67451 C1_PFC1_SOURCE_DETERMINISTIC\\FAULT_ORACLE.json\nORACLE PLANT_DIFF.md db6d64ac14cf0ae1d78d720517844efd207caf3c50897bd703117844b5d66ce0 C1_PFC1_SOURCE_DETERMINISTIC\\PLANT_DIFF.md\nORACLE FAULT_ORACLE.json 0968115a575f14e4743f4b0c95e23cae0bd270002b8b9fc4bf0a6ab2a76942b3 C4_REAL_PUBLIC_FAULT\\FAULT_ORACLE.json\nORACLE SOURCE_LOCK.json 421c26ceb4108ce1fe73aa6fc0721b33e5b5aac94a0fe086a8788f844e1c7685 C4_REAL_PUBLIC_FAULT\\SOURCE_LOCK.json\nORACLE FAULT_ORACLE.json eadf51ed1d4efb5f0e79c2815ff18f26e4c59c05d73e099f07ff110e2dfc434f C5_T2_TOUCHING\\FAULT_ORACLE.json\nORACLE PLANT_DIFF.md c2f65e948dd559e13110cecf43a2d075bddd4779f8e5b242f59b8289ac05256e C5_T2_TOUCHING\\PLANT_DIFF.md\nORACLE FAULT_ORACLE.json 5fa1c7241c27c2f9f4774ee68a10522b5d6cb33c95e6a5b9bedbad6a4e8d416c C6_NEGATIVE_CONTROL\\FAULT_ORACLE.json\nORACLE PAIRING_NOTE.md 66a90b0105bef39f7b778421d5c0e82cf901cc340d6d5656a7e4a654467c377c C6_NEGATIVE_CONTROL\\PAIRING_NOTE.md\nORACLE SOURCE_LOCK.json cd6725071582732b3ab0743dd911ae697131450cbda7a1f2a04a9a04b1817cb4 C6_NEGATIVE_CONTROL\\SOURCE_LOCK.json\nORACLE_DISTINCT_HASHES 9\nBUNDLE_FILE_COUNT 33\nBUNDLE_ROUND I6_C1 6\nBUNDLE_ROUND I7_C4C6_A 12\nBUNDLE_ROUND I7_C4C6_B 12\nBUNDLE_ROUND I8_C5_T2_TRIPWIRE 3\nNAME_LEAKS []\nHASH_LEAKS []\nVERDICT ISOLATED",
+      "result": "PASS",
+      "notes": "9 oracle files found (>= 9 expected): FAULT_ORACLE.json x4, PLANT_DIFF.md x2, SOURCE_LOCK.json x2, PAIRING_NOTE.md x1, across 4 case dirs; all 9 hashes distinct. 33 solver-bundle files hashed across the 4 rounds; zero files in any bundle share a name or a byte-hash with any oracle file. Corroborates C10 (oracle_files=9, leaks=[])."
+    },
+    {
+      "id": "S4",
+      "description": "C6 negative control, independently: count cards with family=existence_absence AND polarity=negative in I7_C4C6_B (expect 0) and I7_C4C6_A (expect exactly 1) SOLVING_SUMMARY.json",
+      "command": "python (inline script): parse both SOLVING_SUMMARY.json files, list existence_absence cards with polarity, count negative ones",
+      "raw_output": "I7_C4C6_A total_cards= 2 existence_absence_cards= [('RC-I7-A-API-GETCWD', 'negative')] negative_absence_count= 1\nI7_C4C6_B total_cards= 2 existence_absence_cards= [] negative_absence_count= 0",
+      "result": "PASS",
+      "notes": "A: exactly one negative existence_absence card (RC-I7-A-API-GETCWD). B: zero. Matches C11 (absence_cards=0 for B) and C23 (A=1, B=0) of the audited run."
+    },
+    {
+      "id": "S5",
+      "description": "freeze integrity, independently: recompute combined_manifest_sha256 for FREEZE_C1.json (I6_C1), FREEZE_I7-A.json (I7_C4C6_A), FREEZE_I7-B.json (I7_C4C6_B), FREEZE_C5.json (I8_C5_T2_TRIPWIRE)",
+      "command": "python (inline script): for each FREEZE_*.json, take artifact_lines, compute (a) task-suggested naive scheme sha256(\"\\n\".join(lines_stripped).encode(\"utf-8\")) and (b) actual scheme per fault_discovery_agent/schemas/canonical_json.py::combined_manifest_hash — sort lines by relpath (bytes after the fixed 64-hex+2-space digest column), hash the concatenation of the LF-terminated lines; compare both to the recorded combined_manifest_sha256; also check every line is LF-terminated and matches ^[0-9a-f]{64}  .+$",
+      "raw_output": "FREEZE_C1.json n_lines= 11 stored_sorted= False all_lf= True fmt_ok= True naive_match= False actual_match= True recorded= 23e0a272f43b619d2f9ef38d767a477b8b75eac8d531707c725fa7764be7b2db\nFREEZE_I7-A.json n_lines= 23 stored_sorted= False all_lf= True fmt_ok= True naive_match= False actual_match= True recorded= dde7432b29ccc1534c46a2addecaa38131daa39abbe34adaa9a482c2a8c1f0dd\nFREEZE_I7-B.json n_lines= 23 stored_sorted= False all_lf= True fmt_ok= True naive_match= False actual_match= True recorded= 4fe86bf78dd657d75c9c577fc253dcae86908e94fa42aa217a6490d1d401aba4\nFREEZE_C5.json n_lines= 5 stored_sorted= False all_lf= True fmt_ok= True naive_match= False actual_match= True recorded= 2fa975e019f2f920c946bf18587e56c87dd316ceecbac7fcb2324caf1aa0d362",
+      "result": "PASS",
+      "notes": "The task's literal scheme (newline-join of stripped lines, no trailing LF, stored order) does NOT match any manifest. The actual scheme, found in canonical_json.py (combined_manifest_hash, referenced by freeze/manifest_tool.py), is: artifact_lines are stored LF-terminated ('<sha256>  <relpath>\\n', two spaces, digest first); they are sorted byte-wise by relpath (the stored order is NOT globally sorted — stored_sorted=False — because tree lines are grouped by prefix), then the concatenation is SHA-256'd over UTF-8. Under THAT recomputation all 4 recorded hashes match exactly. All lines are LF-terminated, UTF-8, and format-valid. Corroborates C15."
+    }
+  ],
+  "audited_run_result": {
+    "command": "Set-Location D:\\github\\fw-context-mcp\\implementation; python verify_i11_23checks.py",
+    "passed": 23,
+    "total": 23,
+    "verdict": "AUDIT_PASS",
+    "results_file": "implementation/I11_VERIFY_RESULTS.json (written by the audited script during this audit)"
+  },
+  "overall_spot_check_verdict": "ALL_5_CORROBORATE"
+}

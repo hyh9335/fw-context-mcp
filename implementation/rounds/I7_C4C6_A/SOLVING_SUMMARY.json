@@ -1,0 +1,29 @@
+{
+ "cards": [
+  {
+   "family": "condition_config_gated",
+   "overclaims": [],
+   "polarity": "positive",
+   "rulecard_id": "RC-I7-A-LIB-GETCWD-38",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  },
+  {
+   "family": "existence_absence",
+   "overclaims": [],
+   "polarity": "negative",
+   "rulecard_id": "RC-I7-A-API-GETCWD",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  }
+ ],
+ "freeze_id": "FRZ-I7-A-20260920T094226Z"
+}

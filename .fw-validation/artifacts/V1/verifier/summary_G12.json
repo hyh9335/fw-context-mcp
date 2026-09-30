@@ -1,0 +1,15 @@
+{
+  "G12": {
+    "ok": true,
+    "checks": {
+      "raw_sha256_exact": true,
+      "raw_crlf_6": true,
+      "active_has_active_line": true,
+      "active_excludes_inactive_line": true,
+      "directives_exact": true,
+      "ALL": true
+    },
+    "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G12\\work",
+    "elapsed_s": 30.18
+  }
+}

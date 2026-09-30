@@ -1,0 +1,127 @@
+{
+ "evidence": [
+  {
+   "fact_id": "F-0005",
+   "trust_class": "T1"
+  },
+  {
+   "fact_id": "F-0003",
+   "trust_class": "T0"
+  }
+ ],
+ "fault_class": "existence_absence",
+ "forbidden_overclaims": [
+  "no complete-enumeration claims",
+  "T2 rows never load-bearing"
+ ],
+ "hypothesis_ref": "H-C7-API-SENSOR-SUBMIT",
+ "mechanism_id": "M-C7-API-SENSOR-SUBMIT",
+ "oracle_provenance": "none",
+ "polarity": "negative",
+ "provenance": {
+  "certainty": "measured",
+  "derived_from": [
+   "fw_context_lookup_symbol",
+   "fw_context_read_file"
+  ],
+  "k1_mediated": true
+ },
+ "refutation_protocol": {
+  "oracle_requirement": "none",
+  "steps": [
+   {
+    "action": "query_substrate_via_k1",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "any trigger fact fails to re-derive or changes polarity",
+     "rule_holds_when": "every trigger fact re-derives identically under the same freeze"
+    },
+    "inputs": {
+     "fact_refs": [
+      "F-0005",
+      "F-0003"
+     ],
+     "freeze_id": "FRZ-C7-20260921T062835Z"
+    },
+    "step_id": "RS1"
+   },
+   {
+    "action": "independent_crosscheck",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "the independent surface contradicts the trigger",
+     "rule_holds_when": "independent grep / clang -E region-survival agrees with the trigger"
+    },
+    "inputs": {
+     "surfaces": [
+      "fw_context_lookup_symbol",
+      "fw_context_read_file"
+     ]
+    },
+    "step_id": "RS2"
+   },
+   {
+    "action": "construct_counterexample_search",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "a counterexample configuration survives and satisfies the trigger",
+     "rule_holds_when": "no counterexample configuration survives"
+    },
+    "inputs": {
+     "flip": "pinned config value; re-run region check"
+    },
+    "step_id": "RS3"
+   }
+  ]
+ },
+ "refutation_result": {
+  "adjudicated_at": null,
+  "counterexample_ref": null,
+  "missing_evidence_refs": [],
+  "protocol_completed": false,
+  "state": "UNEXECUTED"
+ },
+ "rulecard_id": "RC-C7-API-SENSOR-SUBMIT",
+ "scope_stamp": {
+  "corpus_case": "C7",
+  "goal_item": "G-4",
+  "lineage": "B",
+  "schema_version": "wave1-design-gate-1"
+ },
+ "trigger_conditions": [
+  {
+   "fact_refs": [
+    {
+     "fact_id": "F-0005",
+     "trust_class": "T1"
+    },
+    {
+     "fact_id": "F-0003",
+     "trust_class": "T0"
+    }
+   ],
+   "kind": "definition_absent",
+   "negatable": true,
+   "predicate_id": "P-C7-API-SENSOR-SUBMIT-1",
+   "statement": "the symbol sensor_submit has no compiled definition under the pinned build (BUILD-C7-PINNED)"
+  }
+ ],
+ "validation": {
+  "evidence_integrity_status": "PASS",
+  "faultness_adjudicated_at": "FRZ-C7-20260921T062835Z",
+  "faultness_roles": {
+   "A1_absence_in_pinned_build": {
+    "evidence": "negative facts for 'sensor_submit': F-0005",
+    "satisfied": true
+   },
+   "A2_definition_file_located": {
+    "evidence": "probe file 'fixture/sensor_module.c' in frozen snapshot, coverage fact=True",
+    "satisfied": true
+   },
+   "A3_config_causal_cutoff": {
+    "evidence": "config-caused compiled-out condition fact on 'fixture/sensor_module.c': {'fact_id': 'F-SWEEP-0001', 'condition': 'defined(CONFIG_SENSOR_IRQ_PATH)'}; subject is itself a guard symbol=False (a missing CONFIG_* macro is the cause, not a consequence)",
+    "satisfied": true
+   }
+  },
+  "faultness_status": "PASS",
+  "refutation_state": "UNEXECUTED"
+ },
+ "validation_status": "unvalidated"
+}

@@ -1,0 +1,86 @@
+{
+  "phase": "V3_CROSS_PLATFORM",
+  "method": "V1 artifacts = WINDOWS baseline (venv-win, C:\\Users work dirs); V3-WSL = WSL leg (fwctx-venv311, /home work dirs), same recipes + same expected.json oracles",
+  "platforms": {
+    "windows": {
+      "python": "venv-win 3.11",
+      "mcp_sdk": "1.28.1",
+      "work_root": "C:\\Users\\h00969597\\fwctx-validation-work\\V1|V3"
+    },
+    "wsl": {
+      "python": "fwctx-venv311 (3.11)",
+      "mcp_sdk": "1.30.0",
+      "work_root": "~/fwctx-validation-work/V3-WSL"
+    }
+  },
+  "cases": {
+    "G01": {
+      "windows_status": "PASS",
+      "wsl_status": "PASS",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G02": {
+      "windows_status": "FAIL_PRODUCT",
+      "wsl_status": "FAIL_PRODUCT",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G03": {
+      "windows_status": "FAIL_PRODUCT",
+      "wsl_status": "FAIL_PRODUCT",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G05": {
+      "windows_status": "PASS",
+      "wsl_status": "PASS",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G06": {
+      "windows_status": "FAIL_PRODUCT",
+      "wsl_status": "FAIL_PRODUCT",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G07": {
+      "windows_status": "FAIL_PRODUCT",
+      "wsl_status": "FAIL_PRODUCT",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G10": {
+      "windows_status": "FAIL_PRODUCT",
+      "wsl_status": "FAIL_PRODUCT",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    },
+    "G12": {
+      "windows_status": "PASS",
+      "wsl_status": "PASS",
+      "status_match": true,
+      "comparison_flags_differing": {},
+      "comparison_flags_identical": true
+    }
+  },
+  "summary": {
+    "cases": 8,
+    "status_matches": 8,
+    "parity": "8/8 identical classifications Windows vs WSL",
+    "materially_identical_comparison_flags": true,
+    "notes": [
+      "F-V1-001 (G02), F-V1-006 (G10) and the G03/G06/G07 defects reproduce on BOTH platforms \u2014 platform-independent product defects",
+      "G03 explain_condition resolved a different conditional context across runs (nondeterminism noted for V5)",
+      "MCP SDK version differs per venv (1.28.1 vs 1.30.0) \u2014 environment fact, not product drift",
+      "G04/G11 remain WSL-only (Windows toolchain absent) \u2014 BLOCKED_ENVIRONMENT recorded per plan"
+    ]
+  }
+}

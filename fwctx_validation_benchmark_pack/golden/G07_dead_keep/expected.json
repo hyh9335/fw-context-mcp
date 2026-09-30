@@ -1,0 +1,20 @@
+{
+  "roots": [
+    "main",
+    "kept_by_linker"
+  ],
+  "live": [
+    "main",
+    "live_root",
+    "live_leaf",
+    "kept_by_linker"
+  ],
+  "graph_unreachable": [
+    "dead_a",
+    "dead_b"
+  ],
+  "forbidden_definite_dead": [
+    "kept_by_linker"
+  ],
+  "link_command_hint": "clang -nostdlib -Wl,--gc-sections -Wl,--print-gc-sections -Wl,-T,linker.ld main.o -o app.elf"
+}

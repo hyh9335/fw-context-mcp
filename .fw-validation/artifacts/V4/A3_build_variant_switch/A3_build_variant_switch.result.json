@@ -1,0 +1,217 @@
+{
+  "case_id": "A3_build_variant_switch",
+  "phase": "V4_ADVERSARIAL",
+  "status": "PASS",
+  "expected": "variant switch (TU a loses FEATURE_A): its selected() re-derives 10->30; b stays 20; helper untouched; separate index dir",
+  "observed": {
+    "tus_switched": 1,
+    "pre_symbols": 5,
+    "post_symbols": 5,
+    "branch30_present": true,
+    "branch10_gone": true,
+    "branch20_kept": true,
+    "integrity": "ok"
+  },
+  "notes": [
+    "variant separation via separate FW_CONTEXT_INDEX_DIR (same registration root)"
+  ],
+  "responses": {
+    "pre::{\"query\": \"selected\"}": {
+      "tool": "search_bodies",
+      "arguments": {
+        "query": "selected"
+      },
+      "elapsed_s": 0.02,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+                "source": "int selected(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+                "match_lines": [
+                  4
+                ]
+              },
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "source": "int selected(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "match_lines": [
+                  4
+                ]
+              },
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n#if defined(FEATURE_A) && LEVEL >= 2\n    return 10;\n\n\n\n\n\n}\n",
+                "source": "int selected(void) {\n#if defined(FEATURE_A) && LEVEL >= 2\n    return 10;\n\n\n\n\n\n}\n",
+                "match_lines": [
+                  4
+                ]
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}",
+      "json": null
+    },
+    "pre_helper::{\"query\": \"helper\"}": {
+      "tool": "search_bodies",
+      "arguments": {
+        "query": "helper"
+      },
+      "elapsed_s": 0.009,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [],
+          "structuredContent": {
+            "result": []
+          },
+          "isError": false
+        }
+      },
+      "text": "",
+      "json": null
+    },
+    "post::{\"query\": \"selected\"}": {
+      "tool": "search_bodies",
+      "arguments": {
+        "query": "selected"
+      },
+      "elapsed_s": 0.017,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+                "source": "int selected(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+                "match_lines": [
+                  4
+                ]
+              },
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "source": "int selected(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "match_lines": [
+                  4
+                ]
+              },
+              {
+                "name": "selected",
+                "qualified_name": "selected",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A3_build_variant_switch\\work\\config.c",
+                "line": 4,
+                "is_definition": true,
+                "signature": "int selected()",
+                "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "source": "int selected(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+                "match_lines": [
+                  4
+                ]
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A3_build_variant_switch\\\\work\\\\config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}",
+      "json": null
+    },
+    "post_helper::{\"query\": \"helper\"}": {
+      "tool": "search_bodies",
+      "arguments": {
+        "query": "helper"
+      },
+      "elapsed_s": 0.009,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [],
+          "structuredContent": {
+            "result": []
+          },
+          "isError": false
+        }
+      },
+      "text": "",
+      "json": null
+    }
+  },
+  "verifier_qualification": "Verifier MINOR 2: both helper search_bodies probes returned empty (pre and post); the 'helper untouched' claim rests on stable per-TU symbol counts 2/1/2, not a direct helper probe. Classification unaffected (the audited property is the selected() variant re-derivation)."
+}

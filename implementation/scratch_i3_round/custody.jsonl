@@ -1,0 +1,4 @@
+{"at":"2026-09-21T06:43:34.735664+00:00","freeze_id":"FRZ-X","kind":"freeze_verified","seq":1}
+{"actor":"solver","at":"2026-09-21T06:43:34.736684+00:00","kind":"freeze_breach","path":"oracle/FAULT_ORACLE.json","seq":2}
+{"actor":"solver","at":"2026-09-21T06:43:34.736684+00:00","kind":"freeze_breach","path":"oracle/PLANT_DIFF/C4.md","seq":3}
+{"at":"2026-09-21T06:43:34.738685+00:00","bundle_dir":"D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\bundle","files":{"source_snapshot/fixture/poller.c":"1d79daed0038116bea5730fc7ee3634767509b81b50618d1614f3a63e2ec1113"},"freeze_id":"FRZ-X","kind":"bundle_assembled","seq":1}

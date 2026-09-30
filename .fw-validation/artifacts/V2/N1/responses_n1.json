@@ -1,0 +1,623 @@
+{
+  "get_active_build::{}": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 4.361,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2\",\n  \"project_id\": \"7d06d19fb017426d878a13775f11ec44\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N1\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 09:24:16\",\n  \"symbol_count\": 1494309,\n  \"file_count\": 58254,\n  \"reference_count\": 437176,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 315084\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2575\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 04:09:47\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (1494309 symbols) | LLM analysis: project 0/315084 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\",\n    \"NDEBUG\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2\",\n  \"project_id\": \"7d06d19fb017426d878a13775f11ec44\",\n  \"project_root\": \"/home/h00969597/fwctx-v2-work/N1\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 09:24:16\",\n  \"symbol_count\": 1494309,\n  \"file_count\": 58254,\n  \"reference_count\": 437176,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 315084\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2575\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 04:09:47\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (1494309 symbols) | LLM analysis: project 0/315084 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {\n    \"__NuttX__\": \"\",\n    \"NDEBUG\": \"\"\n  },\n  \"defines_varying\": 5,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "1a82705430eb4b32259bb7f856913ab36189f5efaefa1ab8d687f7093092c8c2",
+      "project_id": "7d06d19fb017426d878a13775f11ec44",
+      "project_root": "/home/h00969597/fwctx-v2-work/N1",
+      "build_system": "unknown",
+      "compile_commands": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/build/compile_commands.json",
+      "indexed_at": "2026-09-18 09:24:16",
+      "symbol_count": 1494309,
+      "file_count": 58254,
+      "reference_count": 437176,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 315084
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 2575
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 04:09:47",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (1494309 symbols) | LLM analysis: project 0/315084 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {
+        "__NuttX__": "",
+        "NDEBUG": ""
+      },
+      "defines_varying": 5,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "lookup_symbol::{\"name\": \"nx_start\", \"exact\": true}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "nx_start",
+      "exact": true
+    },
+    "elapsed_s": 0.014,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/sched/init/nx_start.c\",\n  \"line\": 502,\n  \"is_definition\": true,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"Name: nx_start\\nDescription:\\n  This function is called to initialize the operating system and to spawn\\n  the user initialization thread of execution.  This is the initial entry\\n  point into NuttX.\\nInput Parameters:\\n  None\\nReturned Value:\\n  Does not return.\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"Name: nx_start\\nDescription:\\n  This function is called to initialize the operating system and to spawn\\n  the user initialization thread of execution.  This is the initial entry\\n  point into NuttX\\nInput Parameters:\\n  None\\nReturned Value:\\n  Does not return.\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/sched/init/nx_start.c",
+              "line": 502,
+              "is_definition": true,
+              "signature": "void nx_start()",
+              "docstring": "Name: nx_start\nDescription:\n  This function is called to initialize the operating system and to spawn\n  the user initialization thread of execution.  This is the initial entry\n  point into NuttX.\nInput Parameters:\n  None\nReturned Value:\n  Does not return.",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "Name: nx_start\nDescription:\n  This function is called to initialize the operating system and to spawn\n  the user initialization thread of execution.  This is the initial entry\n  point into NuttX\nInput Parameters:\n  None\nReturned Value:\n  Does not return.",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "nx_start",
+              "qualified_name": "nx_start",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h",
+              "line": 107,
+              "is_definition": false,
+              "signature": "void nx_start()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/sched/init/nx_start.c\",\n  \"line\": 502,\n  \"is_definition\": true,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"Name: nx_start\\nDescription:\\n  This function is called to initialize the operating system and to spawn\\n  the user initialization thread of execution.  This is the initial entry\\n  point into NuttX.\\nInput Parameters:\\n  None\\nReturned Value:\\n  Does not return.\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"Name: nx_start\\nDescription:\\n  This function is called to initialize the operating system and to spawn\\n  the user initialization thread of execution.  This is the initial entry\\n  point into NuttX\\nInput Parameters:\\n  None\\nReturned Value:\\n  Does not return.\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"nx_start\",\n  \"qualified_name\": \"nx_start\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/init.h\",\n  \"line\": 107,\n  \"is_definition\": false,\n  \"signature\": \"void nx_start()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "find_hotspots::{\"limit\": 5}": {
+    "tool": "find_hotspots",
+    "arguments": {
+      "limit": 5
+    },
+    "elapsed_s": 0.041,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 937015,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 914352,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_lock\",\n  \"qualified_name\": \"nxmutex_lock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_lock(mutex_t * mutex)\",\n  \"line\": 504,\n  \"caller_count\": 879798,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"invdiv_umulh64\",\n  \"qualified_name\": \"invdiv_umulh64\",\n  \"kind\": \"function\",\n  \"signature\": \"uint64_t invdiv_umulh64(uint64_t a, uint64_t b)\",\n  \"line\": 469,\n  \"caller_count\": 829921,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/lib/math32.h\"\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"nxmutex_destroy\",\n  \"qualified_name\": \"nxmutex_destroy\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_destroy(mutex_t * mutex)\",\n  \"line\": 479,\n  \"caller_count\": 808032,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "up_current_regs",
+              "qualified_name": "up_current_regs",
+              "kind": "function",
+              "signature": "xcpt_reg_t * up_current_regs()",
+              "line": 124,
+              "caller_count": 937015,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h"
+            },
+            {
+              "name": "nxmutex_unlock",
+              "qualified_name": "nxmutex_unlock",
+              "kind": "function",
+              "signature": "int nxmutex_unlock(mutex_t * mutex)",
+              "line": 571,
+              "caller_count": 914352,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h"
+            },
+            {
+              "name": "nxmutex_lock",
+              "qualified_name": "nxmutex_lock",
+              "kind": "function",
+              "signature": "int nxmutex_lock(mutex_t * mutex)",
+              "line": 504,
+              "caller_count": 879798,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h"
+            },
+            {
+              "name": "invdiv_umulh64",
+              "qualified_name": "invdiv_umulh64",
+              "kind": "function",
+              "signature": "uint64_t invdiv_umulh64(uint64_t a, uint64_t b)",
+              "line": 469,
+              "caller_count": 829921,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/lib/math32.h"
+            },
+            {
+              "name": "nxmutex_destroy",
+              "qualified_name": "nxmutex_destroy",
+              "kind": "function",
+              "signature": "int nxmutex_destroy(mutex_t * mutex)",
+              "line": 479,
+              "caller_count": 808032,
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h"
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"up_current_regs\",\n  \"qualified_name\": \"up_current_regs\",\n  \"kind\": \"function\",\n  \"signature\": \"xcpt_reg_t * up_current_regs()\",\n  \"line\": 124,\n  \"caller_count\": 937015,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/arch/sim/include/irq.h\"\n}\n{\n  \"name\": \"nxmutex_unlock\",\n  \"qualified_name\": \"nxmutex_unlock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_unlock(mutex_t * mutex)\",\n  \"line\": 571,\n  \"caller_count\": 914352,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}\n{\n  \"name\": \"nxmutex_lock\",\n  \"qualified_name\": \"nxmutex_lock\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_lock(mutex_t * mutex)\",\n  \"line\": 504,\n  \"caller_count\": 879798,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}\n{\n  \"name\": \"invdiv_umulh64\",\n  \"qualified_name\": \"invdiv_umulh64\",\n  \"kind\": \"function\",\n  \"signature\": \"uint64_t invdiv_umulh64(uint64_t a, uint64_t b)\",\n  \"line\": 469,\n  \"caller_count\": 829921,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/lib/math32.h\"\n}\n{\n  \"name\": \"nxmutex_destroy\",\n  \"qualified_name\": \"nxmutex_destroy\",\n  \"kind\": \"function\",\n  \"signature\": \"int nxmutex_destroy(mutex_t * mutex)\",\n  \"line\": 479,\n  \"caller_count\": 808032,\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/mutex.h\"\n}",
+    "json": null
+  },
+  "search_code::{\"query\": \"work queue\", \"limit\": 8}": {
+    "tool": "search_code",
+    "arguments": {
+      "query": "work queue",
+      "limit": 8
+    },
+    "elapsed_s": 0.104,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "work_queue",
+              "qualified_name": "work_queue",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h",
+              "line": 406,
+              "is_definition": false,
+              "signature": "int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"work_queue\",\n  \"qualified_name\": \"work_queue\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-v2-work/N1/nuttx-src/include/nuttx/wqueue.h\",\n  \"line\": 406,\n  \"is_definition\": false,\n  \"signature\": \"int work_queue(int qid, struct work_s * work, worker_t worker, void * arg, clock_t delay)\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "server_exit_code": 0
+}

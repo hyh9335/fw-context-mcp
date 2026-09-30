@@ -1,0 +1,505 @@
+{
+  "serverInfo": {
+    "name": "fw-context",
+    "version": "1.30.0"
+  },
+  "search_bodies::{\"query\": \"selected\"}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "selected"
+    },
+    "elapsed_s": 0.036,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "selected",
+              "qualified_name": "selected",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "line": 4,
+              "is_definition": true,
+              "signature": "int selected()",
+              "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+              "source": "int selected(void) {\n\n\n\n    return 20;\n\n\n\n}\n",
+              "match_lines": [
+                4
+              ]
+            },
+            {
+              "name": "selected",
+              "qualified_name": "selected",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "line": 4,
+              "is_definition": true,
+              "signature": "int selected()",
+              "_match_snippet": "int <b>selected</b>(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+              "source": "int selected(void) {\n\n\n\n\n\n    return 30;\n#endif\n}\n",
+              "match_lines": [
+                4
+              ]
+            },
+            {
+              "name": "selected",
+              "qualified_name": "selected",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "line": 4,
+              "is_definition": true,
+              "signature": "int selected()",
+              "_match_snippet": "int <b>selected</b>(void) {\n#if defined(FEATURE_A) && LEVEL >= 2\n    return 10;\n\n\n\n\n\n}\n",
+              "source": "int selected(void) {\n#if defined(FEATURE_A) && LEVEL >= 2\n    return 10;\n\n\n\n\n\n}\n",
+              "match_lines": [
+                4
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n    return 20;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"source\": \"int selected(void) {\\n\\n\\n\\n\\n\\n    return 30;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}\n{\n  \"name\": \"selected\",\n  \"qualified_name\": \"selected\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 4,\n  \"is_definition\": true,\n  \"signature\": \"int selected()\",\n  \"_match_snippet\": \"int <b>selected</b>(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"source\": \"int selected(void) {\\n#if defined(FEATURE_A) && LEVEL >= 2\\n    return 10;\\n\\n\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    4\n  ]\n}",
+    "json": null
+  },
+  "search_bodies::{\"query\": \"helper\"}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "helper"
+    },
+    "elapsed_s": 0.004,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false
+      }
+    },
+    "text": "",
+    "json": null
+  },
+  "lookup_symbol::{\"name\": \"helper\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "helper"
+    },
+    "elapsed_s": 0.003,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"helper\",\n  \"qualified_name\": \"helper\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"int helper()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"helper\",\n  \"qualified_name\": \"helper\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"int helper()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "helper",
+              "qualified_name": "helper",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "line": 14,
+              "is_definition": true,
+              "signature": "int helper()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "helper",
+              "qualified_name": "helper",
+              "kind": "function",
+              "file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "line": 14,
+              "is_definition": true,
+              "signature": "int helper()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"helper\",\n  \"qualified_name\": \"helper\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"int helper()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"helper\",\n  \"qualified_name\": \"helper\",\n  \"kind\": \"function\",\n  \"file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n  \"line\": 14,\n  \"is_definition\": true,\n  \"signature\": \"int helper()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "get_active_build::{}": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 0.004,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"project_id\": \"6226ff8c382947f0bf0fe1d80fb8868b\",\n  \"project_root\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:36:42\",\n  \"symbol_count\": 5,\n  \"file_count\": 3,\n  \"reference_count\": 4,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 5\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:36:42\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (5 symbols) | LLM analysis: project 0/5 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 4,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"project_id\": \"6226ff8c382947f0bf0fe1d80fb8868b\",\n  \"project_root\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:36:42\",\n  \"symbol_count\": 5,\n  \"file_count\": 3,\n  \"reference_count\": 4,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 5\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:36:42\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (5 symbols) | LLM analysis: project 0/5 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 4,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6",
+      "project_id": "6226ff8c382947f0bf0fe1d80fb8868b",
+      "project_root": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work",
+      "build_system": "unknown",
+      "compile_commands": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/compile_commands.json",
+      "indexed_at": "2026-09-18 10:36:42",
+      "symbol_count": 5,
+      "file_count": 3,
+      "reference_count": 4,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 5
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 0
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 10:36:42",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (5 symbols) | LLM analysis: project 0/5 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {},
+      "defines_varying": 4,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "explain_condition::{\"file_path\": \"config.c\", \"line\": 5}": {
+    "tool": "explain_condition",
+    "arguments": {
+      "file_path": "config.c",
+      "line": 5
+    },
+    "elapsed_s": 0.002,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"config.c\",\n  \"line\": 5,\n  \"context_id\": \"9f65666cb4656139\",\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"chain\": [\n    {\n      \"file\": \"config.c\",\n      \"line\": 5,\n      \"directive\": \"if\",\n      \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n      \"end_line\": 11,\n      \"taken\": 0,\n      \"branch_states\": [\n        {\n          \"line\": 5,\n          \"kind\": \"if\",\n          \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 7,\n          \"kind\": \"elif\",\n          \"condition\": \"defined(FEATURE_B) || LEVEL == 1\",\n          \"taken\": 1\n        },\n        {\n          \"line\": 9,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": -1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"FEATURE_A\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"FEATURE_B\",\n          \"def_source\": \"command_line\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"LEVEL\",\n          \"def_source\": \"file\",\n          \"def_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n          \"def_line\": 2\n        }\n      ]\n    }\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "file": "config.c",
+          "line": 5,
+          "context_id": "9f65666cb4656139",
+          "config_hash": "5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6",
+          "chain": [
+            {
+              "file": "config.c",
+              "line": 5,
+              "directive": "if",
+              "condition": "defined(FEATURE_A) && LEVEL >= 2",
+              "end_line": 11,
+              "taken": 0,
+              "branch_states": [
+                {
+                  "line": 5,
+                  "kind": "if",
+                  "condition": "defined(FEATURE_A) && LEVEL >= 2",
+                  "taken": 0
+                },
+                {
+                  "line": 7,
+                  "kind": "elif",
+                  "condition": "defined(FEATURE_B) || LEVEL == 1",
+                  "taken": 1
+                },
+                {
+                  "line": 9,
+                  "kind": "else",
+                  "condition": null,
+                  "taken": -1
+                }
+              ],
+              "macro_inputs": [
+                {
+                  "name": "FEATURE_A",
+                  "def_source": "",
+                  "def_file": "",
+                  "def_line": null
+                },
+                {
+                  "name": "FEATURE_B",
+                  "def_source": "command_line",
+                  "def_file": "",
+                  "def_line": null
+                },
+                {
+                  "name": "LEVEL",
+                  "def_source": "file",
+                  "def_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+                  "def_line": 2
+                }
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"config.c\",\n  \"line\": 5,\n  \"context_id\": \"9f65666cb4656139\",\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"chain\": [\n    {\n      \"file\": \"config.c\",\n      \"line\": 5,\n      \"directive\": \"if\",\n      \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n      \"end_line\": 11,\n      \"taken\": 0,\n      \"branch_states\": [\n        {\n          \"line\": 5,\n          \"kind\": \"if\",\n          \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 7,\n          \"kind\": \"elif\",\n          \"condition\": \"defined(FEATURE_B) || LEVEL == 1\",\n          \"taken\": 1\n        },\n        {\n          \"line\": 9,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": -1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"FEATURE_A\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"FEATURE_B\",\n          \"def_source\": \"command_line\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"LEVEL\",\n          \"def_source\": \"file\",\n          \"def_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n          \"def_line\": 2\n        }\n      ]\n    }\n  ]\n}",
+    "json": {
+      "file": "config.c",
+      "line": 5,
+      "context_id": "9f65666cb4656139",
+      "config_hash": "5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6",
+      "chain": [
+        {
+          "file": "config.c",
+          "line": 5,
+          "directive": "if",
+          "condition": "defined(FEATURE_A) && LEVEL >= 2",
+          "end_line": 11,
+          "taken": 0,
+          "branch_states": [
+            {
+              "line": 5,
+              "kind": "if",
+              "condition": "defined(FEATURE_A) && LEVEL >= 2",
+              "taken": 0
+            },
+            {
+              "line": 7,
+              "kind": "elif",
+              "condition": "defined(FEATURE_B) || LEVEL == 1",
+              "taken": 1
+            },
+            {
+              "line": 9,
+              "kind": "else",
+              "condition": null,
+              "taken": -1
+            }
+          ],
+          "macro_inputs": [
+            {
+              "name": "FEATURE_A",
+              "def_source": "",
+              "def_file": "",
+              "def_line": null
+            },
+            {
+              "name": "FEATURE_B",
+              "def_source": "command_line",
+              "def_file": "",
+              "def_line": null
+            },
+            {
+              "name": "LEVEL",
+              "def_source": "file",
+              "def_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "def_line": 2
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "explain_condition::{\"file_path\": \"config.c\", \"line\": 7}": {
+    "tool": "explain_condition",
+    "arguments": {
+      "file_path": "config.c",
+      "line": 7
+    },
+    "elapsed_s": 0.002,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"config.c\",\n  \"line\": 7,\n  \"context_id\": \"9f65666cb4656139\",\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"chain\": [\n    {\n      \"file\": \"config.c\",\n      \"line\": 5,\n      \"directive\": \"if\",\n      \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n      \"end_line\": 11,\n      \"taken\": 1,\n      \"branch_states\": [\n        {\n          \"line\": 5,\n          \"kind\": \"if\",\n          \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 7,\n          \"kind\": \"elif\",\n          \"condition\": \"defined(FEATURE_B) || LEVEL == 1\",\n          \"taken\": 1\n        },\n        {\n          \"line\": 9,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": -1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"FEATURE_A\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"FEATURE_B\",\n          \"def_source\": \"command_line\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"LEVEL\",\n          \"def_source\": \"file\",\n          \"def_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n          \"def_line\": 2\n        }\n      ]\n    }\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "file": "config.c",
+          "line": 7,
+          "context_id": "9f65666cb4656139",
+          "config_hash": "5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6",
+          "chain": [
+            {
+              "file": "config.c",
+              "line": 5,
+              "directive": "if",
+              "condition": "defined(FEATURE_A) && LEVEL >= 2",
+              "end_line": 11,
+              "taken": 1,
+              "branch_states": [
+                {
+                  "line": 5,
+                  "kind": "if",
+                  "condition": "defined(FEATURE_A) && LEVEL >= 2",
+                  "taken": 0
+                },
+                {
+                  "line": 7,
+                  "kind": "elif",
+                  "condition": "defined(FEATURE_B) || LEVEL == 1",
+                  "taken": 1
+                },
+                {
+                  "line": 9,
+                  "kind": "else",
+                  "condition": null,
+                  "taken": -1
+                }
+              ],
+              "macro_inputs": [
+                {
+                  "name": "FEATURE_A",
+                  "def_source": "",
+                  "def_file": "",
+                  "def_line": null
+                },
+                {
+                  "name": "FEATURE_B",
+                  "def_source": "command_line",
+                  "def_file": "",
+                  "def_line": null
+                },
+                {
+                  "name": "LEVEL",
+                  "def_source": "file",
+                  "def_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+                  "def_line": 2
+                }
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"config.c\",\n  \"line\": 7,\n  \"context_id\": \"9f65666cb4656139\",\n  \"config_hash\": \"5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6\",\n  \"chain\": [\n    {\n      \"file\": \"config.c\",\n      \"line\": 5,\n      \"directive\": \"if\",\n      \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n      \"end_line\": 11,\n      \"taken\": 1,\n      \"branch_states\": [\n        {\n          \"line\": 5,\n          \"kind\": \"if\",\n          \"condition\": \"defined(FEATURE_A) && LEVEL >= 2\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 7,\n          \"kind\": \"elif\",\n          \"condition\": \"defined(FEATURE_B) || LEVEL == 1\",\n          \"taken\": 1\n        },\n        {\n          \"line\": 9,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": -1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"FEATURE_A\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"FEATURE_B\",\n          \"def_source\": \"command_line\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        },\n        {\n          \"name\": \"LEVEL\",\n          \"def_source\": \"file\",\n          \"def_file\": \"/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c\",\n          \"def_line\": 2\n        }\n      ]\n    }\n  ]\n}",
+    "json": {
+      "file": "config.c",
+      "line": 7,
+      "context_id": "9f65666cb4656139",
+      "config_hash": "5bac1be8b0eb33ca652520f67fee3e465c0eb9bd085ca360ac4e0bebc3a9f0f6",
+      "chain": [
+        {
+          "file": "config.c",
+          "line": 5,
+          "directive": "if",
+          "condition": "defined(FEATURE_A) && LEVEL >= 2",
+          "end_line": 11,
+          "taken": 1,
+          "branch_states": [
+            {
+              "line": 5,
+              "kind": "if",
+              "condition": "defined(FEATURE_A) && LEVEL >= 2",
+              "taken": 0
+            },
+            {
+              "line": 7,
+              "kind": "elif",
+              "condition": "defined(FEATURE_B) || LEVEL == 1",
+              "taken": 1
+            },
+            {
+              "line": 9,
+              "kind": "else",
+              "condition": null,
+              "taken": -1
+            }
+          ],
+          "macro_inputs": [
+            {
+              "name": "FEATURE_A",
+              "def_source": "",
+              "def_file": "",
+              "def_line": null
+            },
+            {
+              "name": "FEATURE_B",
+              "def_source": "command_line",
+              "def_file": "",
+              "def_line": null
+            },
+            {
+              "name": "LEVEL",
+              "def_source": "file",
+              "def_file": "/home/h00969597/fwctx-validation-work/V3-WSL/G03/work/config.c",
+              "def_line": 2
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "server_exit_code": 0
+}

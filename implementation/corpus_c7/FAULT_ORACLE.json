@@ -1,0 +1,47 @@
+{
+  "case_id": "C7",
+  "lineage": "D (planted-source-deterministic)",
+  "custody": "custodian_only_hidden_from_solver",
+  "fixture_files": [
+    "fixture/Kconfig",
+    "fixture/CMakeLists.txt",
+    "fixture/work.h",
+    "fixture/sensor_module.c"
+  ],
+  "build_context": {
+    "CONFIG_SENSOR_ENABLE": "y (pinned =1)",
+    "CONFIG_SENSOR_IRQ_PATH": "never defined (plant token; the real Kconfig symbol is CONFIG_SENSOR_IRQ_MODE)"
+  },
+  "expected_mechanism": {
+    "summary": "sensor_read stays live, but the ONLY work_submit call for the module's work item — and the sensor_submit API itself — are enclosed by '#if defined(CONFIG_SENSOR_IRQ_PATH)', a token no Kconfig source defines, so the module's submit path is compiled out under every configuration: init/submit pairing inconsistent, deterministically, at source level.",
+    "mechanism_class": "init_submit_pairing under a condition-gated branch (R3a/R1) + existence_absence of the guarded API",
+    "determinism": "source-deterministic: the branch is dead under every configuration"
+  },
+  "expected_predicates": [
+    {
+      "predicate_id": "P1",
+      "kind": "condition_text",
+      "statement": "the sensor_submit definition and the only work_submit call in the slice are enclosed by '#if defined(CONFIG_SENSOR_IRQ_PATH)', a token that no Kconfig source in the slice defines, so the branch is not taken under any configuration",
+      "negatable": true
+    },
+    {
+      "predicate_id": "P2",
+      "kind": "call_reachable",
+      "statement": "work_submit(&sensor_work) is not reachable under the pinned build config: no live call edge reaches it",
+      "negatable": true
+    },
+    {
+      "predicate_id": "P3",
+      "kind": "definition_absent",
+      "statement": "sensor_submit has no compiled definition under the pinned build",
+      "negatable": true
+    }
+  ],
+  "expected_refutation_outcome": "NOT_REFUTED_WITHIN_SCOPE",
+  "expected_oracle_provenance": "blind",
+  "forbidden_overclaims": [
+    "any claim that the work item never executes at runtime (runtime semantics are out of scope; only the source-level pairing inconsistency is claimable)",
+    "any claim that sensor data is lost at runtime"
+  ],
+  "blind_custody_note": "Planted blind case: the oracle is held by the custodian; the solver sees only the fixture tree and CASE_DESIGN.md."
+}

@@ -1,0 +1,13 @@
+[
+  {
+    "file": "callbacks.c",
+    "arguments": [
+      "clang",
+      "-c",
+      "${ROOT}/callbacks.c",
+      "-o",
+      "callbacks.o"
+    ],
+    "output": "callbacks.o"
+  }
+]

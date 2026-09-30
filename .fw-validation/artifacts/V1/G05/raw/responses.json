@@ -1,0 +1,215 @@
+{
+  "serverInfo": {
+    "name": "fw-context",
+    "version": "1.28.1"
+  },
+  "get_method_overrides::{\"method_name\": \"Derived::run\"}": {
+    "tool": "get_method_overrides",
+    "arguments": {
+      "method_name": "Derived::run"
+    },
+    "elapsed_s": 0.015,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Derived::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n  \"line\": 2,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [\n    {\n      \"usr\": \"c:@S@Base@F@run#I#\",\n      \"name\": \"run\",\n      \"qualified_name\": \"Base::run\",\n      \"kind\": \"method\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 3\n    }\n  ],\n  \"overridden_by\": []\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Derived::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n  \"line\": 2,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [\n    {\n      \"usr\": \"c:@S@Base@F@run#I#\",\n      \"name\": \"run\",\n      \"qualified_name\": \"Base::run\",\n      \"kind\": \"method\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 3\n    }\n  ],\n  \"overridden_by\": []\n}",
+    "json": {
+      "name": "run",
+      "qualified_name": "Derived::run",
+      "kind": "method",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.cpp",
+      "line": 2,
+      "signature": "int run(int x)",
+      "overrides": [
+        {
+          "usr": "c:@S@Base@F@run#I#",
+          "name": "run",
+          "qualified_name": "Base::run",
+          "kind": "method",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+          "line": 3
+        }
+      ],
+      "overridden_by": []
+    }
+  },
+  "get_method_overrides::{\"method_name\": \"Other::run\"}": {
+    "tool": "get_method_overrides",
+    "arguments": {
+      "method_name": "Other::run"
+    },
+    "elapsed_s": 0.006,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Other::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n  \"line\": 3,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [],\n  \"overridden_by\": []\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Other::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n  \"line\": 3,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [],\n  \"overridden_by\": []\n}",
+    "json": {
+      "name": "run",
+      "qualified_name": "Other::run",
+      "kind": "method",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.cpp",
+      "line": 3,
+      "signature": "int run(int x)",
+      "overrides": [],
+      "overridden_by": []
+    }
+  },
+  "get_method_overrides::{\"method_name\": \"Base::run\"}": {
+    "tool": "get_method_overrides",
+    "arguments": {
+      "method_name": "Base::run"
+    },
+    "elapsed_s": 0.006,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Base::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n  \"line\": 3,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [],\n  \"overridden_by\": [\n    {\n      \"usr\": \"c:@S@Derived@F@run#I#\",\n      \"name\": \"run\",\n      \"qualified_name\": \"Derived::run\",\n      \"kind\": \"method\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n      \"line\": 2\n    }\n  ]\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"run\",\n  \"qualified_name\": \"Base::run\",\n  \"kind\": \"method\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n  \"line\": 3,\n  \"signature\": \"int run(int x)\",\n  \"overrides\": [],\n  \"overridden_by\": [\n    {\n      \"usr\": \"c:@S@Derived@F@run#I#\",\n      \"name\": \"run\",\n      \"qualified_name\": \"Derived::run\",\n      \"kind\": \"method\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.cpp\",\n      \"line\": 2\n    }\n  ]\n}",
+    "json": {
+      "name": "run",
+      "qualified_name": "Base::run",
+      "kind": "method",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+      "line": 3,
+      "signature": "int run(int x)",
+      "overrides": [],
+      "overridden_by": [
+        {
+          "usr": "c:@S@Derived@F@run#I#",
+          "name": "run",
+          "qualified_name": "Derived::run",
+          "kind": "method",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.cpp",
+          "line": 2
+        }
+      ]
+    }
+  },
+  "get_template_instances::{\"template_name\": \"twice\"}": {
+    "tool": "get_template_instances",
+    "arguments": {
+      "template_name": "twice"
+    },
+    "elapsed_s": 0.006,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"twice\",\n  \"qualified_name\": \"twice\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n  \"line\": 13,\n  \"is_definition\": true,\n  \"signature\": \"T twice()\",\n  \"instances\": [\n    {\n      \"usr\": \"c:@F@twice<#I>#I#\",\n      \"template_usr\": \"c:@FT@>1#Ttwice#t0.0#S0_#\",\n      \"name\": \"twice\",\n      \"qualified_name\": \"twice\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 13,\n      \"signature\": \"int twice(int x)\",\n      \"is_definition\": true\n    },\n    {\n      \"usr\": \"c:@F@twice<#d>#d#\",\n      \"template_usr\": \"c:@FT@>1#Ttwice#t0.0#S0_#\",\n      \"name\": \"twice\",\n      \"qualified_name\": \"twice\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 13,\n      \"signature\": \"double twice(double x)\",\n      \"is_definition\": true\n    }\n  ],\n  \"instance_count\": 2\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "twice",
+              "qualified_name": "twice",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+              "line": 13,
+              "is_definition": true,
+              "signature": "T twice()",
+              "instances": [
+                {
+                  "usr": "c:@F@twice<#I>#I#",
+                  "template_usr": "c:@FT@>1#Ttwice#t0.0#S0_#",
+                  "name": "twice",
+                  "qualified_name": "twice",
+                  "kind": "function",
+                  "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+                  "line": 13,
+                  "signature": "int twice(int x)",
+                  "is_definition": true
+                },
+                {
+                  "usr": "c:@F@twice<#d>#d#",
+                  "template_usr": "c:@FT@>1#Ttwice#t0.0#S0_#",
+                  "name": "twice",
+                  "qualified_name": "twice",
+                  "kind": "function",
+                  "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+                  "line": 13,
+                  "signature": "double twice(double x)",
+                  "is_definition": true
+                }
+              ],
+              "instance_count": 2
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"twice\",\n  \"qualified_name\": \"twice\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n  \"line\": 13,\n  \"is_definition\": true,\n  \"signature\": \"T twice()\",\n  \"instances\": [\n    {\n      \"usr\": \"c:@F@twice<#I>#I#\",\n      \"template_usr\": \"c:@FT@>1#Ttwice#t0.0#S0_#\",\n      \"name\": \"twice\",\n      \"qualified_name\": \"twice\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 13,\n      \"signature\": \"int twice(int x)\",\n      \"is_definition\": true\n    },\n    {\n      \"usr\": \"c:@F@twice<#d>#d#\",\n      \"template_usr\": \"c:@FT@>1#Ttwice#t0.0#S0_#\",\n      \"name\": \"twice\",\n      \"qualified_name\": \"twice\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G05\\\\work\\\\model.hpp\",\n      \"line\": 13,\n      \"signature\": \"double twice(double x)\",\n      \"is_definition\": true\n    }\n  ],\n  \"instance_count\": 2\n}",
+    "json": {
+      "name": "twice",
+      "qualified_name": "twice",
+      "kind": "function",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+      "line": 13,
+      "is_definition": true,
+      "signature": "T twice()",
+      "instances": [
+        {
+          "usr": "c:@F@twice<#I>#I#",
+          "template_usr": "c:@FT@>1#Ttwice#t0.0#S0_#",
+          "name": "twice",
+          "qualified_name": "twice",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+          "line": 13,
+          "signature": "int twice(int x)",
+          "is_definition": true
+        },
+        {
+          "usr": "c:@F@twice<#d>#d#",
+          "template_usr": "c:@FT@>1#Ttwice#t0.0#S0_#",
+          "name": "twice",
+          "qualified_name": "twice",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G05\\work\\model.hpp",
+          "line": 13,
+          "signature": "double twice(double x)",
+          "is_definition": true
+        }
+      ],
+      "instance_count": 2
+    }
+  },
+  "server_exit_code": 0
+}

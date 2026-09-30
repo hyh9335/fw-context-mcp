@@ -1,0 +1,109 @@
+[
+ {
+  "evidence_classification": [
+   {
+    "classification": "causal_support",
+    "symbol": "CONFIG_SENSOR_IRQ_PATH"
+   }
+  ],
+  "rulecard_id": "RC-C7-SENSOR-MODULE-19",
+  "state": "NOT_REFUTED_WITHIN_SCOPE",
+  "steps": [
+   {
+    "holds": true,
+    "step_id": "RS1"
+   },
+   {
+    "holds": true,
+    "step_id": "RS2",
+    "symbol_hits": {
+     "CONFIG_SENSOR_IRQ_PATH": 1
+    }
+   },
+   {
+    "flipped": [
+     "CONFIG_SENSOR_IRQ_PATH"
+    ],
+    "guard_flips": [
+     "CONFIG_SENSOR_IRQ_PATH"
+    ],
+    "holds": true,
+    "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) \u2014 recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+    "step_id": "RS3",
+    "survival": {
+     "sensor_module.c|flip:CONFIG_SENSOR_IRQ_PATH=1": true
+    }
+   }
+  ]
+ },
+ {
+  "evidence_classification": [
+   {
+    "classification": "out_of_scope",
+    "symbol": "CONFIG_SENSOR_IRQ_PATH"
+   }
+  ],
+  "rulecard_id": "RC-C7-API-SENSOR-SUBMIT",
+  "state": "NOT_REFUTED_WITHIN_SCOPE",
+  "steps": [
+   {
+    "holds": true,
+    "step_id": "RS1"
+   },
+   {
+    "holds": true,
+    "step_id": "RS2",
+    "symbol_hits": {}
+   },
+   {
+    "flipped": [],
+    "guard_flips": [
+     "CONFIG_SENSOR_IRQ_PATH"
+    ],
+    "holds": true,
+    "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) \u2014 recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+    "step_id": "RS3",
+    "survival": {
+     "sensor_module.c|flip:CONFIG_SENSOR_IRQ_PATH=1": true
+    }
+   }
+  ]
+ },
+ {
+  "evidence_classification": [
+   {
+    "classification": "causal_support",
+    "symbol": "CONFIG_SENSOR_IRQ_PATH"
+   }
+  ],
+  "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR",
+  "state": "NOT_REFUTED_WITHIN_SCOPE",
+  "steps": [
+   {
+    "holds": true,
+    "step_id": "RS1"
+   },
+   {
+    "holds": true,
+    "step_id": "RS2",
+    "symbol_hits": {
+     "CONFIG_SENSOR_IRQ_PATH": 1
+    }
+   },
+   {
+    "flipped": [
+     "CONFIG_SENSOR_IRQ_PATH"
+    ],
+    "guard_flips": [
+     "CONFIG_SENSOR_IRQ_PATH"
+    ],
+    "holds": true,
+    "scope_note": "flipped configurations survive the region check but are OUT OF SCOPE (rule pins build_snapshot_id) \u2014 recorded as audit detail, NOT as a counterexample_ref, which must stay null for NOT_REFUTED_WITHIN_SCOPE",
+    "step_id": "RS3",
+    "survival": {
+     "sensor_module.c|flip:CONFIG_SENSOR_IRQ_PATH=1": true
+    }
+   }
+  ]
+ }
+]

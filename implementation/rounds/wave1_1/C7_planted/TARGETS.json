@@ -1,0 +1,33 @@
+[
+ {
+  "condition_text": "defined(CONFIG_SENSOR_IRQ_PATH)",
+  "condition_text_head": "defined(CONFIG_SENSOR_IRQ_PATH)",
+  "end_line": 26,
+  "file": "fixture/sensor_module.c",
+  "line": 19,
+  "root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\source_snapshot",
+  "single_line": false,
+  "start_line": 19,
+  "symbols": [
+   "CONFIG_SENSOR_IRQ_PATH"
+  ],
+  "tag": "sensor_module-19",
+  "taken": false,
+  "title": "Config-gated region fixture/sensor_module.c:19"
+ },
+ {
+  "file": "fixture/sensor_module.c",
+  "guard_hits": [
+   {
+    "file": "fixture/sensor_module.c",
+    "line": 19
+   }
+  ],
+  "only_guard": true,
+  "root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\source_snapshot",
+  "symbol": "CONFIG_SENSOR_IRQ_PATH",
+  "symbol_definition_pattern": "CONFIG_SENSOR_IRQ_PATH",
+  "tag": "sym-CONFIG_SENSOR_IRQ_PATH",
+  "title": "Config symbol incidence CONFIG_SENSOR_IRQ_PATH"
+ }
+]

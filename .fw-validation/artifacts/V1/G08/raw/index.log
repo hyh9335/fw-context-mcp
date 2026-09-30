@@ -1,0 +1,42 @@
+exit: 0
+stdout:
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V1\G08\work  build=unknown
+Indexed. config_hash=92cf369067ca1e10…  db=C:\Users\h00969597\fwctx-validation-work\V1\G08\index\f39f2de3c7f548e9a8e3eca0d380cd79\index.db
+
+stderr:
+10:50:45 INFO TUs to index: 1
+10:50:45 INFO vendor patterns for work: none
+10:50:45 INFO manifest.json (preliminary): 1 TUs, config_hash=92cf369067ca
+10:50:45 INFO 
+10:50:45 INFO project=work project_id=f39f2de3c7f548e9a8e3eca0d380cd79 config_hash=92cf369067ca
+10:50:45 INFO 
+10:50:45 INFO content fill: 1 files from TU app.c in 0.0s
+10:50:45 INFO [1/1] app.c: 8 syms, 13 refs, 0.1s
+10:50:45 INFO linker script: none found for this build
+10:50:45 INFO Post-process: purge_missing (0.0s)
+10:50:45 INFO Post-process: fts5 (0.0s)
+10:50:45 INFO Post-process: orphans (0.0s)
+10:50:45 INFO Post-process: is_project (0.0s)
+10:50:45 INFO manifest.json incremental: 1 updated, 0 reused, 0 needs_reparse
+10:50:45 INFO manifest.json saved: 1 TUs, 0 distinct headers (0 references), config_hash=92cf369067ca
+10:50:45 INFO Post-process: manifest (0.0s)
+10:50:45 INFO Post-process: generated_flag (0.0s)
+10:50:45 INFO Post-process: coverage_purge (0.0s)
+10:50:45 INFO Post-process: macros (0.0s)
+10:50:45 WARNING Index note: 1 dispatch bridge(s) skipped — entry points absent from this build or linkage unresolved (z_work_q_main). See dispatch_skip_report in manifest.json.
+10:50:45 INFO Post-process: dispatch_edges (0.0s)
+10:50:45 INFO No virtual methods found — skipping override analysis
+10:50:45 INFO Post-process: overrides (0.0s)
+10:50:45 INFO Post-process: cross_tu_refs (0.0s)
+10:50:45 INFO Post-process: variant_switches (0.0s)
+10:50:45 INFO PageRank converged after 3 iterations
+10:50:45 INFO PageRank stored: 4 nodes
+10:50:45 INFO Hotspot cache stored: 3 entries
+10:50:45 INFO Post-process: pagerank_hotspot (0.0s)
+10:50:45 INFO Post-process: verify_integrity (0.0s)
+10:50:45 INFO Post-process: finalize_manifest (0.0s)
+10:50:45 INFO Post-process: cleanup_old (0.0s)
+10:50:45 INFO Post-process: wal_checkpoint (0.0s)
+10:50:45 INFO 
+10:50:45 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=92cf369067ca
+10:50:45 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V1\G08\work

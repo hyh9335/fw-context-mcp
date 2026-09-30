@@ -1,0 +1,21 @@
+{
+  "case_id": "C6",
+  "custody": "custodian_only_hidden_from_solver",
+  "expected_outcome": "NO accepted RuleCard claiming 'getcwd is absent or undefined under CONFIG_DISABLE_ENVIRON' on the C6 (post-fix) snapshot",
+  "expected_mechanism_summary": "At post-fix SHA 67ed036227b14bbab01b63801bfd7e218dfd6107 under the same pinned build context (CONFIG_DISABLE_ENVIRON=y): the getcwd definition is unconditional in libs/libc/unistd/lib_getcwd.c, the whole-file guard is gone, lib_getcwd.c sits in the unconditional source lists of Make.defs and CMakeLists.txt, and the LIBC_HOMEDIR Kconfig dependency was removed - i.e. the C4 fault does not exist here.",
+  "correct_behaviors": [
+    "reject the imported C4 hypothesis outright (emit no RuleCard for a getcwd-absence mechanism on this snapshot)",
+    "or register a candidate RuleCard and drive it to REFUTED via the RC2-style existence probe: exact-name lookup returns a definition row for getcwd in libs/libc/unistd/lib_getcwd.c and the unistd build files list lib_getcwd.c unconditionally; REFUTED (rule_falsified_when observed: a definition exists, contradicting the absence claim) plus validation_status=rejected is the scored success of this expected-refutation case (REFUTATION_STATE_MODEL.md section 3.2)",
+    "zero false-positive RuleCards accepted"
+  ],
+  "intentional_code_note": "The post-fix inner '#ifndef CONFIG_DISABLE_ENVIRON' around the getenv(\"PWD\") fallback in lib_getcwd.c is INTENTIONAL narrowed guarding: with environ disabled the fallback correctly uses CONFIG_LIBC_HOMEDIR (now available because the Kconfig dependency was removed). It must NOT be reported as a fault; RC3-style whole-file-guard claims do not apply post-fix.",
+  "scoring_notes": [
+    "any accepted RuleCard claiming the C4 mechanism (getcwd absent/undefined under CONFIG_DISABLE_ENVIRON) on the C6 snapshot = false positive: the case fails",
+    "REFUTED + rejected candidate = success; plain rejection of the imported hypothesis without a candidate = success",
+    "INCONCLUSIVE = failure-to-establish (never scored as success)",
+    "ORACLE_CONFLICT blocks acceptance pending re-derivation per REFUTATION_STATE_MODEL.md",
+    "the solver is scored per snapshot independently (pairing protocol in PAIRING_NOTE.md)"
+  ],
+  "expected_oracle_provenance": "commit_derived",
+  "blind_rows_note": "Same partial-blind protocol as C4: commit-derived ground truth plus >=30% blind load-bearing rows held by the custodian (FR-6)."
+}

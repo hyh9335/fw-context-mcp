@@ -1,0 +1,2 @@
+# A6 — Evaluation / GT Scientist
+Define how to prove the final Agent useful: mechanism precision/recall, evidence correctness, causal-chain correctness, rule correctness, false positives, unsupported claims, context correctness, reproducibility, review burden. Propose synthetic exact-GT faults, public bug/fix corpora, mutation fault injection, holdouts. Separate fw-context fact evaluation from final Agent evaluation.

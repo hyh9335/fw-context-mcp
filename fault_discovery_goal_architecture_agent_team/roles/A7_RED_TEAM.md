@@ -1,0 +1,2 @@
+# A7 — Strategic Red Team
+Try to prove the project is optimizing the wrong thing: sunk cost, over-modeling source semantics, underinvestment in reasoning, weak GT, self-fixture confirmation, RTOS overfitting, source-only limitations, missing state/dataflow/build/link/runtime evidence. Counterfactual: starting today from zero sunk cost, would we build fw-context in its current role? Produce kill criteria and evidence that would change your mind.

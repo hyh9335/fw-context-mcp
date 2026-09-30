@@ -1,0 +1,42 @@
+exit: 0
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A2_macro_config_change\work  build=unknown
+Indexed. config_hash=4648dbdb71cc8be0…  db=C:\Users\h00969597\fwctx-validation-work\V4\A2_macro_config_change\index\79224103601a4026b231f20593322331\index.db
+
+18:53:25 INFO TUs to index: 2
+18:53:25 INFO vendor patterns for work: none
+18:53:25 INFO manifest.json (preliminary): 2 TUs, config_hash=4648dbdb71cc
+18:53:25 INFO 
+18:53:25 INFO project=work project_id=79224103601a4026b231f20593322331 config_hash=4648dbdb71cc
+18:53:25 INFO 
+18:53:25 INFO content fill: 2 files from TU master.c in 0.0s
+18:53:25 INFO [1/2] master.c: 3 syms, 4 refs, 0.1s
+18:53:25 INFO content fill: 2 files from TU slave.c in 0.0s
+18:53:25 INFO [2/2] slave.c: 3 syms, 4 refs, 0.0s
+18:53:25 INFO linker script: none found for this build
+18:53:25 INFO Post-process: purge_missing (0.0s)
+18:53:25 INFO Post-process: fts5 (0.0s)
+18:53:25 INFO Post-process: orphans (0.0s)
+18:53:25 INFO Post-process: is_project (0.0s)
+18:53:25 INFO Building manifest.json from 2 pre-collected TU headers...
+18:53:25 INFO manifest.json: 2 updated (from tu_headers), 0 reused, 0 needs_reparse
+18:53:25 INFO manifest.json saved: 2 TUs, 1 distinct headers (2 references), config_hash=4648dbdb71cc
+18:53:25 INFO Post-process: manifest (0.0s)
+18:53:25 INFO Post-process: generated_flag (0.0s)
+18:53:25 INFO Post-process: coverage_purge (0.0s)
+18:53:25 INFO Post-process: macros (0.1s)
+18:53:25 INFO Post-process: dispatch_edges (0.0s)
+18:53:25 INFO No virtual methods found — skipping override analysis
+18:53:25 INFO Post-process: overrides (0.0s)
+18:53:25 INFO Post-process: cross_tu_refs (0.0s)
+18:53:25 INFO Post-process: variant_switches (0.0s)
+18:53:25 INFO PageRank converged after 3 iterations
+18:53:25 INFO PageRank stored: 4 nodes
+18:53:25 INFO Hotspot cache stored: 2 entries
+18:53:25 INFO Post-process: pagerank_hotspot (0.0s)
+18:53:25 INFO Post-process: verify_integrity (0.0s)
+18:53:25 INFO Post-process: finalize_manifest (0.0s)
+18:53:25 INFO Post-process: cleanup_old (0.0s)
+18:53:25 INFO Post-process: wal_checkpoint (0.0s)
+18:53:25 INFO 
+18:53:25 INFO 2 updated, 0 unchanged, 0 skipped  config_hash=4648dbdb71cc
+18:53:25 INFO Spawning watcher daemon for C:\Users\h00969597\fwctx-validation-work\V4\A2_macro_config_change\work

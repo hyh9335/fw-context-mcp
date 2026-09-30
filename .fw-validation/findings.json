@@ -1,0 +1,292 @@
+{
+  "findings": [
+    {
+      "id": "F-V0-001",
+      "phase": "V0_ENV",
+      "area": "environment",
+      "severity": null,
+      "summary": "WSL service denies ALL service RPCs from the validation shell (EnumerateDistros, CreateInstance -> E_ACCESSDENIED) despite WSL 2.7.10.0 installed, Ubuntu-22.04 registered (State=1), wslservice PID 7844 running, and a normal-looking token (Medium IL, INTERACTIVE present, no AppContainer). Prior closeout audit (2026-09-16, main@954514a) successfully ran WSL full suite + real stdio win->wsl from a harness session, so this is a new/transient service state. No user-level recovery attempted without approval; escalation to same sandbox mode rejected by policy.",
+      "classification": "TRANSIENT_ENVIRONMENT",
+      "status": "RESOLVED",
+      "resolution": "After the session's DSH file policy moved to danger-full-access (2026-09-18, user action), the identical wsl.exe command succeeded immediately: WSL_EXEC_OK, Ubuntu 22.04.5, kernel 6.18.33.2-microsoft-standard-WSL2, user h00969597. Earlier denials were therefore caused by the prior restricted sandbox mode and/or transient WSL service state, not by a missing product capability. All WSL-dependent cells re-opened and proceeding.",
+      "evidence": [
+        "wsl.exe --version -> OK (local, no RPC)",
+        "wsl.exe -l -v / --list --all / --list --running -> Wsl/EnumerateDistros/Service/E_ACCESSDENIED",
+        "wsl.exe -d Ubuntu-22.04 -e sh -c 'uname -a' -> Wsl/Service/CreateInstance/E_ACCESSDENIED",
+        "wsl.exe -d Ubuntu-22.04 -- whoami -> Wsl/Service/E_ACCESSDENIED",
+        "MSIX C:\\Program Files\\WSL\\wsl.exe -l -v -> same E_ACCESSDENIED",
+        "cmd /c wsl -l -q -> same E_ACCESSDENIED",
+        "Get-Service: WSLService Running (Automatic); wslservice.exe PID 7844 alive",
+        "whoami /groups: Medium Mandatory Level, INTERACTIVE, no AppContainer"
+      ],
+      "reproduction": "pwsh: wsl.exe -d Ubuntu-22.04 -e sh -c \"uname -a\"",
+      "missing_dependency": "WSL service RPC access from the harness process token",
+      "impact_cells": [
+        "V0: WSL toolchain inventory, WSL test-path fstype, WSL stdio smoke, public clones into ~/fwctx-bench",
+        "V1: compiler/linker oracles (Windows has NO gcc/clang/cl/cmake/ninja/make; libclang-only)",
+        "V2: all build-based oracles (west/cmake/ninja/make builds)",
+        "V3: entire cross-platform phase (WSL parity, WSL stdio, win->wsl bridge)",
+        "V4: build-dependent adversarial mutations (variant switch via rebuild)"
+      ]
+    },
+    {
+      "id": "F-V0-002",
+      "phase": "V0_ENV",
+      "area": "environment",
+      "severity": null,
+      "summary": "Global pip install of fw-context-mcp is 0.24.0 while repo HEAD pyproject is 0.31.0. Running from source (PYTHONPATH=src) executes HEAD code but importlib.metadata reports the stale 0.24.0 dist, corrupting version evidence (cli version banner said 0.24.0 for HEAD code). Mitigation: dedicated validation venv .fw-validation/venv-win with pip install --no-deps . (HEAD code + matching 0.31.0 metadata, deps reused from system site-packages).",
+      "classification": "ENVIRONMENT_NOTE",
+      "status": "RESOLVED",
+      "resolution": "Dedicated validation venv .fw-validation/venv-win built with pip install --no-deps . from HEAD; banner now reports fw-context-mcp 0.31.0 matching pyproject. All Windows spawned validation runs must use .fw-validation\\venv-win\\Scripts\\python.exe. pypi.org unreachable through corporate proxy (initial 20-min stall); Huawei Cloud PyPI mirror (repo.huaweicloud.com/repository/pypi/simple) works and was used.",
+      "evidence": [
+        "python -m pip show fw-context-mcp -> Version 0.24.0 (site-packages, Python 3.11.9)",
+        "PYTHONPATH=src python -m fw_context_mcp.cli version -> fw-context-mcp 0.24.0 (metadata mismatch, code is HEAD)",
+        "pyproject.toml at HEAD: version = 0.31.0"
+      ],
+      "reproduction": "PYTHONPATH=src python -m fw_context_mcp.cli version -> prints 0.24.0",
+      "missing_dependency": null
+    },
+    {
+      "id": "F-V0-003",
+      "phase": "V0_ENV",
+      "area": "environment",
+      "severity": null,
+      "summary": "pypi.org unreachable through corporate proxy (first venv build stalled 20+ min with zero output); Huawei Cloud PyPI mirror (https://repo.huaweicloud.com/repository/pypi/simple) works. All future Windows pip installs must use the mirror. Related: raw httpx crashes parsing NO_PROXY containing [::1] — product NEW-W0-1 sanitize fix confirmed still necessary.",
+      "classification": "ENVIRONMENT_NOTE",
+      "status": "OPEN",
+      "evidence": [
+        "python -m pip config list -> empty (no mirror configured)",
+        "python -c 'import hatchling' -> ModuleNotFoundError (build isolation must download)",
+        "pip install --no-deps -i https://repo.huaweicloud.com/repository/pypi/simple . -> Successfully installed fw-context-mcp-0.31.0, exit 0"
+      ],
+      "reproduction": "python -m pip install <any pkg> (default index) through proxyjp -> stalls",
+      "missing_dependency": null
+    },
+    {
+      "id": "F-V0-004",
+      "phase": "V0_ENV",
+      "area": "environment",
+      "severity": null,
+      "summary": "WSL sudo requires password (sudo -n fails), blocking non-interactive apt installs. Bypassed via `wsl -u root` apt-get install (WSL launches root instances without password). clang 14.0.0, cmake 3.22.1, ninja 1.10.1 now installed in Ubuntu-22.04.",
+      "classification": "RESOLVED",
+      "status": "RESOLVED",
+      "evidence": [
+        "sudo -n true -> SUDO_NONINTERACTIVE_FAILED",
+        "wsl -u root apt-get install clang cmake ninja-build -> exit 0",
+        "clang --version -> Ubuntu clang version 14.0.0-1ubuntu1.1; cmake 3.22.1; ninja 1.10.1"
+      ],
+      "reproduction": "wsl.exe -d Ubuntu-22.04 -e sudo -n true -> fails; wsl.exe -d Ubuntu-22.04 -u root -e id -> root",
+      "missing_dependency": null
+    },
+    {
+      "id": "F-V1-001",
+      "phase": "V1_GOLDEN",
+      "area": "macro-observability",
+      "severity": "HIGH",
+      "summary": "G02 (same source compiled twice with -DMODE_VALUE=1 / -DMODE_VALUE=2): the per-context macro values ARE stored in the index DB (macros table: two rows, value '1' context 1d405fa4c07e76fc, value '2' context 9655faf2257c623d, def_source=command_line) but NO supported consumer surface exposes them. lookup_symbol('MODE_VALUE', exact=True) returns the FUNCTION mode_value rows via relaxed prefix fallback (_fallback: true); search_code never reaches macros_fts because function hits short-circuit the pipeline; explain_symbol('MODE_VALUE') returns 'Symbol not found'; fw-context export contains no macro/defines data; search_content shows only the unexpanded token in body text. Net effect: a consumer cannot tell which compile action carries which value — the distinguishing semantic of the two contexts is silently lost while both contexts exist as rows.",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "case": "G02_same_source_multi_command",
+      "secondary": "macros.expanded_value is self-inconsistent for context 1d405fa4c07e76fc: value='1' but expanded_value='2' (clang -dM -E for -DMODE_VALUE=1 must expand to 1). Stored index data diverges from compiler truth (INDEX_DIVERGENCE evidence, same root cause area).",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G02/G02.result.json (values_1_and_2_present=false, MODE_VALUE_macro_rows_2=false)",
+        ".fw-validation/artifacts/V1/G02/raw/responses.json (lookup_symbol exact=true -> function rows with _fallback)",
+        ".fw-validation/probe_g02_results.json (search_code/search_content/get_active_build/list_conditional_regions probes)",
+        ".fw-validation/probe_g02b.py output: explain_symbol('MODE_VALUE') -> error 'Symbol not found: MODE_VALUE'",
+        ".fw-validation/artifacts/V1/G02/raw/export.json (no macro data)",
+        "Index DB C:/Users/h00969597/fwctx-validation-work/V1/G02/index/8eb36fccfe8c46d0b87bb7c46b54999b/index.db: macros table has the two correct value rows; macros_fts indexes them; query layer never returns them",
+        "docs/tools.md:797-798 claims macros are extracted via clang -dM -E from compile_commands flags (includes -D); KNOWN_LIMITATIONS.md has no macro/command-line entry (grep empty)"
+      ],
+      "repro": "python .fw-validation/v1_runner.py G02  (runner: init+index via venv CLI, FW_CONTEXT_INDEX_DIR isolated, stdio MCP queries)"
+    },
+    {
+      "id": "F-V1-002",
+      "phase": "V1_GOLDEN",
+      "area": "conditional-body-storage",
+      "severity": "HIGH",
+      "summary": "G03 (config.c with three -D contexts): a function defined inside a file-level conditional group that is TAKEN in that context stores an EMPTY body. symbols.source = '' for 'helper' (defined under #if !defined(DISABLE_HELPER)) in both contexts where the symbol exists (context_ids ae31c76ed0365596, ee7c6b4fa91cd95a), while the unwrapped function 'selected' stores correct per-context filtered bodies in all three contexts. search_bodies('helper') returns [] (no body text to match) although lookup_symbol finds 2 helper rows. Functions invisible to body search = silent data loss for any consumer relying on body text.",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "case": "G03_conditional_matrix",
+      "secondary": "Symptom scope: helper_in_two_of_three=false in G03 comparison; all other G03 cells pass (3 contexts, selected values 10/20/30 per context, condition texts A and B verified incl. elif branch_states).",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G03/G03.result.json (helper_in_two_of_three=false, all other cells true)",
+        ".fw-validation/artifacts/V1/G03/raw/responses.json (search_bodies helper -> {\"result\": []}; lookup_symbol helper -> 2 rows)",
+        ".fw-validation/inspect_g03b.py output: symbols table helper rows src_len=0 vs selected rows with correct filtered bodies",
+        "Index DB C:/Users/h00969597/fwctx-validation-work/V1/G03/index/*/index.db"
+      ],
+      "repro": "python .fw-validation/v1_runner.py G03"
+    },
+    {
+      "id": "F-V1-003",
+      "phase": "V1_GOLDEN",
+      "area": "variant-isolation",
+      "severity": "CRITICAL",
+      "summary": "G04 (bare build + [[build.variants]] A/B/C, defines []/USE_USB=1/UNRELATED=1): the bare generator writes ONE shared compile_commands.json at cc_output_path(root) regardless of variant (src/fw_context_mcp/indexer/builders/manual.py:188-189). Per-variant artifacts are not isolated, so the last generated variant's defines win and every variant is indexed from identical flags. Observed: 3 distinct config_hashes recorded, but transport_send groups as ONE equivalence group [A,B,C] with identical body fingerprint; compare_variants(A,B) reports edges_equal=true although variant B compiles the #ifdef USE_USB branch (transport_send must call usb_send, not uart_send) — the tool asserts semantic equality of semantics that differ (WRONG_ANSWER surface). get_source(name, variant='B') additionally served the INACTIVE uart-branch body from disk (source_origin='disk', line 6) as if live, with no stale warning — for variant B the live body is line 3 (usb_send). Feature combination documented as supported (docs/configuration.md:60 'works for every build system, not only Zephyr'; docs:80 variant build_dir default 'build/<name>' not honored by the bare generator).",
+      "classification": "INDEX_DIVERGENCE",
+      "status": "OPEN",
+      "case": "G04_variant_semantic (run on WSL — Windows has no gcc/clang binary required by the bare generator)",
+      "secondary": "Equivalence-grouping and compare_variants silently validate the collapsed data: group_equivalent_variants(app_entry) correctly one group, but the same tooling reports transport_send equivalent across A/B/C, so the defect is invisible to the product's own consistency checks.",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G04/wsl/G04.result.json (equivalent_groups_AC_B=false, A_vs_B_callee_flip=false, A_vs_B.edges_equal=true)",
+        ".fw-validation/artifacts/V1/G04/wsl/responses.json (get_source variant A vs B both 'return uart_send(x);'; group_equivalent_variants transport_send -> one group [A,B,C], 3 config_hashes)",
+        "WSL ~/fwctx-v1-work/G04/work/.fw-context/build/compile_commands.json — single file, only '-D UNRELATED=1' (variant C, last generated); no per-variant compile DB exists",
+        ".fw-validation/peek_g04_cc.sh output; src/fw_context_mcp/indexer/builders/manual.py:160,188-189 (shared cc_output_path, no variant dimension)",
+        ".fw-validation/wsl_g04.py (full WSL reproduction: init -> init-variants add -> config defines -> index --build --variants A,B,C -> stdio MCP queries)"
+      ],
+      "repro": "wsl.exe -d Ubuntu-22.04 -e bash -c '~/fwctx-venv311/bin/python /mnt/d/github/fw-context-mcp/.fw-validation/wsl_g04.py'"
+    },
+    {
+      "id": "F-V1-004",
+      "phase": "V1_GOLDEN",
+      "area": "callback-registration-flow",
+      "severity": "MEDIUM",
+      "summary": "G06 (callbacks.c): direct function-pointer flows resolve correctly (global_cb->plus2 via variable initializer, ops.fn->plus1 via designated initializer, correct indirect call sites, plus1/plus2 reachable via indirect refs, and the opaque parameter cb is NOT claimed to have a definite callee target). The transitive registration flow is missing: find_indirect_targets('registered') returns only the parameter row (registered = cb inside register_cb, certainty=exact) and never reaches plus1 through the registration call argument at setup() line 16 (register_cb(plus1)). expected.json may_targets.invoke_registered = ['plus1'] with evidence_required = registration_site — the may-target through the registration API is unobservable, so invoke_registered's reachable callback set is silently under-reported.",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "case": "G06_indirect_callbacks",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G06/G06.result.json (invoke_registered_may_plus1=false; all other cells true)",
+        ".fw-validation/artifacts/V1/G06/raw/responses.json (find_indirect_targets registered -> single row rhs_name='cb' method=assignment assign_line=13; no call_arg row for setup:16 register_cb(plus1))",
+        ".fw-validation/peek_g0506.py output"
+      ],
+      "repro": "python .fw-validation/v1_runner.py G06"
+    },
+    {
+      "id": "F-V1-005",
+      "phase": "V1_GOLDEN",
+      "area": "dead-code-root-set",
+      "severity": "HIGH",
+      "summary": "G07 (dead/keep): find_dead_code correctly classifies the mutually-recursive dead_a/dead_b as graph_unreachable with scc=[dead_a,dead_b] (L2) and correctly protects kept_by_linker (used attribute root evidence; never definite dead — linker oracle on WSL proves KEEP honors it: kept_by_linker is a T symbol in app.elf linked with --gc-sections -T linker.ld). The failure: main, live_root, live_leaf — a plainly live call chain (ENTRY main -> live_root -> live_leaf) — are ALL reported status=graph_unreachable ('called only by other unreachable code'). Root cause: the root set requires ENTRY() from a build-attested linker script; the manual/compile_commands backend never links and its get_linker_scripts returns [] by design (src/fw_context_mcp/indexer/builders/manual.py:237-243), linker.ld is absent from the files table (only main.c is recorded), memory_regions has 0 rows, and no configuration key exists to declare a linker script (grep for linker_script/ld_script across docs = no matches). Generic external linkage is deliberately not a root, so on any compile_commands-only project the tool structurally cannot root main and misreports the live entry chain as unreachable — a WRONG_ANSWER surfaced directly to consumers of the dead-code report. Not documented in KNOWN_LIMITATIONS.md.",
+      "classification": "WRONG_ANSWER",
+      "status": "OPEN",
+      "case": "G07_dead_keep",
+      "secondary": "Oracle nuance recorded honestly: clang 14 at -O0 already drops unreferenced static functions (dead_a/dead_b absent from main.o), so the final-image evidence covers the live chain + kept_by_linker; the product's dead_a/dead_b SCC classification itself matches source-level truth. The misclassification of the LIVE chain is independent of that nuance.",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G07/G07.result.json (live_functions_not_reported=false; 5/6 cells pass)",
+        ".fw-validation/artifacts/V1/G07/raw/responses.json (find_dead_code rows: live_leaf/live_root/main status=graph_unreachable)",
+        "WSL ~/fwctx-v1-work/G07/oracle/oracle_rigor.txt (nm main.o + nm app.elf: kept_by_linker T, live chain present, dead_a/b absent; .fw-validation/oracle_g07b.sh)",
+        "src/fw_context_mcp/indexer/builders/manual.py:237-243 (never links, no linker scripts); G07 index DB: files=[main.c], memory_regions=0",
+        "KNOWN_LIMITATIONS.md grep dead|entry|root|linker -> no relevant entry"
+      ],
+      "repro": "python .fw-validation/v1_runner.py G07  (Windows index; linker oracle: .fw-validation/oracle_g07b.sh on WSL)"
+    },
+    {
+      "id": "F-V1-006",
+      "phase": "V1_GOLDEN",
+      "area": "vector-table-data-slots",
+      "severity": "MEDIUM",
+      "summary": "G10 (Cortex-M CMSIS vector table): get_vector_table correctly recognizes the 'vectors' array and names all 8 handler slots exactly (1=Reset_Handler, 2=NMI, 3=HardFault, 11=SVC, 14=PendSV, 15=SysTick, 16=IRQ0, 17=IRQ1) and correctly leaves reserved zero slots (4-10, 12, 13) unnamed. Slot 0 — the initial stack pointer (const pFunc vectors[] = { (pFunc)&__initial_sp, ... }) — is NOT resolved: coverage says 'No name in slots 0'. The underlying index HAS the evidence: symbols holds __initial_sp (varglobal) and refs holds the initializer reference (startup.c:13, ref_kind=ref), so the data-symbol slot is resolvable but the c-source table extraction only emits function-typed words. Consumers reading the table cannot see the initial-SP slot; the coverage note discloses the gap but not the recoverable name.",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "case": "G10_cmsis_vector",
+      "evidence": [
+        ".fw-validation/artifacts/V1/G10/G10.result.json (slot_map_exact=false, initial_sp_is_data_slot0=false; 8 handler slots exact)",
+        ".fw-validation/artifacts/V1/G10/raw/responses.json (get_vector_table coverage: 'No name in slots 0, 4-10, 12-13')",
+        "G10 index DB: symbols __initial_sp varglobal id=10; refs row to_usr=c:@__initial_sp from_file=startup.c:13 ref_kind=ref (.fw-validation/inspect_g10.py output)"
+      ],
+      "repro": "python .fw-validation/v1_runner.py G10"
+    },
+    {
+      "id": "F-V1-007",
+      "phase": "V1_GOLDEN",
+      "area": "stored-function-bodies",
+      "severity": "HIGH",
+      "summary": "Any function whose entire definition spans a single source line (end_line == line) stores symbols.source='' — its body is invisible to search_bodies and any body-semantic query. Cross-case DB evidence: G01 master_entry/slave_entry (1 line, srclen=0) vs feature_value/role_value (7 lines, stored); G03 helper (line 14-14, srclen=0) vs selected (lines 4-12, stored 44-80 chars); G12 active_line (1 line, srclen=0); G13 shared_value/f_000 (all single-line, srclen=0). get_source masks the symptom by falling back to disk (source_origin='disk'), but search_bodies — the documented definition-text surface — returns nothing for every one-liner function. This is the GENERAL root cause behind F-V1-002's narrower description: the G03 'helper' failure was an instance of single-line emptiness, not of conditional wrapping (G13 has no conditionals at all and shows the same emptiness). Consumers lose body-semantic search for a very common C style (one-line accessors/inlines). Classification: SILENT_DATA_LOSS (broadened trigger vs F-V1-002; G03 classification unchanged).",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "amends": "F-V1-002 (trigger analysis broadened; G03 verdict unchanged)",
+      "case": "G13_fanout_scale (discovered) + G01/G03/G12 (cross-confirmed)",
+      "evidence": [
+        ".fw-validation/inspect_g13db.py output: G13 symbols source length 0 for shared_value AND f_000",
+        ".fw-validation/inspect_g01db.py output: G01 7-line functions stored (75/68/76/64 chars), 1-line functions empty",
+        ".fw-validation/inspect_g03db.py output: helper line 14-14 srclen=0; selected lines 4-12 stored",
+        "G12 DB: active_line srclen=0; G13 pristine probe: search_bodies 'shared_value' -> [] while get_source returns disk body",
+        "artifacts/V1/G13/G13.result.json notes"
+      ],
+      "repro": "Index any project with a one-line function definition (e.g. 'static inline int f(void){return 7;}'), then search_bodies query 'f' or 'return 7' -> []; get_source 'f' -> source_origin 'disk'."
+    },
+    {
+      "id": "F-V1-008",
+      "phase": "V1_GOLDEN",
+      "area": "result-pagination",
+      "severity": "LOW",
+      "summary": "lookup_symbol/search_bodies/search_content cap results at limit<=100 (schema max) with no offset/page token, so a consumer cannot enumerate more than 100 same-name symbol rows in any single or composed query. G13 (n=250) needs 250 shared_value context rows; every query returns at most 100. The uncapped aggregate get_active_build.file_count==2n still evidences all 250 contexts, but per-row enumeration of >100 same-name symbols is impossible on the query surface. Impact: fanout audits and same-name symbol inventories at scale (>100) silently truncate.",
+      "classification": "SILENT_DATA_LOSS",
+      "status": "OPEN",
+      "case": "G13_fanout_scale",
+      "evidence": [
+        "artifacts/V1/G13/G13.result.json: rows_p=100 for n=100 and n=250 (cap), file_count 200/500 proves contexts exist",
+        "lookup_symbol schema: limit default 50 max 100; no offset parameter on any query tool"
+      ],
+      "repro": "Generate 250 TUs sharing one header (G13 generate.py 250); lookup_symbol name=shared_value limit=100 -> exactly 100 rows; no parameter reaches the remaining 150."
+    },
+    {
+      "id": "F-V2-001",
+      "phase": "V2_PUBLIC_REAL",
+      "case": "C1_cmsis_vector",
+      "severity": "HIGH",
+      "title": "get_vector_table returns false 'No vector table' for the standard CMSIS 6 startup template C table",
+      "reproduction": {
+        "fixture": "cmsis_6@45dab712 CMSIS/CoreValidation/Layer/Target/CM3/RTE/Device/ARMCM3/startup_ARMCM3.c",
+        "cc": [
+          "clang",
+          "-ICMSIS/Core/Include",
+          "-IRTE",
+          "-DARMCM3",
+          "-DCMSIS_DEV",
+          "-c",
+          "startup_ARMCM3.c"
+        ],
+        "index": "fw-context index --no-analyze --no-embeddings",
+        "query": "get_vector_table {}"
+      },
+      "expected": "vector table recognized: __VECTOR_TABLE[240] with slot0=__INITIAL_SP, Reset_Handler, NMI/HardFault/... , Interrupt0-9, zero-filled tail (oracle dump artifacts/V2/C1/startup_vector_region.txt)",
+      "observed": [
+        "get_vector_table -> 'No vector table in this build... no array of function addresses was recognised'",
+        "the table IS indexed as a symbol: lookup __VECTOR_TABLE (exact) -> varglobal startup_ARMCM3.c:80",
+        "element type collapsed: signature 'const int[240]' (typedef'd function-pointer VECTOR_TABLE_Type lost)",
+        "search_bodies on the array initializer -> empty (F-V1-007 class: stored body empty)",
+        "find_references __INITIAL_SP -> 'Symbol not found' (slot-0 data symbol unresolved, F-V1-006 class)"
+      ],
+      "analysis": "conditional branches evaluate correctly (ARMCM3 if=1, __GNUC__ if=1) — the table region IS in the active view; the vector-table shape recognizer rejects the standard CMSIS 6 template form: typedef'd function-pointer element type + cast first element ((VECTOR_TABLE_Type)(&__INITIAL_SP)) + integer-0 reserved slots + __VECTOR_TABLE_ATTRIBUTE macro. The false 'no table' claim is a WRONG_ANSWER (presence claimed absent), not merely a silent omission. CONTRAST (Z4): on the same product build (qemu_cortex_m3, zephyr), the ASSEMBLY vector table is fully recognized (97 slots: SP data slot, z_arm_reset, faults, _isr_wrapper dispatchers) — the recognition gap is specific to the CMSIS 6 C-template form (typedef'd function-pointer array with cast initial element).",
+      "classification": "WRONG_ANSWER",
+      "first_observed": "V2_PUBLIC_REAL",
+      "cross_case_evidence": [
+        "F-V1-006 (slot-0 data symbol class)",
+        "F-V1-007 (empty stored body class)",
+        "V2-Z4 (assembly table form recognized — contrast)"
+      ]
+    },
+    {
+      "id": "F-V2-002",
+      "phase": "V2_PUBLIC_REAL",
+      "case": "Z2_zephyr_variant_pair",
+      "severity": "MEDIUM",
+      "title": "lookup_symbol with exact=True silently relaxes to an unrelated-symbol fallback when the name is absent",
+      "reproduction": {
+        "fixture": "zephyr v4.4.2 native_sim hello_world (Z1 index)",
+        "query": "lookup_symbol {name: 'z_impl_printk', exact: true}"
+      },
+      "expected": "empty result (documented contract: exact=True = exact name match; the relaxed fallback is documented for prefix/LIKE lookups only)",
+      "observed": [
+        "returns z_impl_k_sleep rows (sched.c + generated syscall headers) with _fallback: True",
+        "DB truth (controller oracle): z_impl_printk ABSENT from the index; the relaxation picked a symbol sharing only the z_impl_ token prefix"
+      ],
+      "analysis": "the _fallback marker preserves honesty at the row level, but the empty-contract of exact=True is violated: an existence check by an automated caller (non-empty == exists) gets a false positive. Low-medium severity: marked, deterministic, but semantics differ from the documented contract.",
+      "classification": "API_CONTRACT",
+      "first_observed": "V2_PUBLIC_REAL"
+    },
+    {
+      "id": "F-V4-001",
+      "classification": "ROBUSTNESS_NOTE",
+      "severity": "LOW",
+      "title": "Watcher daemon crashed with AssertionError 'assert cfg.project.id is not None' (fw_context_mcp/mcp/background.py:360 -> shared/readiness.py:106, via daemon.py:419) during early V4-A4 episodes; the daemon's own background index also exited 1 in the final A4 run (benign to the CLI-written DB)",
+      "evidence": [
+        "C:/Users/h00969597/fwctx-validation-work/V4/A4_source_delete_add/index/5f8dc551cff64988a0bca19bc134d70e/daemon.log"
+      ],
+      "discovered_in": "V4_ADVERSARIAL (verifier e56ff54d NOTE 1)",
+      "disposition": "open — candidate for repair wave; not part of the NOT_READY driver set (no data loss/corruption observed)"
+    }
+  ]
+}

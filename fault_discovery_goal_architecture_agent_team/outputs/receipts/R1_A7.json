@@ -1,0 +1,58 @@
+{
+  "round": "R1_INDEPENDENT_RESEARCH",
+  "agent": "A7",
+  "status": "COMPLETE",
+  "inputs": [
+    "fault_discovery_goal_architecture_agent_team/roles/A7_RED_TEAM.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/GOAL_CONTRACT.md",
+    "fault_discovery_goal_architecture_agent_team/inputs/CURRENT_STATE_SEED.md",
+    "fault_discovery_goal_architecture_agent_team/outputs/FACT_LEDGER.json",
+    "fault_discovery_goal_architecture_agent_team/outputs/CONTRADICTIONS.json",
+    "fault_discovery_goal_architecture_agent_team/workflow/ANTI_ANCHOR.md",
+    ".fw-validation/FINDINGS.json",
+    ".fw-validation/FINAL_VALIDATION_RESULTS.json",
+    ".fw-final/FINAL_REPAIR_AUDIT.md",
+    "KNOWN_LIMITATIONS.md"
+  ],
+  "outputs": [
+    "fault_discovery_goal_architecture_agent_team/outputs/R1_A7.md"
+  ],
+  "evidence_paths": [
+    ".fw-validation/FINDINGS.json (F-V1-001..008, F-V2-001/002)",
+    ".fw-validation/FINAL_VALIDATION_RESULTS.json (FINAL_VERDICT NOT_READY, case_tally 43/7/5/2/1, verdict_drivers)",
+    ".fw-final/FINAL_REPAIR_AUDIT.md (§1 READY_FOR_REAL_PROJECT_TRIAL, §2 FR-R1 TEST_EXPECTATION_WRONG, §5 ledger)",
+    "KNOWN_LIMITATIONS.md (§1-10)",
+    "outputs/FACT_LEDGER.json (F-R0-02..F-R0-20)",
+    "outputs/CONTRADICTIONS.json (C-01, C-03, C-04)",
+    "git read-only session evidence at d8f08a4: rev-list 945 commits; 107 tags; shortlog 803/98/37; monthly histogram 40/267/217/289/132; zero case-sensitive 'fault' commit subjects; src 339 files/64693 LOC; tests 166 files/51763 LOC; zero src files matching agent|fault|rule"
+  ],
+  "claims_fact_ids": [
+    "F-R0-02",
+    "F-R0-03",
+    "F-R0-04",
+    "F-R0-06",
+    "F-R0-07",
+    "F-R0-10",
+    "F-R0-11",
+    "F-R0-13",
+    "F-R0-14",
+    "F-R0-18",
+    "F-R0-19",
+    "F-V1-001",
+    "F-V1-003",
+    "F-V1-005",
+    "F-V1-007",
+    "F-V2-001",
+    "C-01",
+    "C-03",
+    "C-04"
+  ],
+  "uncertainties": [
+    "U1 (decision-critical): no measured baseline for the grep+build+clang+LLM counterfactual arm — 'necessary vs optional' is unevidenced in both directions",
+    "U2: C-01 READY vs NOT_READY unadjudicated; 'substrate readiness' undefined for the Agent MVP",
+    "U3: whether F-V1-003 variant collapse is confined to the bare generator (only 2 real-system variant cases: Z2/N2)",
+    "U4: V4 adversarial audit AUDIT_IN_FLIGHT",
+    "U5: G13 scale-case classification carries verifier caveat (unreliable first-pass comparison)",
+    "A1: author-lineage concentration assumption (turbyho/Turbyho/h00969597 as one lineage) not independently proven"
+  ]
+}

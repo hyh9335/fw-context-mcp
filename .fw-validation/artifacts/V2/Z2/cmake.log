@@ -1,0 +1,33 @@
+Loading Zephyr default modules (Zephyr base).
+-- Application: /home/h00969597/fwctx-bench/public/zephyr/samples/hello_world
+-- CMake version: 3.22.1
+-- Found Python3: /home/h00969597/fwctx-venv312/bin/python (found suitable version "3.12.10", minimum required is "3.12") found components: Interpreter 
+-- Cache files will be written to: /home/h00969597/.cache/zephyr
+-- Zephyr version: 4.4.2 (/home/h00969597/fwctx-bench/public/zephyr)
+-- Found west (found suitable version "1.5.0", minimum required is "0.14.0")
+-- Board: native_sim, qualifiers: native
+-- Found toolchain: host (gcc/ld)
+-- Found Dtc: /usr/bin/dtc (found suitable version "1.6.1", minimum required is "1.4.6") 
+-- Found BOARD.dts: /home/h00969597/fwctx-bench/public/zephyr/boards/native/native_sim/native_sim.dts
+-- Generated zephyr.dts: /home/h00969597/fwctx-v2-work/Z2/build/zephyr/zephyr.dts
+-- Generated pickled edt: /home/h00969597/fwctx-v2-work/Z2/build/zephyr/edt.pickle
+-- Generated devicetree_generated.h: /home/h00969597/fwctx-v2-work/Z2/build/zephyr/include/generated/zephyr/devicetree_generated.h
+Parsing /home/h00969597/fwctx-bench/public/zephyr/Kconfig
+Loaded configuration '/home/h00969597/fwctx-bench/public/zephyr/boards/native/native_sim/native_sim_defconfig'
+Merged configuration '/home/h00969597/fwctx-bench/public/zephyr/samples/hello_world/prj.conf'
+Merged configuration '/home/h00969597/fwctx-v2-work/Z2/build/zephyr/misc/generated/extra_kconfig_options.conf'
+Configuration saved to '/home/h00969597/fwctx-v2-work/Z2/build/zephyr/.config'
+Kconfig header saved to '/home/h00969597/fwctx-v2-work/Z2/build/zephyr/include/generated/zephyr/autoconf.h'
+-- Found GnuLd: /usr/bin/ld.bfd (found version "2.38") 
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- The ASM compiler identification is GNU
+-- Found assembler: /usr/bin/gcc
+-- Found gen_kobject_list: /home/h00969597/fwctx-bench/public/zephyr/scripts/build/gen_kobject_list.py
+CMake Warning at /home/h00969597/fwctx-bench/public/zephyr/CMakeLists.txt:2343 (message):
+  __ASSERT() statements are globally ENABLED
+
+
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/h00969597/fwctx-v2-work/Z2/build

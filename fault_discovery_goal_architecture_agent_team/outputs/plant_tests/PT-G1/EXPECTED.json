@@ -1,0 +1,46 @@
+{
+  "expected_id": "EXP-PT-G1",
+  "detector": "G1",
+  "detector_name": "Per-variant provenance of build-context evidence; single-variant fence",
+  "finding_class": "F-V1-003 (T2)",
+  "fixture_files": [
+    "fixture/shared/mode_select.c",
+    "fixture/variant_a/feat_cfg.h",
+    "fixture/variant_a/Make.defs",
+    "fixture/variant_b/feat_cfg.h",
+    "fixture/variant_b/Make.defs"
+  ],
+  "fixture_hash_recipe": "SHA-256 over sorted relative paths: (1) enumerate every file under plant_tests/PT-G1/fixture/ recursively, relative paths with '/' separators; (2) per file compute lowercase hex SHA-256 of raw file bytes; (3) build line '<rel-path>  <hex-digest>\\n' (two-space separator, LF terminator, UTF-8); (4) sort lines lexicographically by rel-path (byte order); (5) fixture_hash = lowercase hex SHA-256 over the concatenation of sorted lines, no extra terminator. Computed by the custodian at freeze (S0_GOAL_ADR.md section 1 item 4); recipe frozen, change forces re-freeze.",
+  "independent_expected_result": {
+    "derivation_note": "Hand-derived only: fixture files read by eye (plain read/grep), standard C preprocessor and build rules applied mentally. No fw-context tool produced any expected answer.",
+    "exact_condition_text": "#if FEATURE at fixture/shared/mode_select.c line 10 (region lines 10-14, #else at line 12)",
+    "variant_a": {
+      "config_identity": "FEATURE=1 (fixture/variant_a/feat_cfg.h line 3)",
+      "command_line_D_set": ["VARIANT_TAG=2 (fixture/variant_a/Make.defs line 5)"],
+      "active_body_line": 11,
+      "active_body_text": "return \"mode_a_path\";",
+      "inactive_body_line": 13,
+      "inactive_body_text": "return \"mode_b_path\";"
+    },
+    "variant_b": {
+      "config_identity": "FEATURE=0 (fixture/variant_b/feat_cfg.h line 3)",
+      "command_line_D_set": ["VARIANT_TAG=3 (fixture/variant_b/Make.defs line 5)"],
+      "active_body_line": 13,
+      "active_body_text": "return \"mode_b_path\";",
+      "inactive_body_line": 11,
+      "inactive_body_text": "return \"mode_a_path\";"
+    },
+    "hazard_claim_under_test": "FEATURE is 1 AND mode_select_path returns \"mode_b_path\" — variant A config identity paired with variant B body truth (cross-variant mix)",
+    "control_claims": [
+      "variant_a: FEATURE=1 and the active body is return \"mode_a_path\"; at shared/mode_select.c line 11",
+      "variant_b: FEATURE=0 and the active body is return \"mode_b_path\"; at shared/mode_select.c line 13"
+    ],
+    "planted_manifest_change_pt_g1b": "Snapshot declared per-variant -D sets ({VARIANT_TAG=2} for A, {VARIANT_TAG=3} for B) at freeze, then edit fixture/variant_b/Make.defs line 5 VARIANT_TAG=3 -> VARIANT_TAG=2 and re-index variant B; declared manifest {VARIANT_TAG=3} vs indexed defines {VARIANT_TAG=2} must be flagged by the build-manifest diff; stale-manifest-sourced build-context claims blocked until manifest refresh."
+  },
+  "expected_k1_behavior": "Build-manifest diff (per-variant -D set vs indexed defines) flags any divergence; any cross-variant claim (config identity of one variant paired with body truth of the other, or any body/config fact without variant attribution) is BLOCKED; single-variant claims pass with variant attribution attached.",
+  "pass_condition": "Zero unflagged cross-variant bodies served; every served body/config fact carries its variant attribution; the planted manifest change of PLANT_SPEC.md is flagged by the diff; both control claims pass unblocked.",
+  "fail_condition": "Any unflagged mixing: a body truth from one variant served or accepted under the other variant's config identity, or any FEATURE-body truth statement emitted without variant attribution; the manifest diff missing the planted change.",
+  "forbidden_output": "A 'truth' statement about the FEATURE bodies (mode_a_path / mode_b_path) without variant attribution; any claim pairing variant A config identity with variant B body truth (or vice versa) presented as unflagged fact.",
+  "expiry_revalidation_trigger": "Revalidate at every freeze (fixture hash input); re-run after any substrate index change or any change to the manifest-diff instrument.",
+  "must_pass": true
+}

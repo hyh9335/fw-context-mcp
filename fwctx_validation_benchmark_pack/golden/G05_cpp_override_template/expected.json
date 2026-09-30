@@ -1,0 +1,19 @@
+{
+  "override_edges": [
+    [
+      "Derived::run",
+      "Base::run"
+    ]
+  ],
+  "forbidden_override_edges": [
+    [
+      "Other::run",
+      "Base::run"
+    ]
+  ],
+  "template_instances": [
+    "twice<int>",
+    "twice<double>"
+  ],
+  "declaration_only_relation_must_exist": true
+}

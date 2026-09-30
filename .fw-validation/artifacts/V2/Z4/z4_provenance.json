@@ -1,0 +1,8 @@
+{
+ "scenario": "Z4",
+ "board": "qemu_cortex_m3",
+ "toolchain": "gnuarmemb",
+ "tu_count": 119,
+ "cc_path": "build/compile_commands.json",
+ "method": "work-copy zephyr + west workspace (cmsis_6+cmsis updated)"
+}

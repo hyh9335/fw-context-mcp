@@ -1,0 +1,72 @@
+version: 1
+entrypoint: ENTRYPOINT_T14.md
+state_file: .fw-closeout/state.json
+issue_ledger: .fw-closeout/issue_ledger.json
+artifact_root: .fw-closeout/artifacts
+initial_load:
+- ENTRYPOINT_T14.md
+- MANIFEST.yaml
+- config/HARNESS_LIMITS.yaml
+- workflow/STATE_MACHINE.md
+- workflow/ISSUE_LEDGER_RULES.md
+tasks:
+  W0:
+    title: Baseline + platform parity inventory
+    blocking: true
+    prompt: prompts/W0.md
+    design: design/W0.md
+    test: tests/specs/W0.md
+  W1:
+    title: Platform abstraction + interprocess lock + daemon lifecycle
+    blocking: true
+    prompt: prompts/W1.md
+    design: design/W1.md
+    test: tests/specs/W1.md
+  W2:
+    title: Real stdio MCP transport on Windows and WSL2
+    blocking: true
+    prompt: prompts/W2.md
+    design: design/W2.md
+    test: tests/specs/W2.md
+  W3:
+    title: Declaration-only override false negative
+    blocking: true
+    prompt: prompts/W3.md
+    design: design/W3.md
+    test: tests/specs/W3.md
+  W4:
+    title: Dead-code KEEP false-positive
+    blocking: true
+    prompt: prompts/W4.md
+    design: design/W4.md
+    test: tests/specs/W4.md
+  W5:
+    title: PID reuse / kill ownership hardening
+    blocking: false
+    prompt: prompts/W5.md
+    design: design/W5.md
+    test: tests/specs/W5.md
+  W6:
+    title: Variant semantic diff/group MCP surface
+    blocking: false
+    prompt: prompts/W6.md
+    design: design/W6.md
+    test: tests/specs/W6.md
+  W7:
+    title: Release hygiene / migration / docs / stress
+    blocking: false
+    prompt: prompts/W7.md
+    design: design/W7.md
+    test: tests/specs/W7.md
+special_agents:
+  architect: prompts/A13_ARCHITECT.md
+  verifier: prompts/A13_VERIFIER.md
+  release: prompts/A13_RELEASE.md
+workflow:
+  state_machine: workflow/STATE_MACHINE.md
+  issue_ledger_rules: workflow/ISSUE_LEDGER_RULES.md
+  context_protocol: workflow/CONTEXT_PROTOCOL.md
+  receipt_schema: workflow/RECEIPT_SCHEMA.md
+  dag: workflow/IMPLEMENTATION_DAG.yaml
+  platform_matrix: tests/PLATFORM_MATRIX.md
+  oracles: tests/TEST_ORACLES.md

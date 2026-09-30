@@ -1,0 +1,549 @@
+{
+  "serverInfo": {
+    "name": "fw-context",
+    "version": "1.28.1"
+  },
+  "search_bodies::{\"query\": \"role_value\"}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "role_value"
+    },
+    "elapsed_s": 0.017,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"_match_snippet\": \"static inline int <b>role_value</b>(void) {\\n\\n\\n\\n    return 22;\\n#endif\\n}\\n\",\n  \"source\": \"static inline int role_value(void) {\\n\\n\\n\\n    return 22;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"_match_snippet\": \"static inline int <b>role_value</b>(void) {\\n#ifdef ROLE_MASTER\\n    return 11;\\n\\n\\n\\n}\\n\",\n  \"source\": \"static inline int role_value(void) {\\n#ifdef ROLE_MASTER\\n    return 11;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "role_value",
+              "qualified_name": "role_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int role_value()",
+              "_match_snippet": "static inline int <b>role_value</b>(void) {\n\n\n\n    return 22;\n#endif\n}\n",
+              "source": "static inline int role_value(void) {\n\n\n\n    return 22;\n#endif\n}\n",
+              "match_lines": [
+                2
+              ]
+            },
+            {
+              "name": "role_value",
+              "qualified_name": "role_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int role_value()",
+              "_match_snippet": "static inline int <b>role_value</b>(void) {\n#ifdef ROLE_MASTER\n    return 11;\n\n\n\n}\n",
+              "source": "static inline int role_value(void) {\n#ifdef ROLE_MASTER\n    return 11;\n\n\n\n}\n",
+              "match_lines": [
+                2
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"_match_snippet\": \"static inline int <b>role_value</b>(void) {\\n\\n\\n\\n    return 22;\\n#endif\\n}\\n\",\n  \"source\": \"static inline int role_value(void) {\\n\\n\\n\\n    return 22;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}\n{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"_match_snippet\": \"static inline int <b>role_value</b>(void) {\\n#ifdef ROLE_MASTER\\n    return 11;\\n\\n\\n\\n}\\n\",\n  \"source\": \"static inline int role_value(void) {\\n#ifdef ROLE_MASTER\\n    return 11;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    2\n  ]\n}",
+    "json": null
+  },
+  "search_bodies::{\"query\": \"feature_value\"}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "feature_value"
+    },
+    "elapsed_s": 0.007,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"_match_snippet\": \"static inline int <b>feature_value</b>(void) {\\n\\n\\n\\n    return 200;\\n#endif\\n}\\n\",\n  \"source\": \"static inline int feature_value(void) {\\n\\n\\n\\n    return 200;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    9\n  ]\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"_match_snippet\": \"static inline int <b>feature_value</b>(void) {\\n#if FEATURE_X\\n    return 100;\\n\\n\\n\\n}\\n\",\n  \"source\": \"static inline int feature_value(void) {\\n#if FEATURE_X\\n    return 100;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    9\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "feature_value",
+              "qualified_name": "feature_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 9,
+              "is_definition": true,
+              "signature": "int feature_value()",
+              "_match_snippet": "static inline int <b>feature_value</b>(void) {\n\n\n\n    return 200;\n#endif\n}\n",
+              "source": "static inline int feature_value(void) {\n\n\n\n    return 200;\n#endif\n}\n",
+              "match_lines": [
+                9
+              ]
+            },
+            {
+              "name": "feature_value",
+              "qualified_name": "feature_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 9,
+              "is_definition": true,
+              "signature": "int feature_value()",
+              "_match_snippet": "static inline int <b>feature_value</b>(void) {\n#if FEATURE_X\n    return 100;\n\n\n\n}\n",
+              "source": "static inline int feature_value(void) {\n#if FEATURE_X\n    return 100;\n\n\n\n}\n",
+              "match_lines": [
+                9
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"_match_snippet\": \"static inline int <b>feature_value</b>(void) {\\n\\n\\n\\n    return 200;\\n#endif\\n}\\n\",\n  \"source\": \"static inline int feature_value(void) {\\n\\n\\n\\n    return 200;\\n#endif\\n}\\n\",\n  \"match_lines\": [\n    9\n  ]\n}\n{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"_match_snippet\": \"static inline int <b>feature_value</b>(void) {\\n#if FEATURE_X\\n    return 100;\\n\\n\\n\\n}\\n\",\n  \"source\": \"static inline int feature_value(void) {\\n#if FEATURE_X\\n    return 100;\\n\\n\\n\\n}\\n\",\n  \"match_lines\": [\n    9\n  ]\n}",
+    "json": null
+  },
+  "lookup_symbol::{\"name\": \"role_value\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "role_value"
+    },
+    "elapsed_s": 0.007,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "role_value",
+              "qualified_name": "role_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int role_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "role_value",
+              "qualified_name": "role_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int role_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"role_value\",\n  \"qualified_name\": \"role_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int role_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "lookup_symbol::{\"name\": \"feature_value\"}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "feature_value"
+    },
+    "elapsed_s": 0.008,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          },
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "feature_value",
+              "qualified_name": "feature_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 9,
+              "is_definition": true,
+              "signature": "int feature_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            },
+            {
+              "name": "feature_value",
+              "qualified_name": "feature_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+              "line": 9,
+              "is_definition": true,
+              "signature": "int feature_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}\n{\n  \"name\": \"feature_value\",\n  \"qualified_name\": \"feature_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n  \"line\": 9,\n  \"is_definition\": true,\n  \"signature\": \"int feature_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": null
+  },
+  "get_symbol_context::{\"name\": \"master_entry\"}": {
+    "tool": "get_symbol_context",
+    "arguments": {
+      "name": "master_entry"
+    },
+    "elapsed_s": 0.007,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 6,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\master.c\",\n  \"line\": 2,\n  \"signature\": \"int master_entry()\",\n  \"is_definition\": true,\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"callers\": [],\n  \"callees\": [\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    }\n  ],\n  \"indirect_call_sites\": [],\n  \"docstring\": \"\",\n  \"source\": \"   2  int master_entry(void) { return role_value() + feature_value(); }\",\n  \"source_origin\": \"disk\"\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\master.c\",\n  \"line\": 2,\n  \"signature\": \"int master_entry()\",\n  \"is_definition\": true,\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"callers\": [],\n  \"callees\": [\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    }\n  ],\n  \"indirect_call_sites\": [],\n  \"docstring\": \"\",\n  \"source\": \"   2  int master_entry(void) { return role_value() + feature_value(); }\",\n  \"source_origin\": \"disk\"\n}",
+    "json": {
+      "name": "master_entry",
+      "qualified_name": "master_entry",
+      "kind": "function",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\master.c",
+      "line": 2,
+      "signature": "int master_entry()",
+      "is_definition": true,
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false,
+      "callers": [],
+      "callees": [
+        {
+          "name": "role_value",
+          "qualified_name": "role_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "feature_value",
+          "qualified_name": "feature_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "role_value",
+          "qualified_name": "role_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "feature_value",
+          "qualified_name": "feature_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        }
+      ],
+      "indirect_call_sites": [],
+      "docstring": "",
+      "source": "   2  int master_entry(void) { return role_value() + feature_value(); }",
+      "source_origin": "disk"
+    }
+  },
+  "get_symbol_context::{\"name\": \"slave_entry\"}": {
+    "tool": "get_symbol_context",
+    "arguments": {
+      "name": "slave_entry"
+    },
+    "elapsed_s": 0.006,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 7,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"slave_entry\",\n  \"qualified_name\": \"slave_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\slave.c\",\n  \"line\": 2,\n  \"signature\": \"int slave_entry()\",\n  \"is_definition\": true,\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"callers\": [],\n  \"callees\": [\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    }\n  ],\n  \"indirect_call_sites\": [],\n  \"docstring\": \"\",\n  \"source\": \"   2  int slave_entry(void) { return role_value() + feature_value(); }\",\n  \"source_origin\": \"disk\"\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"slave_entry\",\n  \"qualified_name\": \"slave_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\slave.c\",\n  \"line\": 2,\n  \"signature\": \"int slave_entry()\",\n  \"is_definition\": true,\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"callers\": [],\n  \"callees\": [\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"role_value\",\n      \"qualified_name\": \"role_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    },\n    {\n      \"name\": \"feature_value\",\n      \"qualified_name\": \"feature_value\",\n      \"kind\": \"function\",\n      \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\common.h\",\n      \"ref_kind\": \"call\"\n    }\n  ],\n  \"indirect_call_sites\": [],\n  \"docstring\": \"\",\n  \"source\": \"   2  int slave_entry(void) { return role_value() + feature_value(); }\",\n  \"source_origin\": \"disk\"\n}",
+    "json": {
+      "name": "slave_entry",
+      "qualified_name": "slave_entry",
+      "kind": "function",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\slave.c",
+      "line": 2,
+      "signature": "int slave_entry()",
+      "is_definition": true,
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false,
+      "callers": [],
+      "callees": [
+        {
+          "name": "role_value",
+          "qualified_name": "role_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "feature_value",
+          "qualified_name": "feature_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "role_value",
+          "qualified_name": "role_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        },
+        {
+          "name": "feature_value",
+          "qualified_name": "feature_value",
+          "kind": "function",
+          "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\common.h",
+          "ref_kind": "call"
+        }
+      ],
+      "indirect_call_sites": [],
+      "docstring": "",
+      "source": "   2  int slave_entry(void) { return role_value() + feature_value(); }",
+      "source_origin": "disk"
+    }
+  },
+  "explain_condition::{\"file_path\": \"common.h\", \"line\": 3}": {
+    "tool": "explain_condition",
+    "arguments": {
+      "file_path": "common.h",
+      "line": 3
+    },
+    "elapsed_s": 0.005,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 8,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"file\": \"common.h\",\n  \"line\": 3,\n  \"context_id\": \"70d841793695a8b9\",\n  \"config_hash\": \"b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4\",\n  \"chain\": [\n    {\n      \"file\": \"common.h\",\n      \"line\": 3,\n      \"directive\": \"ifdef\",\n      \"condition\": \"ROLE_MASTER\",\n      \"end_line\": 7,\n      \"taken\": 0,\n      \"branch_states\": [\n        {\n          \"line\": 3,\n          \"kind\": \"if\",\n          \"condition\": \"ROLE_MASTER\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 5,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": 1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"ROLE_MASTER\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        }\n      ]\n    }\n  ]\n}"
+          }
+        ],
+        "structuredContent": {
+          "file": "common.h",
+          "line": 3,
+          "context_id": "70d841793695a8b9",
+          "config_hash": "b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4",
+          "chain": [
+            {
+              "file": "common.h",
+              "line": 3,
+              "directive": "ifdef",
+              "condition": "ROLE_MASTER",
+              "end_line": 7,
+              "taken": 0,
+              "branch_states": [
+                {
+                  "line": 3,
+                  "kind": "if",
+                  "condition": "ROLE_MASTER",
+                  "taken": 0
+                },
+                {
+                  "line": 5,
+                  "kind": "else",
+                  "condition": null,
+                  "taken": 1
+                }
+              ],
+              "macro_inputs": [
+                {
+                  "name": "ROLE_MASTER",
+                  "def_source": "",
+                  "def_file": "",
+                  "def_line": null
+                }
+              ]
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"file\": \"common.h\",\n  \"line\": 3,\n  \"context_id\": \"70d841793695a8b9\",\n  \"config_hash\": \"b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4\",\n  \"chain\": [\n    {\n      \"file\": \"common.h\",\n      \"line\": 3,\n      \"directive\": \"ifdef\",\n      \"condition\": \"ROLE_MASTER\",\n      \"end_line\": 7,\n      \"taken\": 0,\n      \"branch_states\": [\n        {\n          \"line\": 3,\n          \"kind\": \"if\",\n          \"condition\": \"ROLE_MASTER\",\n          \"taken\": 0\n        },\n        {\n          \"line\": 5,\n          \"kind\": \"else\",\n          \"condition\": null,\n          \"taken\": 1\n        }\n      ],\n      \"macro_inputs\": [\n        {\n          \"name\": \"ROLE_MASTER\",\n          \"def_source\": \"\",\n          \"def_file\": \"\",\n          \"def_line\": null\n        }\n      ]\n    }\n  ]\n}",
+    "json": {
+      "file": "common.h",
+      "line": 3,
+      "context_id": "70d841793695a8b9",
+      "config_hash": "b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4",
+      "chain": [
+        {
+          "file": "common.h",
+          "line": 3,
+          "directive": "ifdef",
+          "condition": "ROLE_MASTER",
+          "end_line": 7,
+          "taken": 0,
+          "branch_states": [
+            {
+              "line": 3,
+              "kind": "if",
+              "condition": "ROLE_MASTER",
+              "taken": 0
+            },
+            {
+              "line": 5,
+              "kind": "else",
+              "condition": null,
+              "taken": 1
+            }
+          ],
+          "macro_inputs": [
+            {
+              "name": "ROLE_MASTER",
+              "def_source": "",
+              "def_file": "",
+              "def_line": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "get_active_build::{}": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 0.013,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 9,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4\",\n  \"project_id\": \"685a0d287989447e88cf1c3686614368\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:22:12\",\n  \"symbol_count\": 6,\n  \"file_count\": 4,\n  \"reference_count\": 8,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 6\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:22:12\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 2,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4\",\n  \"project_id\": \"685a0d287989447e88cf1c3686614368\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V3\\\\G01\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:22:12\",\n  \"symbol_count\": 6,\n  \"file_count\": 4,\n  \"reference_count\": 8,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 6\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:22:12\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 2,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "b2aae62bde3d8ca10fabb7c7029fa31b4c0ee33b5b17608aaad937cc57e782b4",
+      "project_id": "685a0d287989447e88cf1c3686614368",
+      "project_root": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work",
+      "build_system": "unknown",
+      "compile_commands": "C:\\Users\\h00969597\\fwctx-validation-work\\V3\\G01\\work\\compile_commands.json",
+      "indexed_at": "2026-09-18 10:22:12",
+      "symbol_count": 6,
+      "file_count": 4,
+      "reference_count": 8,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 6
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 0
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 10:22:12",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {},
+      "defines_varying": 2,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "server_exit_code": 0
+}

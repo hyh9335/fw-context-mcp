@@ -1,0 +1,18 @@
+{
+  "controller_only_spawns": true,
+  "child_spawn_allowed": false,
+  "max_delegation_depth": 1,
+  "max_research_concurrency": 2,
+  "max_debate_concurrency": 2,
+  "max_writing_concurrency": 1,
+  "implementation_allowed": false,
+  "long_logs_to_files": true,
+  "resume_completed_work": true,
+  "on_server_instability": [
+    "stop new launches",
+    "persist state",
+    "reduce concurrency to 1",
+    "retry unfinished task only",
+    "do not restart completed rounds"
+  ]
+}

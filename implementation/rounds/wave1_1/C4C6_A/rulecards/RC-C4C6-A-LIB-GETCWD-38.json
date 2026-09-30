@@ -1,0 +1,140 @@
+{
+ "evidence": [
+  {
+   "fact_id": "F-0001",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0002",
+   "trust_class": "T0"
+  },
+  {
+   "fact_id": "F-0003",
+   "trust_class": "T0"
+  }
+ ],
+ "fault_class": "condition_config_gated",
+ "forbidden_overclaims": [
+  "no complete-enumeration claims",
+  "T2 rows never load-bearing",
+  "runtime queue-exhaustion claims",
+  "any claim about runtime occurrence of the guarded behavior"
+ ],
+ "hypothesis_ref": "H-C4C6-A-LIB-GETCWD-38",
+ "mechanism_id": "M-C4C6-A-LIB-GETCWD-38",
+ "oracle_provenance": "none",
+ "polarity": "positive",
+ "provenance": {
+  "certainty": "measured",
+  "derived_from": [
+   "fw_context_explain_condition",
+   "fw_context_list_conditional_regions",
+   "fw_context_read_file"
+  ],
+  "k1_mediated": true
+ },
+ "refutation_protocol": {
+  "oracle_requirement": "none",
+  "steps": [
+   {
+    "action": "query_substrate_via_k1",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "any trigger fact fails to re-derive or changes polarity",
+     "rule_holds_when": "every trigger fact re-derives identically under the same freeze"
+    },
+    "inputs": {
+     "fact_refs": [
+      "F-0001",
+      "F-0002",
+      "F-0003"
+     ],
+     "freeze_id": "FRZ-C4C6-A-20260921T062837Z"
+    },
+    "step_id": "RS1"
+   },
+   {
+    "action": "independent_crosscheck",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "the independent surface contradicts the trigger",
+     "rule_holds_when": "independent grep / clang -E region-survival agrees with the trigger"
+    },
+    "inputs": {
+     "surfaces": [
+      "fw_context_explain_condition",
+      "fw_context_list_conditional_regions",
+      "fw_context_read_file"
+     ]
+    },
+    "step_id": "RS2"
+   },
+   {
+    "action": "construct_counterexample_search",
+    "expected_two_outcomes": {
+     "rule_falsified_when": "a counterexample configuration survives and satisfies the trigger",
+     "rule_holds_when": "no counterexample configuration survives"
+    },
+    "inputs": {
+     "flip": "pinned config value; re-run region check"
+    },
+    "step_id": "RS3"
+   }
+  ]
+ },
+ "refutation_result": {
+  "adjudicated_at": null,
+  "counterexample_ref": null,
+  "missing_evidence_refs": [],
+  "protocol_completed": false,
+  "state": "UNEXECUTED"
+ },
+ "rulecard_id": "RC-C4C6-A-LIB-GETCWD-38",
+ "scope_stamp": {
+  "corpus_case": "C4C6-A",
+  "goal_item": "G-1",
+  "lineage": "B",
+  "schema_version": "wave1-design-gate-1"
+ },
+ "trigger_conditions": [
+  {
+   "fact_refs": [
+    {
+     "fact_id": "F-0001",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0002",
+     "trust_class": "T0"
+    },
+    {
+     "fact_id": "F-0003",
+     "trust_class": "T0"
+    }
+   ],
+   "kind": "condition_text",
+   "negatable": true,
+   "predicate_id": "P-C4C6-A-LIB-GETCWD-38-1",
+   "statement": "region fixture/libs/libc/unistd/lib_getcwd.c:38-138 guarded by 'CONFIG_DISABLE_ENVIRON' is compiled OUT under the pinned build (BUILD-C4C6-DISABLE-ENVIRON)"
+  }
+ ],
+ "validation": {
+  "evidence_integrity_status": "PASS",
+  "faultness_adjudicated_at": "FRZ-C4C6-A-20260921T062837Z",
+  "faultness_roles": {
+   "R1_pattern_compiled_out": {
+    "evidence": "untaken region overlapping [38,138] in 'fixture/libs/libc/unistd/lib_getcwd.c': {'fact_id': 'F-SWEEP-0001', 'region': [38, 138], 'condition': 'CONFIG_DISABLE_ENVIRON', 'branch_taken': [-1]}",
+    "satisfied": true
+   },
+   "R2_config_symbol_guard": {
+    "evidence": "guard symbols of region: ['CONFIG_DISABLE_ENVIRON']",
+    "satisfied": true
+   },
+   "R3_harmful_consequence": {
+    "evidence": "{\"absence_probe_file\": \"fixture/libs/libc/unistd/lib_getcwd.c\", \"site\": \"fixture/libs/libc/unistd/lib_getcwd.c:None\", \"symbol\": \"getcwd\", \"via\": \"definition_cutoff\"}",
+    "satisfied": true
+   }
+  },
+  "faultness_status": "PASS",
+  "refutation_state": "UNEXECUTED"
+ },
+ "validation_status": "unvalidated"
+}

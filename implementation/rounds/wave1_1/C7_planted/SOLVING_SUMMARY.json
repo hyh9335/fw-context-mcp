@@ -1,0 +1,62 @@
+{
+ "cards": [
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "condition_config_gated",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "positive",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C7-SENSOR-MODULE-19",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "existence_absence",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "negative",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C7-API-SENSOR-SUBMIT",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 2
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=FAIL",
+   "failed_roles": [
+    "A3_config_causal_cutoff"
+   ],
+   "family": "existence_absence",
+   "kind": "rejected",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH"
+  },
+  {
+   "evidence_integrity_status": "PASS",
+   "family": "init_submit_pairing",
+   "faultness_status": "PASS",
+   "overclaims": [],
+   "polarity": "negative",
+   "refutation_state": "UNEXECUTED",
+   "rulecard_id": "RC-C7-SYM-CONFIG-SENSOR-IRQ-PATH-PAIR",
+   "s1": 1.0,
+   "s2": 1.0,
+   "s3": 1.0,
+   "s4": 1.0,
+   "s5_verdict": "PASS",
+   "sampled_rows": 4
+  }
+ ],
+ "case_id": "C7",
+ "coherence_violations": [],
+ "freeze_id": "FRZ-C7-20260921T062835Z"
+}

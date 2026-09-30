@@ -1,0 +1,1 @@
+[{"directory": ".", "arguments": ["clang", "fixture/shared/mode_select.c", "-Ifixture/variant_a", "-DVARIANT_TAG=3", "-o", "a.o"], "file": "fixture/shared/mode_select.c"}]

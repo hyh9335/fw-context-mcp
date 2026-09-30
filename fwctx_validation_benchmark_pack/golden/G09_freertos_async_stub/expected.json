@@ -1,0 +1,31 @@
+{
+  "semantic_edges": [
+    {
+      "kind": "SPAWN",
+      "from": "setup",
+      "to": "task"
+    },
+    {
+      "kind": "REGISTER",
+      "from": "setup",
+      "to": "timer_cb"
+    },
+    {
+      "kind": "EVENT_SEND",
+      "from": "producer",
+      "object": "q"
+    },
+    {
+      "kind": "EVENT_RECEIVE",
+      "from": "consumer",
+      "object": "q"
+    }
+  ],
+  "forbidden_edges": [
+    {
+      "kind": "CALL",
+      "from": "producer",
+      "to": "consumer"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+[
+  {
+    "file": "config.c",
+    "arguments": [
+      "clang",
+      "-DFEATURE_A=1",
+      "-DLEVEL=2",
+      "-c",
+      "${ROOT}/config.c",
+      "-o",
+      "a.o"
+    ],
+    "output": "a.o"
+  },
+  {
+    "file": "config.c",
+    "arguments": [
+      "clang",
+      "-DFEATURE_B=1",
+      "-DDISABLE_HELPER=1",
+      "-c",
+      "${ROOT}/config.c",
+      "-o",
+      "b.o"
+    ],
+    "output": "b.o"
+  },
+  {
+    "file": "config.c",
+    "arguments": [
+      "clang",
+      "-DLEVEL=0",
+      "-c",
+      "${ROOT}/config.c",
+      "-o",
+      "c.o"
+    ],
+    "output": "c.o"
+  }
+]

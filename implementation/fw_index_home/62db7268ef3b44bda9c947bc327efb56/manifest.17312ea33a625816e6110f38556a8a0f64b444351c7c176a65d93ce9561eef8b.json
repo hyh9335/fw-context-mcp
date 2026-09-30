@@ -1,0 +1,32 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\rounds\\I8_C5_T2_TRIPWIRE\\work\\proj_26a6e099\\fixture",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I8_C5_T2_TRIPWIRE\\work\\proj_26a6e099\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "17312ea33a625816e6110f38556a8a0f64b444351c7c176a65d93ce9561eef8b",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "432fdda2b33b5007",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I8_C5_T2_TRIPWIRE\\work\\proj_26a6e099",
+      "file": "fixture/link_mgr.c",
+      "flags_hash": "af95f3f9d5805e1bb4a1ca898e625725e6c9614d3c2633bf13b382255a902072",
+      "headers": [
+        "fixture\\link_mgr.h"
+      ],
+      "source_hash": "f0c931a71fa6191c08d162230fe057d1eefaa08b0168613716d954e32856182d"
+    }
+  ],
+  "headers": {
+    "fixture\\link_mgr.h": {
+      "generated": false,
+      "hash": "790d9c284975730e4f38c9870726878e7801b2277c8d8e29ef13c76844bca7e6"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I8_C5_T2_TRIPWIRE\\work\\proj_26a6e099",
+  "vendor_patterns": []
+}

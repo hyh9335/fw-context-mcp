@@ -1,0 +1,81 @@
+{
+  "case_id": "C4",
+  "custody": "custodian_only_hidden_from_solver",
+  "note": "This file is the C4 ground-truth oracle. It is NOT a RuleCard instance: expected_rulecard_predicates[].fact_refs is an empty array marking 'to be filled at measurement'; any accepted RuleCard must satisfy RULECARD_SCHEMA fact_refs minItems 1.",
+  "expected_mechanism": {
+    "summary": "Under CONFIG_DISABLE_ENVIRON=y at pre-fix SHA 526ba1ab343a00b2e1801e089392eed64758b820: (1) libs/libc/unistd/lib_getcwd.c is enclosed by a whole-file '#ifndef CONFIG_DISABLE_ENVIRON' ... '#endif' so no line of the file compiles; (2) Make.defs and CMakeLists.txt include lib_getcwd.c only inside the NOT-DISABLE_ENVIRON conditional block, so the TU is excluded from the build under y; net effect: the POSIX API getcwd() has no definition in the linked image, so any consumer resolves to a link-time undefined reference / unresolvable API although <unistd.h> declares it. Compounding: CONFIG_LIBC_HOMEDIR carries 'depends on !DISABLE_ENVIRON' in libs/libc/stdlib/Kconfig, so the home-dir default is unavailable in the same config.",
+    "fix_summary": "Fix 67ed036227b14bbab01b63801bfd7e218dfd6107 makes the definition unconditional, narrows the guard to the getenv(\"PWD\") fallback only, moves lib_getcwd.c into the unconditional source lists (removed from the conditional block), and removes the LIBC_HOMEDIR Kconfig dependency.",
+    "mechanism_class": "existence_absence (R4) with condition/config participation (R3a)",
+    "determinism": "compile/link-time deterministic under the pinned build context; no runtime state participates"
+  },
+  "expected_rulecard_predicates": [
+    {
+      "predicate_id": "RC1",
+      "kind": "config_symbol",
+      "fact_refs": [],
+      "fact_refs_note": "to be filled at measurement (RULECARD_SCHEMA requires minItems 1 in any accepted RuleCard)",
+      "statement": "CONFIG_DISABLE_ENVIRON is set to y in the evaluated build context (build manifest / -D provenance, G1 out-of-band)",
+      "negatable": true,
+      "rationale": "The fault precondition: the whole guard chain and the build exclusion are keyed to this symbol."
+    },
+    {
+      "predicate_id": "RC2",
+      "kind": "definition_absent",
+      "fact_refs": [],
+      "fact_refs_note": "to be filled at measurement",
+      "statement": "getcwd has no compiled definition under the pinned build context: exact-name symbol lookup returns no definition row, and the absence is enumerated over >=2 surfaces (in-band absence plus independent grep for the definition) per E4/E7; ambiguous absence adjudicates PRESENT, so both probes must be clean",
+      "negatable": true,
+      "rationale": "The load-bearing existence/absence fact (R4)."
+    },
+    {
+      "predicate_id": "RC3",
+      "kind": "condition_text",
+      "fact_refs": [],
+      "fact_refs_note": "to be filled at measurement; cross-file chain across lib_getcwd.c + Make.defs/CMakeLists.txt",
+      "statement": "the whole-file guard '#ifndef CONFIG_DISABLE_ENVIRON' ... '#endif' encloses lib_getcwd.c and its branch is not taken under RC1, and lib_getcwd.c is listed only inside the NOT-DISABLE_ENVIRON conditional block of Make.defs/CMakeLists.txt, so no definition text compiles under the pinned config",
+      "negatable": true,
+      "rationale": "Cross-file condition chain (C guard + build files); this is the multi-line-scope T0 evidence, not the single-line F-V1-007 hazard."
+    },
+    {
+      "predicate_id": "RC4",
+      "kind": "call_reachable",
+      "fact_refs": [],
+      "fact_refs_note": "to be filled at measurement",
+      "statement": "at least one consumer TU linked into the image calls getcwd() (consumer predicate = any caller at link time; consumer file unpinned, see EVIDENCE_MAP fallback)",
+      "negatable": false,
+      "rationale": "Existential link-time consumer claim; no deterministic negation exists, so the RuleCard must state this scope boundary explicitly and must NOT name a specific consumer file."
+    },
+    {
+      "predicate_id": "RC5",
+      "kind": "config_symbol",
+      "fact_refs": [],
+      "fact_refs_note": "to be filled at measurement",
+      "statement": "CONFIG_LIBC_HOMEDIR is not defined in the evaluated build context at pre-fix SHA because libs/libc/stdlib/Kconfig constrains LIBC_HOMEDIR with 'depends on !DISABLE_ENVIRON'",
+      "negatable": true,
+      "rationale": "Compounding config defect removed by the same fix."
+    }
+  ],
+  "expected_refutation_outcome": "NOT_REFUTED_WITHIN_SCOPE",
+  "expected_refutation_result_shape": {
+    "state": "NOT_REFUTED_WITHIN_SCOPE",
+    "protocol_completed": true,
+    "counterexample_ref": null,
+    "missing_evidence_refs": []
+  },
+  "expected_validation_status": "accepted",
+  "expected_oracle_provenance": "commit_derived",
+  "blind_rows_note": "C4 is partial-blind (WAVE1_CORPUS_MATRIX.md item 7): commit-derived ground truth plus >=30% load-bearing evidence rows held blind by the custodian (FR-6).",
+  "forbidden_overclaims": [
+    "chdir is broken or unusable under CONFIG_DISABLE_ENVIRON (chdir availability is unchanged by this fault and remains env-conditional by design)",
+    "any runtime PWD/cwd state claim (e.g. 'the PWD environment variable is stale or missing at runtime', 'cwd tracking is broken at runtime')",
+    "wrong-value claims (e.g. 'getcwd returns the wrong path', 'getcwd returns CONFIG_LIBC_HOMEDIR instead of the cwd') - pre-fix getcwd does not execute at all under this config; the fault is absence, not wrong value",
+    "ENOMEM / allocation-failure behavior claims"
+  ],
+  "scoring_notes": [
+    "any accepted RuleCard claiming getcwd-wrong-value or chdir-broken is scored a false positive: the case fails",
+    "the accepted mechanism must be the definition-absence / API-unresolvable mechanism grounded in RC1-RC5",
+    "the build-system listing facts are corroborating evidence for RC3, not a substitute for the absence probe RC2",
+    "RC4 negatable=false is admissible only with the explicit scope-boundary statement; naming a specific consumer file without a pinned FactRecord is an unsupported claim (E1)",
+    "refutation protocol steps must be replayable under the round freeze_id"
+  ]
+}

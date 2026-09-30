@@ -1,0 +1,90 @@
+{
+  "case_id": "A5_stale_noop_reindex",
+  "phase": "V4_ADVERSARIAL",
+  "status": "PASS",
+  "expected": "no-op reindex on unchanged tree: symbol count identical, DB intact, build status sane",
+  "observed": {
+    "pre_symbols": 6,
+    "post_symbols": 6,
+    "noop_reindex_s": 0.73,
+    "integrity": "ok"
+  },
+  "notes": [
+    "no-op reindex idempotence probe"
+  ],
+  "responses": {
+    "post::{}": {
+      "tool": "get_active_build",
+      "arguments": {},
+      "elapsed_s": 0.022,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"config_hash\": \"46f040044819e6e2148a165c2afb781cfae747e07a148c23c84477c9eaf9e2d8\",\n  \"project_id\": \"5d8113991c6f4f72911d5cee47d2ecd3\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A5_stale_noop_reindex\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A5_stale_noop_reindex\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:39:08\",\n  \"symbol_count\": 6,\n  \"file_count\": 4,\n  \"reference_count\": 8,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 6\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:39:06\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped \u2014 analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 2,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+            }
+          ],
+          "isError": false
+        }
+      },
+      "text": "{\n  \"config_hash\": \"46f040044819e6e2148a165c2afb781cfae747e07a148c23c84477c9eaf9e2d8\",\n  \"project_id\": \"5d8113991c6f4f72911d5cee47d2ecd3\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A5_stale_noop_reindex\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A5_stale_noop_reindex\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 10:39:08\",\n  \"symbol_count\": 6,\n  \"file_count\": 4,\n  \"reference_count\": 8,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 6\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 10:39:06\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped \u2014 analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 2,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+      "json": {
+        "config_hash": "46f040044819e6e2148a165c2afb781cfae747e07a148c23c84477c9eaf9e2d8",
+        "project_id": "5d8113991c6f4f72911d5cee47d2ecd3",
+        "project_root": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A5_stale_noop_reindex\\work",
+        "build_system": "unknown",
+        "compile_commands": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A5_stale_noop_reindex\\work\\compile_commands.json",
+        "indexed_at": "2026-09-18 10:39:08",
+        "symbol_count": 6,
+        "file_count": 4,
+        "reference_count": 8,
+        "modified_files_count": 0,
+        "header_affected_tus": 0,
+        "schema_version": 558496231,
+        "current_schema": 558496231,
+        "analysis": {
+          "model": null,
+          "analyze_vendor": false,
+          "project": {
+            "analyzed": 0,
+            "skipped": 0,
+            "total": 6
+          },
+          "vendor": {
+            "analyzed": 0,
+            "skipped": 0,
+            "total": 0
+          },
+          "complete": false
+        },
+        "manifest_verification": "full",
+        "description": "",
+        "first_indexed_at": "2026-09-18 10:39:06",
+        "vendor_paths": [],
+        "project_paths": [],
+        "effective_vendor_patterns": [],
+        "status": "ready",
+        "reindex_needed": false,
+        "reindex_reasons": [],
+        "stale": false,
+        "index_message": "Index is fully up to date (6 symbols) | LLM analysis: project 0/6 (vendor skipped \u2014 analyze_vendor=false)",
+        "multi": false,
+        "variants": [],
+        "images": [],
+        "variant_images": {},
+        "active_variant": null,
+        "active_image": null,
+        "entry_point": "",
+        "memory": [],
+        "defines": {},
+        "defines_varying": 2,
+        "bg_reindex_running": false,
+        "vec_available": true
+      }
+    }
+  }
+}

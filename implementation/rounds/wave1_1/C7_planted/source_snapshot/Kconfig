@@ -1,0 +1,13 @@
+# C7 planted fixture — Kconfig
+# The guard in sensor_module.c references a token that no Kconfig source
+# defines (the real Kconfig symbol is the IRQ-mode one below), so the guarded
+# branch is dead under every configuration — same mechanism class as the C1
+# plant.
+
+config SENSOR_ENABLE
+    bool "Enable sensor module"
+    default y
+
+config SENSOR_IRQ_MODE
+    bool "Sensor IRQ submission mode"
+    default n

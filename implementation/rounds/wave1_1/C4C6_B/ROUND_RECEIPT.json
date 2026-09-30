@@ -1,0 +1,37 @@
+{
+ "abstentions": [
+  {
+   "kind": "insufficient_evidence",
+   "missing_evidence": []
+  }
+ ],
+ "accepted_fault_cards": [],
+ "build_id": "BUILD-C4C6-DISABLE-ENVIRON",
+ "case_id": "C4C6-B",
+ "executor": "",
+ "freeze_id": "FRZ-C4C6-B-20260921T062838Z",
+ "lineage": "B (public NuttX snapshot pair)",
+ "refutations": [],
+ "rejected_candidates": [
+  {
+   "failed_roles": [
+    "R3_harmful_consequence"
+   ],
+   "family": "condition_config_gated",
+   "reason": "faultness_gate_failed",
+   "rulecard_id": "RC-C4C6-B-LIB-GETCWD-107"
+  }
+ ],
+ "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C4C6_B",
+ "semantic_coherence_violations": [],
+ "t2_scenarios": [],
+ "terminal_class": "e2e_negative",
+ "traversal": {
+  "fact_records": 8,
+  "faultness_gate_demoted": 1,
+  "faultness_gate_evaluated": 1,
+  "mechanism_hypotheses": 2,
+  "rulecards_accepted": 0,
+  "source_staged": true
+ }
+}

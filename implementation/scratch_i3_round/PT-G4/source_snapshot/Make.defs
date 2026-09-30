@@ -1,0 +1,4 @@
+# Make.defs — PT-G4 build fragment (single variant; GATE_ENABLE comes
+# from the config header gate_cfg.h, not from the command line).
+CFLAGS += -I$(PTG4_ROOT)
+SRCS += file1.c file2.c

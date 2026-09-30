@@ -1,0 +1,206 @@
+{
+  "lookup_symbol::{\"name\": \"shared_value\", \"exact\": true, \"limit\": 100}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "shared_value",
+      "exact": true,
+      "limit": 100
+    },
+    "elapsed_s": 0.014,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "shared_value",
+              "qualified_name": "shared_value",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work\\shared.h",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int shared_value()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"shared_value\",\n  \"qualified_name\": \"shared_value\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\shared.h\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int shared_value()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": {
+      "name": "shared_value",
+      "qualified_name": "shared_value",
+      "kind": "function",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work\\shared.h",
+      "line": 2,
+      "is_definition": true,
+      "signature": "int shared_value()",
+      "docstring": "",
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false
+    }
+  },
+  "lookup_symbol::{\"name\": \"f_\", \"exact\": false, \"limit\": 100}": {
+    "tool": "lookup_symbol",
+    "arguments": {
+      "name": "f_",
+      "exact": false,
+      "limit": 100
+    },
+    "elapsed_s": 0.006,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"name\": \"f_000\",\n  \"qualified_name\": \"f_000\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\tu_000.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_000()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "f_000",
+              "qualified_name": "f_000",
+              "kind": "function",
+              "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work\\tu_000.c",
+              "line": 2,
+              "is_definition": true,
+              "signature": "int f_000()",
+              "docstring": "",
+              "is_template": false,
+              "is_virtual": false,
+              "is_pure_virtual": false
+            }
+          ]
+        },
+        "isError": false
+      }
+    },
+    "text": "{\n  \"name\": \"f_000\",\n  \"qualified_name\": \"f_000\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\tu_000.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int f_000()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+    "json": {
+      "name": "f_000",
+      "qualified_name": "f_000",
+      "kind": "function",
+      "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work\\tu_000.c",
+      "line": 2,
+      "is_definition": true,
+      "signature": "int f_000()",
+      "docstring": "",
+      "is_template": false,
+      "is_virtual": false,
+      "is_pure_virtual": false
+    }
+  },
+  "search_bodies::{\"query\": \"return 8\", \"limit\": 100}": {
+    "tool": "search_bodies",
+    "arguments": {
+      "query": "return 8",
+      "limit": 100
+    },
+    "elapsed_s": 0.008,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 4,
+      "result": {
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false
+      }
+    },
+    "text": "",
+    "json": null
+  },
+  "get_active_build::{}": {
+    "tool": "get_active_build",
+    "arguments": {},
+    "elapsed_s": 0.011,
+    "isError": false,
+    "raw_response": {
+      "jsonrpc": "2.0",
+      "id": 5,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"config_hash\": \"608b3a81e8f5290758c954bf5b0b8e16c0f1febc9992b6743c72f089139180f7\",\n  \"project_id\": \"d5aea4b8cae0423ba4b345d70a303c5f\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 03:12:21\",\n  \"symbol_count\": 2,\n  \"file_count\": 2,\n  \"reference_count\": 2,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 03:11:51\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (2 symbols) | LLM analysis: project 0/2 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 0,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    "text": "{\n  \"config_hash\": \"608b3a81e8f5290758c954bf5b0b8e16c0f1febc9992b6743c72f089139180f7\",\n  \"project_id\": \"d5aea4b8cae0423ba4b345d70a303c5f\",\n  \"project_root\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\",\n  \"build_system\": \"unknown\",\n  \"compile_commands\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V1\\\\G13\\\\n1\\\\work\\\\compile_commands.json\",\n  \"indexed_at\": \"2026-09-18 03:12:21\",\n  \"symbol_count\": 2,\n  \"file_count\": 2,\n  \"reference_count\": 2,\n  \"modified_files_count\": 0,\n  \"header_affected_tus\": 0,\n  \"schema_version\": 558496231,\n  \"current_schema\": 558496231,\n  \"analysis\": {\n    \"model\": null,\n    \"analyze_vendor\": false,\n    \"project\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 2\n    },\n    \"vendor\": {\n      \"analyzed\": 0,\n      \"skipped\": 0,\n      \"total\": 0\n    },\n    \"complete\": false\n  },\n  \"manifest_verification\": \"full\",\n  \"description\": \"\",\n  \"first_indexed_at\": \"2026-09-18 03:11:51\",\n  \"vendor_paths\": [],\n  \"project_paths\": [],\n  \"effective_vendor_patterns\": [],\n  \"status\": \"ready\",\n  \"reindex_needed\": false,\n  \"reindex_reasons\": [],\n  \"stale\": false,\n  \"index_message\": \"Index is fully up to date (2 symbols) | LLM analysis: project 0/2 (vendor skipped — analyze_vendor=false)\",\n  \"multi\": false,\n  \"variants\": [],\n  \"images\": [],\n  \"variant_images\": {},\n  \"active_variant\": null,\n  \"active_image\": null,\n  \"entry_point\": \"\",\n  \"memory\": [],\n  \"defines\": {},\n  \"defines_varying\": 0,\n  \"bg_reindex_running\": false,\n  \"vec_available\": true\n}",
+    "json": {
+      "config_hash": "608b3a81e8f5290758c954bf5b0b8e16c0f1febc9992b6743c72f089139180f7",
+      "project_id": "d5aea4b8cae0423ba4b345d70a303c5f",
+      "project_root": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work",
+      "build_system": "unknown",
+      "compile_commands": "C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G13\\n1\\work\\compile_commands.json",
+      "indexed_at": "2026-09-18 03:12:21",
+      "symbol_count": 2,
+      "file_count": 2,
+      "reference_count": 2,
+      "modified_files_count": 0,
+      "header_affected_tus": 0,
+      "schema_version": 558496231,
+      "current_schema": 558496231,
+      "analysis": {
+        "model": null,
+        "analyze_vendor": false,
+        "project": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 2
+        },
+        "vendor": {
+          "analyzed": 0,
+          "skipped": 0,
+          "total": 0
+        },
+        "complete": false
+      },
+      "manifest_verification": "full",
+      "description": "",
+      "first_indexed_at": "2026-09-18 03:11:51",
+      "vendor_paths": [],
+      "project_paths": [],
+      "effective_vendor_patterns": [],
+      "status": "ready",
+      "reindex_needed": false,
+      "reindex_reasons": [],
+      "stale": false,
+      "index_message": "Index is fully up to date (2 symbols) | LLM analysis: project 0/2 (vendor skipped — analyze_vendor=false)",
+      "multi": false,
+      "variants": [],
+      "images": [],
+      "variant_images": {},
+      "active_variant": null,
+      "active_image": null,
+      "entry_point": "",
+      "memory": [],
+      "defines": {},
+      "defines_varying": 0,
+      "bg_reindex_running": false,
+      "vec_available": true
+    }
+  },
+  "server_exit_code": 0
+}

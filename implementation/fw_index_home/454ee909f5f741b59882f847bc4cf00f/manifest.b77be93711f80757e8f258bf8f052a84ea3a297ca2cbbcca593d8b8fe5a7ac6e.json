@@ -1,0 +1,32 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\work\\proj_d5813856\\fixture",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\work\\proj_d5813856\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "b77be93711f80757e8f258bf8f052a84ea3a297ca2cbbcca593d8b8fe5a7ac6e",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "d683a0a3f2d3fcfe",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\work\\proj_d5813856",
+      "file": "fixture/link_mgr.c",
+      "flags_hash": "af95f3f9d5805e1bb4a1ca898e625725e6c9614d3c2633bf13b382255a902072",
+      "headers": [
+        "fixture\\link_mgr.h"
+      ],
+      "source_hash": "f0c931a71fa6191c08d162230fe057d1eefaa08b0168613716d954e32856182d"
+    }
+  ],
+  "headers": {
+    "fixture\\link_mgr.h": {
+      "generated": false,
+      "hash": "790d9c284975730e4f38c9870726878e7801b2277c8d8e29ef13c76844bca7e6"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\work\\proj_d5813856",
+  "vendor_patterns": []
+}

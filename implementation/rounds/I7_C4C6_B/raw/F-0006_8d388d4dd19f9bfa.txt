@@ -1,0 +1,8 @@
+pattern='getcwd' glob=None truncated=False
+libs/libc/unistd/CMakeLists.txt:12:     lib_getcwd.c
+libs/libc/unistd/lib_getcwd.c:2:  * libs/libc/unistd/lib_getcwd.c
+libs/libc/unistd/lib_getcwd.c:43:  * Name: getcwd
+libs/libc/unistd/lib_getcwd.c:46:  *   getcwd() function places the absolute pathname of the current working
+libs/libc/unistd/lib_getcwd.c:74:  *   Upon successful completion, getcwd() returns the 'buf' argument.
+libs/libc/unistd/lib_getcwd.c:90: FAR char *getcwd(FAR char *buf, size_t size)
+libs/libc/unistd/Make.defs:11: CSRCS += lib_getcwd.c lib_getentropy.c lib_getopt_common.c lib_getopt.c

@@ -1,0 +1,39 @@
+{
+  "case_id": "Z4_qemu_cortex_m3",
+  "phase": "V2_PUBLIC_REAL",
+  "platform": "wsl",
+  "scenario": "Z4 qemu_cortex_m3 real cross-build: compile DB + startup/vector facts + QEMU runtime smoke",
+  "fixture": "zephyr v4.4.2@dccb0959 hello_world BOARD=qemu_cortex_m3, gnuarmemb (/usr arm-none-eabi-gcc)",
+  "env_method": [
+    "work-copy zephyr (public clone untouched) + west workspace; GIT_SSL_NO_VERIFY=1; west update cmsis_6 cmsis",
+    "earlier attempts: no-west build fails on HAS_CMSIS_CORE Kconfig warning (module registration missing) \ufffd\ufffd documented"
+  ],
+  "build": {
+    "tu_count_prov": "z4_provenance.json",
+    "qemu_run": "QEMU smoke OK: 'Hello World! qemu_cortex_m3/ti_lm3s6965' (qemu_run.log)"
+  },
+  "queries": {
+    "get_vector_table": {
+      "total_slots": 97,
+      "status_mix": {
+        "c": 45,
+        "dispatcher": 43,
+        "assembly": 8,
+        "data": 1
+      },
+      "slot0": "z_main_stack (data, SP \ufffd\ufffd from vector_table.S:39 assembly)",
+      "slot1": "z_arm_reset (assembly, reset.S)",
+      "slot2": "z_arm_nmi (c)",
+      "table_file": "arch/arm/core/cortex_m/vector_table.S:39+ (assembly table of address words)"
+    },
+    "z_arm_reset": "reset.S:83 is_definition=true",
+    "__start": "reset.S:91 is_definition=true",
+    "main": "samples/hello_world/src/main.c:9 is_definition=true",
+    "config_hash": "1ff587fd84ad01b4\ufffd\ufffd"
+  },
+  "contrast_with_C1": "on the SAME product, the ASSEMBLY vector table (zephyr vector_table.S) is recognized slot-by-slot with named handlers, while the CMSIS 6 C-template array form (C1) is not \ufffd\ufffd F-V2-001 is scoped to the C array-of-function-pointers template recognition, not vector support in general",
+  "status": "PASS",
+  "notes": [
+    "VERIFIER DISCLOSURE: get_active_build carries reindex_needed=true / stale=true (3 generated TUs outside compile_commands.json), same condition Z3 discloses; queries unaffected. This file re-serialized strict UTF-8."
+  ]
+}

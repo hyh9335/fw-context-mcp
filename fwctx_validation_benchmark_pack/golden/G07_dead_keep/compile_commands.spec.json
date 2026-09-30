@@ -1,0 +1,15 @@
+[
+  {
+    "file": "main.c",
+    "arguments": [
+      "clang",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-c",
+      "${ROOT}/main.c",
+      "-o",
+      "main.o"
+    ],
+    "output": "main.o"
+  }
+]

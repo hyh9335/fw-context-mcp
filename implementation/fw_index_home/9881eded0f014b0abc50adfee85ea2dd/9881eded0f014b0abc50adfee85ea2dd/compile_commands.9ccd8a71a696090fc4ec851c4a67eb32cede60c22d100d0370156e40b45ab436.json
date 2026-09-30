@@ -1,0 +1,10 @@
+{
+  "_format": "fw-context-cc/5",
+  "defines": [
+    "-DVARIANT_TAG=2"
+  ],
+  "dialect": [
+    "-Wno-unknown-warning-option"
+  ],
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_5dd1df5b"
+}

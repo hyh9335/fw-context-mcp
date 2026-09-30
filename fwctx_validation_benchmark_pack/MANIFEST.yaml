@@ -1,0 +1,32 @@
+version: 1
+entrypoint: ENTRYPOINT_VALIDATOR.md
+mode: VALIDATION_ONLY
+artifact_root: .fw-validation/artifacts
+state_file: .fw-validation/state.json
+ledger_file: .fw-validation/findings.json
+initial_load:
+- ENTRYPOINT_VALIDATOR.md
+- MANIFEST.yaml
+- workflow/STATE_MACHINE.md
+- workflow/ANTI_SKIP_RULES.md
+- workflow/CONTEXT_PROTOCOL.md
+phases:
+- V0_ENV
+- V1_GOLDEN
+- V2_PUBLIC_REAL
+- V3_CROSS_PLATFORM
+- V4_ADVERSARIAL
+- V5_RELEASE
+prompts:
+  V0: prompts/V0_ENV.md
+  V1: prompts/V1_GOLDEN.md
+  V2: prompts/V2_PUBLIC_REAL.md
+  V3: prompts/V3_CROSS_PLATFORM.md
+  V4: prompts/V4_ADVERSARIAL.md
+  V5: prompts/V5_RELEASE.md
+  VERIFY: prompts/A_VERIFY.md
+  RELEASE: prompts/A_RELEASE.md
+public_corpus: public/PUBLIC_CORPUS.yaml
+golden_manifest: golden/GOLDEN_MANIFEST.yaml
+oracles: tests/ORACLE_POLICY.md
+coverage: tests/COVERAGE_MATRIX.md

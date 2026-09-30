@@ -1,0 +1,73 @@
+{
+  "states": [
+    "INIT",
+    "R0_EVIDENCE_FREEZE",
+    "R1_INDEPENDENT_RESEARCH",
+    "R2_STRATEGY_FORMATION",
+    "R3_CROSS_EXAMINATION",
+    "R4_SCENARIO_STRESS",
+    "R5_RED_TEAM",
+    "R6_CONVERGENCE",
+    "R7_DECISION",
+    "R8_RELEASE_AUDIT",
+    "DONE",
+    "BLOCKED_HARD"
+  ],
+  "transitions": {
+    "INIT": "R0_EVIDENCE_FREEZE",
+    "R0_EVIDENCE_FREEZE": "R1_INDEPENDENT_RESEARCH",
+    "R1_INDEPENDENT_RESEARCH": "R2_STRATEGY_FORMATION",
+    "R2_STRATEGY_FORMATION": "R3_CROSS_EXAMINATION",
+    "R3_CROSS_EXAMINATION": "R4_SCENARIO_STRESS",
+    "R4_SCENARIO_STRESS": "R5_RED_TEAM",
+    "R5_RED_TEAM": "R6_CONVERGENCE",
+    "R6_CONVERGENCE": "R7_DECISION",
+    "R7_DECISION": "R8_RELEASE_AUDIT",
+    "R8_RELEASE_AUDIT": "DONE"
+  },
+  "required_artifacts": {
+    "R0_EVIDENCE_FREEZE": [
+      "FACT_LEDGER.json",
+      "CONTRADICTIONS.json"
+    ],
+    "R1_INDEPENDENT_RESEARCH": [
+      "R1_A1.md",
+      "R1_A2.md",
+      "R1_A3.md",
+      "R1_A4.md",
+      "R1_A5.md",
+      "R1_A6.md",
+      "R1_A7.md",
+      "R1_A8.md"
+    ],
+    "R2_STRATEGY_FORMATION": [
+      "STRATEGY_S1.md",
+      "STRATEGY_S2.md",
+      "STRATEGY_S3.md"
+    ],
+    "R3_CROSS_EXAMINATION": [
+      "DEBATE_ROUND_1.md"
+    ],
+    "R4_SCENARIO_STRESS": [
+      "SCENARIO_STRESS_TEST.md"
+    ],
+    "R5_RED_TEAM": [
+      "RED_TEAM_REPORT.md"
+    ],
+    "R6_CONVERGENCE": [
+      "DEBATE_ROUND_2.md"
+    ],
+    "R7_DECISION": [
+      "DECISION_LEDGER.json",
+      "GOAL_BASELINE.md",
+      "CURRENT_CAPABILITY_MAP.md",
+      "FAULT_DISCOVERY_REQUIREMENTS.md",
+      "MINORITY_REPORT.md",
+      "FINAL_ARCHITECTURE.md",
+      "ROADMAP.md"
+    ],
+    "R8_RELEASE_AUDIT": [
+      "RELEASE_AUDIT.md"
+    ]
+  }
+}

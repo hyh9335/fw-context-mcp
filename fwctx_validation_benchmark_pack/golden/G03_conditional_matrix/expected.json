@@ -1,0 +1,23 @@
+{
+  "contexts": [
+    {
+      "name": "A",
+      "selected": 10,
+      "helper_present": true,
+      "active_branch": "defined(FEATURE_A) && LEVEL >= 2"
+    },
+    {
+      "name": "B",
+      "selected": 20,
+      "helper_present": false,
+      "active_branch": "defined(FEATURE_B) || LEVEL == 1"
+    },
+    {
+      "name": "C",
+      "selected": 30,
+      "helper_present": true,
+      "active_branch": "else"
+    }
+  ],
+  "required": "condition chain/evaluation must remain context-specific"
+}

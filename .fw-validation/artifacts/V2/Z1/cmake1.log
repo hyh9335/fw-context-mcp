@@ -1,0 +1,20 @@
+Loading Zephyr default modules (Zephyr base (cached)).
+-- Application: /home/h00969597/fwctx-bench/public/zephyr/samples/hello_world
+-- CMake version: 3.22.1
+-- Cache files will be written to: /home/h00969597/.cache/zephyr
+-- Zephyr version: 4.4.2 (/home/h00969597/fwctx-bench/public/zephyr)
+-- Found west (found suitable version "1.5.0", minimum required is "0.14.0")
+-- Board: native_sim, qualifiers: native
+-- Found toolchain: host (gcc/ld)
+-- Found BOARD.dts: /home/h00969597/fwctx-bench/public/zephyr/boards/native/native_sim/native_sim.dts
+-- Generated zephyr.dts: /home/h00969597/fwctx-v2-work/Z1/build/zephyr/zephyr.dts
+-- Generated pickled edt: /home/h00969597/fwctx-v2-work/Z1/build/zephyr/edt.pickle
+-- Generated devicetree_generated.h: /home/h00969597/fwctx-v2-work/Z1/build/zephyr/include/generated/zephyr/devicetree_generated.h
+Parsing /home/h00969597/fwctx-bench/public/zephyr/Kconfig
+Loaded configuration '/home/h00969597/fwctx-v2-work/Z1/build/zephyr/.config'
+No change to configuration in '/home/h00969597/fwctx-v2-work/Z1/build/zephyr/.config'
+No change to Kconfig header in '/home/h00969597/fwctx-v2-work/Z1/build/zephyr/include/generated/zephyr/autoconf.h'
+-- Found gen_kobject_list: /home/h00969597/fwctx-bench/public/zephyr/scripts/build/gen_kobject_list.py
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/h00969597/fwctx-v2-work/Z1/build

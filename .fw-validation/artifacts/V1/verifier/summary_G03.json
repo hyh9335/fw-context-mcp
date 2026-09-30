@@ -1,0 +1,17 @@
+{
+  "G03": {
+    "ok": true,
+    "checks": {
+      "selected_3_bodies": true,
+      "selected_values_10_20_30": true,
+      "helper_search_bodies_empty": true,
+      "helper_lookup_rows_2": true,
+      "cond_A_text_present": true,
+      "cond_B_text_present": true,
+      "if_false_elif_taken": true,
+      "ALL": true
+    },
+    "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G03\\work",
+    "elapsed_s": 29.94
+  }
+}

@@ -1,0 +1,57 @@
+using BOARD="native64" as "native" on a 64-bit system
+/home/h00969597/fwctx-v2-work/R1/riot-src/examples/basic/default/../../../Makefile.include:345: Neither unzip nor 7z is installed.
+Building application "default" for "native64" with CPU "native".
+
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/native64
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/core
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/init
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/native
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/native/drivers
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/core/lib
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native/cli_eui_provider
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers/netdev
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers/periph_common
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native/netdev_tap
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/auto_init
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native/periph
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/event
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/fmt
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers/saul
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers/saul/init_devs
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native/stdio_native
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/frac
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/iolist
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/isrpipe
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/libc
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/luid
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/link_layer/eui_provider
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netapi
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/link_layer/l2util
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/netif
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/od
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/phydat
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netif
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netreg
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/pkt
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/pktbuf
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/preprocessor
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netif/ethernet
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/pktbuf_static
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netif/hdr
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/pktdump
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/net/gnrc/netif/init_devs
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/ps
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/rtc_utils
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/saul_reg
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/shell
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/shell/cmds
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/stdio
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/tsrb
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys/ztimer
+   text	   data	    bss	    dec	    hex	filename
+  95604	   2944	 100560	 199108	  309c4	/home/h00969597/fwctx-v2-work/R1/riot-src/examples/basic/default/bin/native64/default.elf

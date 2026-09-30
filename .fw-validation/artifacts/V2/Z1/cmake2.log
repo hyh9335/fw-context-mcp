@@ -1,0 +1,29 @@
+Loading Zephyr default modules (Zephyr base (cached)).
+-- Application: /home/h00969597/fwctx-bench/public/zephyr/samples/hello_world
+-- CMake version: 3.22.1
+-- Cache files will be written to: /home/h00969597/.cache/zephyr
+-- Zephyr version: 4.4.2 (/home/h00969597/fwctx-bench/public/zephyr)
+-- Found west (found suitable version "1.5.0", minimum required is "0.14.0")
+-- Board: native_sim, qualifiers: native
+-- ZEPHYR_TOOLCHAIN_VARIANT not set, trying to locate Zephyr SDK
+CMake Error at /home/h00969597/fwctx-bench/public/zephyr/cmake/modules/FindZephyr-sdk.cmake:160 (find_package):
+  Could not find a package configuration file provided by "Zephyr-sdk"
+  (requested version 1.0) with any of the following names:
+
+    Zephyr-sdkConfig.cmake
+    zephyr-sdk-config.cmake
+
+  Add the installation prefix of "Zephyr-sdk" to CMAKE_PREFIX_PATH or set
+  "Zephyr-sdk_DIR" to a directory containing one of the above files.  If
+  "Zephyr-sdk" provides a separate development package or SDK, be sure it has
+  been installed.
+Call Stack (most recent call first):
+  /home/h00969597/fwctx-bench/public/zephyr/cmake/modules/FindHostTools.cmake:51 (find_package)
+  /home/h00969597/fwctx-bench/public/zephyr/cmake/modules/dts.cmake:9 (find_package)
+  /home/h00969597/fwctx-bench/public/zephyr/cmake/modules/zephyr_default.cmake:129 (include)
+  /home/h00969597/fwctx-bench/public/zephyr/share/zephyr-package/cmake/ZephyrConfig.cmake:66 (include)
+  /home/h00969597/fwctx-bench/public/zephyr/share/zephyr-package/cmake/ZephyrConfig.cmake:97 (include_boilerplate)
+  CMakeLists.txt:5 (find_package)
+
+
+-- Configuring incomplete, errors occurred!

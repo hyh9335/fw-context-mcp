@@ -1,0 +1,5 @@
+# Lock the T05 oracle #5 fixture bytes verbatim (CRLF, 366 bytes, SHA256
+# 6c90e7cb4932ac3dc9d3142c1de1fc6ba0dd284ceac15d6cc8016272c9015711) so the
+# checked-in regression fixture is identical on Windows and WSL regardless
+# of core.autocrlf.  See tests/test_method_overrides_declonly.py.
+*.cpp -text

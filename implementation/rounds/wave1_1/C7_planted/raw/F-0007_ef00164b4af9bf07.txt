@@ -1,0 +1,3 @@
+pattern='sensor_submit' glob=None truncated=False
+sensor_module.c:6:  * slice, so sensor_submit AND its work_submit call are compiled out under
+sensor_module.c:20: int sensor_submit(int raw)

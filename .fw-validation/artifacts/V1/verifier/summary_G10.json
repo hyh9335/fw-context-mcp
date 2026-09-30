@@ -1,0 +1,14 @@
+{
+  "G10": {
+    "ok": true,
+    "checks": {
+      "handler_slots_exact": true,
+      "single_table": true,
+      "reserved_slots_unnamed": true,
+      "slot0_missing": true,
+      "ALL": true
+    },
+    "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G10\\work",
+    "elapsed_s": 29.9
+  }
+}

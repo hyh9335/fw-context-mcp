@@ -1,0 +1,33 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\work\\proj_9c049601\\fixture\\fixture",
+      "-DCONFIG_SENSOR_ENABLE=1",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\work\\proj_9c049601\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "6b9f3f0e94d06e58bf7da0c6603b94b47ab32649923dae1d34b66814526d877a",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "9091b4788fca9c96",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\work\\proj_9c049601",
+      "file": "fixture/sensor_module.c",
+      "flags_hash": "562553d4383ede9406b070a628cb3a7c34097babd396b4848fc9270d34dd64d6",
+      "headers": [
+        "fixture\\work.h"
+      ],
+      "source_hash": "1a105298613e583cb5a0f83b6cffb1e1139668c4468151d00298a07f1ed3bd0c"
+    }
+  ],
+  "headers": {
+    "fixture\\work.h": {
+      "generated": false,
+      "hash": "0a319375bdfb2ed9c40da162458816c6ed5901df5a065cebcad4e8a63c13986d"
+    }
+  },
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C7_planted\\work\\proj_9c049601",
+  "vendor_patterns": []
+}

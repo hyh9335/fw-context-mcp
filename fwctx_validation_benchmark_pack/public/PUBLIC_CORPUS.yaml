@@ -1,0 +1,94 @@
+policy:
+  clone_location_wsl: ~/fwctx-bench/public
+  pin_rule: checkout requested release/tag, then record exact resolved commit SHA; never test floating main unless scenario
+    explicitly says optional-latest
+  network_rule: download once, record SHA; subsequent runs may use local mirror
+  ground_truth_rule: public source is realism corpus, not automatic exact GT
+repositories:
+- id: PUB-ZEPHYR
+  name: Zephyr
+  url: https://github.com/zephyrproject-rtos/zephyr.git
+  version: v4.4.2
+  required: true
+  roles:
+  - kconfig_variants
+  - compile_commands
+  - rtos_async
+  - generated_headers
+  - native_sim
+  - qemu_cortex_m3
+  - large_real_project
+  builds:
+  - west build -p always -b native_sim samples/hello_world -- -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  - west build -p always -b qemu_cortex_m3 samples/synchronization -- -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  - ./scripts/twister -p native_sim -T tests/kernel/workq/work_queue
+- id: PUB-NUTTX
+  name: Apache NuttX
+  url: https://github.com/apache/nuttx.git
+  apps_url: https://github.com/apache/nuttx-apps.git
+  version: nuttx-13.0.0
+  fallback_release: 13.0.0 official Apache source archive if git tag spelling differs
+  required: true
+  roles:
+  - defconfig_variants
+  - compile_commands
+  - large_c
+  - drivers
+  - linker
+  - sim
+  builds:
+  - cmake -S <nuttx> -B <build> -DBOARD_CONFIG=sim:nsh -GNinja
+  - cmake --build <build>
+- id: PUB-FREERTOS
+  name: FreeRTOS-Kernel
+  url: https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+  version: V11.3.1
+  required: true
+  roles:
+  - tasks
+  - queues
+  - timers
+  - callbacks
+  - config_macros
+  - kernel_callgraph
+  note: For official QEMU demo/linker-map integration, optionally clone https://github.com/FreeRTOS/FreeRTOS.git and record
+    exact SHA; do not float silently.
+- id: PUB-CMSIS
+  name: CMSIS 6
+  url: https://github.com/ARM-software/CMSIS_6.git
+  version: v6.3.0
+  required: true
+  roles:
+  - cortex_m_vector_ground_truth
+  - weak_handlers
+  - startup_semantics
+- id: PUB-RIOT
+  name: RIOT
+  url: https://github.com/RIOT-OS/RIOT.git
+  version: '2026.07'
+  fallback_commit: 50ae2eb
+  required: true
+  roles:
+  - holdout_rtos
+  - different_build_system
+  - compile_commands
+  - native_board
+  - multi_arch
+  builds:
+  - cd examples/basic/hello-world && BOARD=native make compile-commands
+  - cd examples/basic/hello-world && BOARD=native make
+- id: PUB-JULIET-OPTIONAL
+  name: NIST Juliet C/C++
+  url: https://samate.nist.gov/SARD/test-suites
+  version: 1.3.1 / suite 116
+  required: false
+  roles:
+  - optional_large_control_dataflow_stress
+  note: Use selected C/C++ subsets only; not firmware-specific and not a primary GT for fw-context semantics.
+- id: PUB-TACLE-OPTIONAL
+  name: Mälardalen/TACLE-style WCET subset
+  url: https://github.com/TRDDC-TUM/wcet-benchmarks.git
+  version: record resolved SHA
+  required: false
+  roles:
+  - optional_embedded_c_static_stress

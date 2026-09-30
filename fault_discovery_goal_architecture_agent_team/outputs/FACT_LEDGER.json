@@ -1,0 +1,77 @@
+{
+  "round": "R0_EVIDENCE_FREEZE",
+  "frozen_at": "2026-09-18",
+  "frozen_by": "A0 (T14 controller)",
+  "goal_freeze": {
+    "goal_hash_sha256": "950744D86CFED749A331FA9E1346FC2B94442B37B3B94BEE39A8619A45B8EE42",
+    "goal_source": "inputs/GOAL_CONTRACT.md + ENTRYPOINT_T14.md (user-authored, authoritative)",
+    "top_level_goal": "Build an Agent that can inspect firmware/software source code; discover plausible fault mechanisms / failure modes in the implementation; reconstruct causal mechanism and relevant execution/configuration conditions; derive corresponding detection or diagnosis rules that are operationally useful; attach source evidence and confidence/limitations so humans/downstream systems can audit them.",
+    "from_source_code_central": true,
+    "non_goals": [
+      "perfect general-purpose static analysis",
+      "solving all compiler/linker semantics",
+      "making fw-context a standalone best-in-class product",
+      "exhaustively modeling every RTOS before an MVP",
+      "eliminating human review"
+    ],
+    "forbidden_goal_replacements": [
+      "make fw-context-mcp perfect",
+      "make all validation tests green",
+      "build a generic static analyzer",
+      "maximize code-index coverage",
+      "ship fw-context-mcp as a standalone product"
+    ]
+  },
+  "product_freeze": {
+    "repo": "D:\\github\\fw-context-mcp",
+    "head": "d8f08a41d3fb9df6de255a187720f6332ed0f1c9",
+    "branch": "main",
+    "version": "v0.31.0-94-gd8f08a4 (package 0.31.0)",
+    "head_commit_subject": "docs: KNOWN_LIMITATIONS — FINAL REPAIR WAVE additions (S4-S10)",
+    "head_commit_date": "2026-09-17T19:59:51+08:00",
+    "tracked_files_modified": 0,
+    "untracked_paths": [
+      ".fw-closeout/", ".fw-final/", ".fw-validation/", "CROSS_PLATFORM_FINAL_AUDIT.md",
+      "RELEASE_AUDIT.md", "fault_discovery_goal_architecture_agent_team/",
+      "fw_context_mcp_cross_platform_closeout/", "fwctx_validation_benchmark_pack/", "packaging/"
+    ],
+    "readonly_proof": "git status --porcelain at R0 shows only untracked (??) entries; zero tracked-file modifications. No product source will be modified in this wave (MANIFEST: product_code_changes_allowed=false).",
+    "prior_audit_note": "prior closeout audit ran at 954514a (2026-09-16); 17 commits since, product-side changes included (cache expiry boundary, SQLite URI, one-spelling-per-file invariant) — per FINAL_VALIDATION_RESULTS.json product.audit_baseline_note"
+  },
+  "artifact_inventory": {
+    "expected_and_found": [
+      ".fw-validation/FINAL_VALIDATION_RESULTS.json",
+      ".fw-validation/FINDINGS.json",
+      ".fw-validation/KNOWN_VALIDATION_LIMITS.md",
+      ".fw-final/FINAL_REPAIR_AUDIT.md",
+      ".fw-final/FINAL_TEST_RESULTS.json",
+      ".fw-final/FINAL_ISSUE_LEDGER.json",
+      "KNOWN_LIMITATIONS.md",
+      "git history and current fw-context-mcp source tree"
+    ],
+    "missing": []
+  },
+  "facts": [
+    {"id": "F-R0-01", "label": "FACT", "claim": "Product repo is at HEAD d8f08a4 on main, package version 0.31.0, tracked tree clean; validation campaign documented this exact HEAD as its audit baseline.", "source": "git commands + .fw-validation/FINAL_VALIDATION_RESULTS.json product block"},
+    {"id": "F-R0-02", "label": "FACT", "claim": "Validation campaign final verdict is NOT_READY for a full-surface real-project trial; verdict rule: any WRONG_ANSWER / SILENT_DATA_LOSS / INDEX_DIVERGENCE / CORRUPTION / STDIO_FAILURE not proven a benchmark/oracle defect forces NOT_READY.", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json (FINAL_VERDICT, verdict_rule)"},
+    {"id": "F-R0-03", "label": "FACT", "claim": "58-case tally: 43 PASS, 7 FAIL_PRODUCT, 5 PARITY_CONFIRMED, 2 BLOCKED_ENVIRONMENT, 1 optional NOT_RUN (V2-F3 FreeRTOS QEMU demo).", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json case_tally"},
+    {"id": "F-R0-04", "label": "FACT", "claim": "The 7 FAIL_PRODUCT cases: G02 (macro observability), G03 (conditional body storage), G04 (variant semantic divergence), G06 (transitive callback registration), G07 (dead-code root set on compile_commands-only projects), G10 (slot-0 data symbol), V2-C1 (CMSIS6 C-form vector table false absence).", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json failures + .fw-validation/FINDINGS.json"},
+    {"id": "F-R0-05", "label": "FACT", "claim": "Verdict drivers: F-V2-001 WRONG_ANSWER/HIGH (get_vector_table returns false 'No vector table' for the standard CMSIS6 C-template form while the assembly form IS recognized — no oracle defect found for the campaign's expectation); F-V1-003 INDEX_DIVERGENCE/CRITICAL (bare-generator writes one shared compile_commands.json so last variant's defines win; compare_variants and equivalence grouping validate the collapsed data, i.e. the defect is invisible to the product's own consistency checks); F-V1-001/002/007 SILENT_DATA_LOSS/HIGH (same-source multi-define macro contexts, file-level conditional functions, single-line definitions lose data silently).", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json verdict_drivers + FINDINGS.json findings F-V1-001, F-V1-002, F-V1-003, F-V1-007, F-V2-001"},
+    {"id": "F-R0-06", "label": "FACT", "claim": "F-V1-003 is self-masking: group_equivalent_variants correctly groups app_entry but reports transport_send equivalent across variants A/B/C although B compiles a different branch; get_source(variant='B') served the INACTIVE uart-branch body from disk as if live with no stale warning.", "source": ".fw-validation/FINDINGS.json F-V1-003 (evidence list)"},
+    {"id": "F-R0-07", "label": "FACT", "claim": "F-V1-005 (HIGH, WRONG_ANSWER): on compile_commands-only projects find_dead_code misreports the plainly live chain main->live_root->live_leaf as graph_unreachable because the root set requires a build-attested linker script; the manual backend never links and no configuration key exists to declare one. Also: find_dead_code correctly classifies the dead_a/dead_b SCC and correctly protects a KEEP-attributed symbol (linker oracle on WSL).", "source": ".fw-validation/FINDINGS.json F-V1-005"},
+    {"id": "F-R0-08", "label": "FACT", "claim": "F-V1-004 (MEDIUM): direct function-pointer flows resolve; the transitive registration flow (may-target through a registration API call argument, register_cb(plus1)) does not — reachable callback set silently under-reported.", "source": ".fw-validation/FINDINGS.json F-V1-004"},
+    {"id": "F-R0-09", "label": "FACT", "claim": "F-V1-008 (LOW): all query surfaces cap at limit<=100 with no pagination; >100 same-name symbol rows cannot be enumerated. F-V2-002 (MEDIUM, API_CONTRACT): lookup_symbol exact=True silently relaxes to an unrelated-symbol fallback when the name is absent (marked _fallback, but violates the documented empty contract; automated existence checks get false positives). F-V4-001 (LOW, open): watcher daemon assertion during mutation; benign to CLI-written DB.", "source": ".fw-validation/FINDINGS.json F-V1-008, F-V2-002, F-V4-001"},
+    {"id": "F-R0-10", "label": "FACT", "claim": "FINAL REPAIR WAVE verdict is READY_FOR_REAL_PROJECT_TRIAL with deferred items explicitly excluded from the claim: WSL full suite 0F/3294P/192S (byte-identical proxy OFF/ON), Windows full suite 9F+1E/3109P/368S with all 10 remaining failures ledgered DEFERRED; genuinely-new failures 0 (121 ⊆ 238 machine-compared); blocking unresolved product defects 0; LEDGER_OPEN_COUNT=0.", "source": ".fw-final/FINAL_REPAIR_AUDIT.md §1, §5 + FINAL_TEST_RESULTS.json + FINAL_ISSUE_LEDGER.json"},
+    {"id": "F-R0-11", "label": "FACT", "claim": "Real product defects fixed by the repair wave: FR-NEW-1 retention deleted nothing (FK children omitted, transaction aborted mid-way, swallowed to WARNING); FR-NEW-2 local LLM-cache tier dead on Windows (invalid file://C:\\ SQLite URI); FR-NEW-3 zero-TTL entries never expired (strict > boundary); FR-NEW-4 clang-capability skip; FR-NEW-5 one-spelling-per-file invariant end-to-end. FR-R1 (duplicate-USR 'corruption') was REFUTED as a product defect — reclassified TEST_EXPECTATION_WRONG under rows/3 per-context semantics, with anti-tautology verification.", "source": ".fw-final/FINAL_ISSUE_LEDGER.json + FINAL_REPAIR_AUDIT.md §2–§3"},
+    {"id": "F-R0-12", "label": "FACT", "claim": "Deferred items (all DEFERRED_WITH_REASON, Windows-only): FR-NEW-6 file-lock test debt (2F+1E), FR-NEW-7 six singleton contract decisions, FR-NEW-8 /shims/ path-marker (1F).", "source": ".fw-final/FINAL_ISSUE_LEDGER.json + KNOWN_LIMITATIONS.md §7–§8"},
+    {"id": "F-R0-13", "label": "FACT", "claim": "Passing surfaces established by the campaign: large public-project indexing (Zephyr/NuttX/RIOT/FreeRTOS/CMSIS fixtures), real stdio win→win / wsl→wsl / win-launcher→wsl (cold_max 453–781 ms, warm ~15 ms, recommended timeout 5000 ms), call graph, hotspots, dead-code L1/L2 (with F-V1-005 caveat), semantic search, no-op reindex idempotence, honest empty-results on unsupported-arch queries, A1–A8 adversarial mutation classes, index integrity under repeated mutation, fanout 1→250 linear (13.2 s at 250 TUs / 2250 symbols).", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json coverage_matrix + .fw-validation/KNOWN_VALIDATION_LIMITS.md §4 + .fw-final/FINAL_TEST_RESULTS.json runtime_gates"},
+    {"id": "F-R0-14", "label": "FACT", "claim": "Environment shaped the evidence: Windows lacks clang/cmake/ninja/make/MSVC (G04/G11 Windows cells BLOCKED_ENVIRONMENT, covered on WSL); corporate proxy forces mirror + no_proxy discipline; TLS MITM forced http.sslVerify=false for some clones (integrity anchored by recorded SHAs in PUBLIC_LOCK.json); WSL service RPC E_ACCESSDENIED was transient/restricted-sandbox (F-V0-001 RESOLVED); pip metadata staleness (F-V0-002).", "source": ".fw-validation/KNOWN_VALIDATION_LIMITS.md §2 + FINDINGS.json F-V0-001..004"},
+    {"id": "F-R0-15", "label": "UNCERTAINTY", "claim": "G13 (fanout scale) classification carries a V1-verifier caveat: unreliable first-pass comparison. V4 adversarial audit status is AUDIT_IN_FLIGHT with controller_result 8/8 PASS. explain_condition context resolution is nondeterministic across runs (G03 observation, resolved context A vs B in different runs).", "source": ".fw-validation/FINAL_VALIDATION_RESULTS.json residuals + KNOWN_VALIDATION_LIMITS.md §1/§3"},
+    {"id": "F-R0-16", "label": "FACT", "claim": "Macro observability (F-V1-001): per-context macro values ARE stored in the DB (macros table, def_source=command_line) but NO supported consumer surface exposes them — lookup/search/explain/export all fail to return them; docs claim extraction; KNOWN_LIMITATIONS.md has no entry. Secondary: macros.expanded_value self-inconsistent for one context (value '1', expanded_value '2').", "source": ".fw-validation/FINDINGS.json F-V1-001"},
+    {"id": "F-R0-17", "label": "FACT", "claim": "F-V1-007 is the general root cause behind F-V1-002's narrower description: any single-line definition stores symbols.source='' and is invisible to search_bodies (G01/G03/G12/G13 cross-confirmed; G13 has no conditionals at all). get_source masks it via disk fallback (source_origin='disk'). One-line accessors are a very common C style.", "source": ".fw-validation/FINDINGS.json F-V1-007 (amends F-V1-002)"},
+    {"id": "F-R0-18", "label": "FACT", "claim": "No product source code exists for the Fault Discovery Agent itself yet: the repo contains the fw-context-mcp substrate, validation harnesses, and this review pack; no fault-discovery/rule-generation pipeline code was found in the expected artifacts.", "source": "Repo tree inventory + MANIFEST.json (RESEARCH_ADJUDICATION_ONLY, implementation_allowed=false)"},
+    {"id": "F-R0-19", "label": "INFERENCE", "claim": "The validation campaign postdates the repair wave and audits a superset surface: FINAL_REPAIR_AUDIT (head e7edc34, READY_FOR_REAL_PROJECT_TRIAL with exclusions) precedes the campaign's NOT_READY at d8f08a4; the two verdicts differ in scope (trial-with-exclusions vs full-surface trial), so both can be simultaneously true — but the wording collision must be adjudicated, not ignored.", "source": "Head chronology in FINAL_TEST_RESULTS.json (head_at_authoring e7edc34) vs FINAL_VALIDATION_RESULTS.json (head d8f08a4, generated_at_phase V5_RELEASE)"},
+    {"id": "F-R0-20", "label": "FACT", "claim": "The user's explicit goal statement (ENTRYPOINT_T14.md) designates fw-context-mcp as 'a candidate evidence-acquisition / semantic-analysis substrate' whose proper scope and required maturity are subjects of this review — not the goal itself.", "source": "fault_discovery_goal_architecture_agent_team/ENTRYPOINT_T14.md"}
+  ],
+  "notes": "Labels per workflow/EVIDENCE_RULES.md. Source priority respected: user goal > current code/validation artifacts > project history > reproducible experiment > external research > agent inference. Facts F-R0-01..F-R0-18 are directly supported by the frozen artifacts; F-R0-19 is labeled INFERENCE and is registered as contradiction C-01 for adjudication in R1+."
+}

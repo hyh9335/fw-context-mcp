@@ -1,0 +1,10 @@
+{
+ "build_id": "BUILD-C1-PINNED",
+ "defines": [
+  "-DCONFIG_ACCEL_SAMPLE=1",
+  "-DCONFIG_ACCEL_TRIGGER=1",
+  "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+ ],
+ "lineage": "A (Zephyr-derived)",
+ "pinned_by": "CMakeLists target_compile_definitions (frozen at staging)"
+}

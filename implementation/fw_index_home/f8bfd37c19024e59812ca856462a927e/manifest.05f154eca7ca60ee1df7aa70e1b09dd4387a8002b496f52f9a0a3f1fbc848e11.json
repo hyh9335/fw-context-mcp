@@ -1,0 +1,34 @@
+{
+  "_format": "fw-context-manifest/2",
+  "arg_sets": [
+    [
+      "-ID:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b8b5ddda\\fixture",
+      "-Wno-unknown-warning-option"
+    ]
+  ],
+  "compile_commands_path": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b8b5ddda\\.fw-context\\build\\compile_commands.json",
+  "config_hash": "05f154eca7ca60ee1df7aa70e1b09dd4387a8002b496f52f9a0a3f1fbc848e11",
+  "entries": [
+    {
+      "arg_set": 0,
+      "context_id": "0f800225ca68cdea",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b8b5ddda",
+      "file": "fixture/handlers.c",
+      "flags_hash": "af95f3f9d5805e1bb4a1ca898e625725e6c9614d3c2633bf13b382255a902072",
+      "headers": [],
+      "source_hash": "12e7cfc46b3bb8c2196b088386cf47881c00369bce0323214b09d1338f0aaf1e"
+    },
+    {
+      "arg_set": 0,
+      "context_id": "c72858704bb9f6ce",
+      "directory": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b8b5ddda",
+      "file": "fixture/ctrl_set.c",
+      "flags_hash": "af95f3f9d5805e1bb4a1ca898e625725e6c9614d3c2633bf13b382255a902072",
+      "headers": [],
+      "source_hash": "c34e2f80e4707b4dc1a3bac1f0b363ebb64b42b3a66ba13d288f44891ae574d9"
+    }
+  ],
+  "headers": {},
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i3_round\\work\\proj_b8b5ddda",
+  "vendor_patterns": []
+}

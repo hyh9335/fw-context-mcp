@@ -1,0 +1,37 @@
+{
+  "facts": {
+    "selected_body_count": 3,
+    "selected_has_return_10": true,
+    "selected_has_return_20": true,
+    "selected_has_return_30": true,
+    "helper_bodies": [],
+    "helper_body_count": 0,
+    "helper_lookup_rows": 2,
+    "helper_row_names": [
+      "helper"
+    ],
+    "explain_conditions": [
+      "defined(FEATURE_A) && LEVEL >= 2",
+      "defined(FEATURE_B) || LEVEL == 1"
+    ],
+    "explain_branch_states": {
+      "if:defined(FEATURE_A) && LEVEL >= 2": 0,
+      "elif:defined(FEATURE_B) || LEVEL == 1": 1,
+      "else:None": -1
+    },
+    "defines_varying": 4
+  },
+  "checks": {
+    "selected_3_bodies": true,
+    "selected_values_10_20_30": true,
+    "helper_search_bodies_empty": true,
+    "helper_lookup_rows_2": true,
+    "cond_A_text_present": true,
+    "cond_B_text_present": true,
+    "if_false_elif_taken": true,
+    "ALL": true
+  },
+  "work": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G03\\work",
+  "index_dir": "C:\\Users\\h00969597\\fwctx-validation-work\\V1-VERIFY\\G03\\index",
+  "elapsed_s": 29.94
+}

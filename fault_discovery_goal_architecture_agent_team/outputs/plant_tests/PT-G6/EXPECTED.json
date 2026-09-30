@@ -1,0 +1,33 @@
+{
+  "expected_id": "EXP-PT-G6",
+  "detector": "G6",
+  "detector_name": "Exact-lookup no-substitution (F-V2-002; _fallback rejection)",
+  "finding_class": "F-V2-002 (T1: deterministic _fallback rejection)",
+  "fixture_files": [
+    "fixture/sensor_api.h",
+    "fixture/sensor_impl.c",
+    "fixture/main.c",
+    "fixture/CMakeLists.txt"
+  ],
+  "fixture_hash_recipe": "SHA-256 over sorted relative paths: (1) enumerate every file under plant_tests/PT-G6/fixture/ recursively, relative paths with '/' separators; (2) per file compute lowercase hex SHA-256 of raw file bytes; (3) build line '<rel-path>  <hex-digest>\\n' (two-space separator, LF terminator, UTF-8); (4) sort lines lexicographically by rel-path (byte order); (5) fixture_hash = lowercase hex SHA-256 over the concatenation of sorted lines, no extra terminator. Computed by the custodian at freeze (S0_GOAL_ADR.md section 1 item 4); recipe frozen, change forces re-freeze.",
+  "independent_expected_result": {
+    "derivation_note": "Hand-derived only: every fixture file read in full; absence of the target name established by reading + grep (comment mentions were removed so the name occurs nowhere under fixture/); definition extents read off numbered file contents. No fw-context tool produced any expected answer.",
+    "absent_target": "sensor_read_scaled_missing — zero occurrences anywhere under fixture/ (hand-verified)",
+    "exact_definition_set": {
+      "sensor_read": "sensor_impl.c lines 7-10, body 'return ch + 1;'",
+      "sensor_read_scaled": "sensor_impl.c lines 12-15, body 'return (ch + 1) * SCALE;'",
+      "sensor_read_scaled_v2": "sensor_impl.c lines 17-20, body 'return (ch + 1) * SCALE + CAL_V2;'"
+    },
+    "prototypes": "sensor_api.h lines 11-13 (one per real symbol)",
+    "near_miss_list_non_evidence": ["sensor_read", "sensor_read_scaled", "sensor_read_scaled_v2"],
+    "hazard_claim_under_test": "sensor_read_scaled_missing is defined in sensor_impl.c (or any explanation of the absent target built on a substituted near-match)",
+    "control_claim": "exact query sensor_read_scaled resolves with exact identity: exact name, exactly one definition, sensor_impl.c lines 12-15, body 'return (ch + 1) * SCALE;' — verified against the fixture by hand",
+    "control_identity_check": "under exact-match semantics sensor_read_scaled_v2 must NOT be served as the definition row for sensor_read_scaled"
+  },
+  "expected_k1_behavior": "Reject any _fallback/_did_you_mean/suggestion-served row; the answer to the absent-target query is explicit absence ('no exact match') plus the near-miss list labeled NON-EVIDENCE; the control exact query resolves normally with exact identity (name + definition file/lines).",
+  "pass_condition": "Zero substituted-symbol explanations: the absent-target query returns explicit absence with the near-miss list {sensor_read, sensor_read_scaled, sensor_read_scaled_v2} labeled non-evidence; the control query returns exactly sensor_read_scaled at sensor_impl.c:12-15 with no fallback artifacts.",
+  "fail_condition": "Any explanation built on a substituted symbol: a definition/behavior claim about sensor_read_scaled_missing, or a fallback/suggestion row accepted and explained as the requested symbol.",
+  "forbidden_output": "Any explanation of sensor_read_scaled_missing's definition or behavior; any near-miss row presented as evidence for the absent target; unlabeled near-miss lists.",
+  "expiry_revalidation_trigger": "Revalidate at every freeze; re-run on any search-layer change (per DETECTOR_ADMISSION_MATRIX.md row G6).",
+  "must_pass": true
+}

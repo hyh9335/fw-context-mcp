@@ -1,0 +1,333 @@
+{
+  "generated_at_phase": "V5_RELEASE",
+  "mode": "VALIDATION_ONLY",
+  "product": {
+    "repo": "D:\\github\\fw-context-mcp",
+    "head": "d8f08a41d3fb9df6de255a187720f6332ed0f1c9",
+    "head_subject": "docs: KNOWN_LIMITATIONS \u2014 FINAL REPAIR WAVE additions (S4-S10: proxy loopback hermeticity, capability-skip decomposition, deferred FR-NEW-6/7/8, housekeeping dispositions)",
+    "head_date": "2026-09-17T19:59:51+08:00",
+    "package_name": "fw-context-mcp",
+    "package_version": "0.31.0",
+    "worktree_status": "6 untracked paths only; zero tracked-file modifications",
+    "audit_baseline_note": "prior closeout audit ran at 954514a (2026-09-16); 17 commits since, product-side changes included (cache expiry boundary, SQLite URI, one-spelling-per-file invariant)"
+  },
+  "phases": {
+    "V0_ENV": {
+      "status": "SIGN_OFF",
+      "verdict": "PASS",
+      "report": "artifacts/V0/verifier2/verifier_report.md"
+    },
+    "V1_GOLDEN": {
+      "status": "SIGN_OFF",
+      "verdict": "PASS_WITH_NOTES",
+      "report": "artifacts/V1/verifier/verifier_report.md"
+    },
+    "V2_PUBLIC_REAL": {
+      "status": "SIGN_OFF",
+      "verdict": "SIGN_OFF (7 corrections applied)",
+      "verifier": "1299923d-eb43-460c-8f53-7157b60b3920"
+    },
+    "V3_CROSS_PLATFORM": {
+      "status": "SIGN_OFF",
+      "verifier": "f5a26796 re-audit rev2",
+      "note": "first audit NO_SIGN_OFF remediated (WSL leg + PARITY_DIFF.json + relabels)"
+    },
+    "V4_ADVERSARIAL": {
+      "status": "AUDIT_IN_FLIGHT",
+      "controller_result": "8/8 PASS"
+    },
+    "V5_RELEASE": {
+      "status": "SIGN_OFF_WITH_DISCLOSED_PROCESS_LIMITATION",
+      "release_audit_verdict": "ACCEPT_NOT_READY",
+      "audit": "RELEASE_AUDIT.md"
+    }
+  },
+  "case_tally": {
+    "PASS": 43,
+    "FAIL_PRODUCT": 7,
+    "NOT_RUN": 1,
+    "PARITY_CONFIRMED": 5,
+    "BLOCKED_ENVIRONMENT": 2
+  },
+  "total_cases": 58,
+  "required_not_run": [],
+  "optional_not_run": [
+    "V2-F3-FREERTOS-QEMU-DEMO"
+  ],
+  "failures": [
+    {
+      "case": "G02_same_source_multi_command",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "G03_conditional_matrix",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "G04_variant_semantic",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "G06_indirect_callbacks",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "G07_dead_keep",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "G10_cmsis_vector",
+      "status": "FAIL_PRODUCT"
+    },
+    {
+      "case": "V2-C1-CMSIS-VECTOR",
+      "status": "FAIL_PRODUCT"
+    }
+  ],
+  "coverage_matrix": {
+    "golden_windows": [],
+    "golden_wsl": [
+      {
+        "case": "G04",
+        "status": "FAIL_PRODUCT",
+        "note": "WSL semantic coverage; Windows side BLOCKED (toolchain absent)"
+      },
+      {
+        "case": "G11",
+        "status": "PASS",
+        "note": "WSL semantic coverage; Windows side BLOCKED (RISC-V toolchain absent)"
+      },
+      {
+        "case": "G01-G03,G05-G07,G10,G12",
+        "status": "see golden_windows (V3-WSL leg reproduces all 8)",
+        "evidence": [
+          "artifacts/V3/wsl/",
+          "artifacts/V3/PARITY_DIFF.json"
+        ]
+      }
+    ],
+    "public_real": [
+      {
+        "case": "V2-C1-CMSIS-VECTOR",
+        "status": "FAIL_PRODUCT",
+        "evidence": [
+          "artifacts/V2/C1/C1.result.json",
+          "artifacts/V2/C1/responses_c1b.json",
+          "artifacts/V2/C1/responses_c1c.json",
+          "artifacts/V2/C1/startup_vector_region.txt"
+        ]
+      },
+      {
+        "case": "V2-F1-FREERTOS-CALLGRAPH",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/F1/F1.result.json",
+          "artifacts/V2/F1/responses_f1.json"
+        ]
+      },
+      {
+        "case": "V2-F2-FREERTOS-CALLBACKS",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/F2/F2.result.json",
+          "artifacts/V2/F2/responses_f2.json"
+        ]
+      },
+      {
+        "case": "V2-F3-FREERTOS-QEMU-DEMO",
+        "status": "NOT_RUN",
+        "evidence": [
+          "artifacts/V2/F3/F3.result.json"
+        ]
+      },
+      {
+        "case": "V2-R1-RIOT-HELLO",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/R1/R1.result.json",
+          "artifacts/V2/R1/responses_r1.json"
+        ]
+      },
+      {
+        "case": "V2-R2-RIOT-HOLDOUT",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/R2/R2.result.json",
+          "artifacts/V2/R2/responses_r2.json",
+          "artifacts/V2/R2/r2_compile_commands.json"
+        ]
+      },
+      {
+        "case": "V2-N1-NUTTX-NSH",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/N1/N1.result.json",
+          "artifacts/V2/N1/responses_n1.json"
+        ]
+      },
+      {
+        "case": "V2-Z4-QEMU-CORTEX-M3",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/Z4/Z4.result.json",
+          "artifacts/V2/Z4/responses_z4.json",
+          "artifacts/V2/Z4/qemu_run.log"
+        ]
+      },
+      {
+        "case": "V2-Z1-ZEPHYR-HELLO",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/Z1/Z1.result.json",
+          "artifacts/V2/Z1/responses_z1.json"
+        ]
+      },
+      {
+        "case": "V2-Z2-ZEPHYR-VARIANT",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/Z2/Z2.result.json",
+          "artifacts/V2/Z2/responses_z2_variants.json"
+        ]
+      },
+      {
+        "case": "V2-Z3-ZEPHYR-WORKQ",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/Z3/Z3.result.json",
+          "artifacts/V2/Z3/responses_z3.json"
+        ]
+      },
+      {
+        "case": "V2-N2-NUTTX-VARIANT-PAIR",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/N2/N2.result.json",
+          "artifacts/V2/N2/n2_variant_facts.json",
+          "artifacts/V2/N2/responses_n2.json"
+        ]
+      },
+      {
+        "case": "V2-N3-NUTTX-INCREMENTAL",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V2/N3/N3.result.json",
+          "artifacts/V2/N3/n3_pre_db.json"
+        ]
+      }
+    ],
+    "cross_platform": [
+      {
+        "case": "V3 parity Windows-baseline vs WSL-leg",
+        "status": "8/8 SAME",
+        "evidence": [
+          "artifacts/V3/PARITY_DIFF.json",
+          "artifacts/V3/wsl/"
+        ]
+      },
+      {
+        "case": "G04/G11 Windows",
+        "status": "BLOCKED_ENVIRONMENT",
+        "note": "clang/cmake/ninja/make/MSVC all missing on Windows"
+      },
+      {
+        "case": "pack-prompt extras (Windows->WSL stdio launch-path, WSL public smoke, Windows public query)",
+        "status": "NOT_EXERCISED",
+        "note": "re-scoped phase; gap carried explicitly per verifier residual 2"
+      }
+    ],
+    "adversarial": [
+      {
+        "case": "V4-A1",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A1_shared_header_change/A1_shared_header_change.result.json"
+        ]
+      },
+      {
+        "case": "V4-A2",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A2_macro_config_change/A2_macro_config_change.result.json"
+        ]
+      },
+      {
+        "case": "V4-A3",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A3_build_variant_switch/A3_build_variant_switch.result.json"
+        ]
+      },
+      {
+        "case": "V4-A4",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A4_source_delete_add/A4_source_delete_add.result.json"
+        ]
+      },
+      {
+        "case": "V4-A5",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A5_stale_noop_reindex/A5_stale_noop_reindex.result.json"
+        ]
+      },
+      {
+        "case": "V4-A6",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A6_reindex_x3_idempotence/A6_reindex_x3_idempotence.result.json"
+        ]
+      },
+      {
+        "case": "V4-A7",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A7_unsupported_arch_query/A7_unsupported_arch_query.result.json"
+        ]
+      },
+      {
+        "case": "V4-A8",
+        "status": "PASS",
+        "evidence": [
+          "artifacts/V4/A8_malformed_env/A8_malformed_env.result.json"
+        ]
+      }
+    ],
+    "residuals": [
+      {
+        "case": "V2-F3-FREERTOS-QEMU-DEMO",
+        "status": "NOT_RUN",
+        "note": "OPTIONAL case; FreeRTOS linker/--gc-sections/map truth uncovered \u2014 recorded in KNOWN_VALIDATION_LIMITS.md"
+      },
+      {
+        "case": "G13",
+        "status": "see V1 verifier notes",
+        "note": "unreliable first-pass comparison flagged by V1 verifier"
+      }
+    ]
+  },
+  "verdict_drivers": [
+    {
+      "finding": "F-V2-001",
+      "classification": "WRONG_ANSWER",
+      "severity": "HIGH",
+      "statement": "get_vector_table returns false 'No vector table' for the standard CMSIS6 C-template form (__VECTOR_TABLE varglobal const int[240]) while the assembly form is recognized; reproduced on Windows and WSL (V3)"
+    },
+    {
+      "finding": "F-V1-003",
+      "classification": "INDEX_DIVERGENCE",
+      "severity": "CRITICAL",
+      "statement": "G04 bare build + build.variants A/B/C: variant defines diverge from ground truth"
+    },
+    {
+      "finding": "F-V1-001/F-V1-002/F-V1-007",
+      "classification": "SILENT_DATA_LOSS",
+      "severity": "HIGH",
+      "statement": "same-source multi-define contexts, file-level conditional functions, and single-line definitions lose data silently"
+    }
+  ],
+  "verdict_rule": "Any WRONG_ANSWER / SILENT_DATA_LOSS / INDEX_DIVERGENCE / CORRUPTION / STDIO_FAILURE that is not proven a benchmark/oracle defect forces NOT_READY",
+  "benchmark_defect_exclusion": "No oracle defect found for F-V2-001: the CMSIS6 C-template __VECTOR_TABLE form is the industry-standard ground truth demanded by expected.json; the assembly form IS recognized, isolating the gap to C-form detection",
+  "FINAL_VERDICT": "NOT_READY"
+}

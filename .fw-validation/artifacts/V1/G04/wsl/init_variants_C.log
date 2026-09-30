@@ -1,0 +1,4 @@
+exit: 0
+Added variant 'C'.
+Index it with: fw-context index --build --variant C
+

@@ -1,0 +1,20 @@
+{
+  "case_id": "F2_freertos_callbacks",
+  "phase": "V2_PUBLIC_REAL",
+  "platform": "wsl",
+  "scenario": "F2 callbacks: timer callback registration/invocation + task creation",
+  "fixture": "same index as F1",
+  "exit_code": 0,
+  "expected": {
+    "indirect": "callback invocation through pxCallbackFunction recognized as indirect site",
+    "no_invention": "no direct CALL edges invented from registration to app callback"
+  },
+  "observed": {
+    "indirect_call_site_pxCallbackFunction": "timers.c:711 prvReloadTimer — EXACT, evidence=ast",
+    "indirect_target_pxCallbackFunction": "assignment timers.c:436 prvInitialiseNewTimer (param→field) linked to call site",
+    "task_code": "pxTaskCode assignment tasks.c:1741 xTaskCreate; call site honestly UNRESOLVED (no invented site)",
+    "registration_path": "xTimerCreate → prvInitialiseNewTimer depth 1 proven",
+    "references": "xTimerCreate: no in-kernel references (API surface) — correct"
+  },
+  "status": "PASS"
+}

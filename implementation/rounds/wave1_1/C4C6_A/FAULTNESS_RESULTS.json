@@ -1,0 +1,53 @@
+{
+ "demoted": 0,
+ "demotions": [],
+ "evaluated": 2,
+ "passed": 2,
+ "phase": "ROUND_FAULTNESS_GATE",
+ "results": [
+  {
+   "detail": "R1_pattern_compiled_out=OK; R2_config_symbol_guard=OK; R3_harmful_consequence=OK",
+   "family": "condition_config_gated",
+   "hypothesis_id": "H-C4C6-A-LIB-GETCWD-38",
+   "passed": true,
+   "roles": {
+    "R1_pattern_compiled_out": {
+     "evidence": "untaken region overlapping [38,138] in 'fixture/libs/libc/unistd/lib_getcwd.c': {'fact_id': 'F-SWEEP-0001', 'region': [38, 138], 'condition': 'CONFIG_DISABLE_ENVIRON', 'branch_taken': [-1]}",
+     "satisfied": true
+    },
+    "R2_config_symbol_guard": {
+     "evidence": "guard symbols of region: ['CONFIG_DISABLE_ENVIRON']",
+     "satisfied": true
+    },
+    "R3_harmful_consequence": {
+     "evidence": "{\"absence_probe_file\": \"fixture/libs/libc/unistd/lib_getcwd.c\", \"site\": \"fixture/libs/libc/unistd/lib_getcwd.c:None\", \"symbol\": \"getcwd\", \"via\": \"definition_cutoff\"}",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C4C6-A-LIB-GETCWD-38",
+   "target_tag": "lib_getcwd-38"
+  },
+  {
+   "detail": "A1_absence_in_pinned_build=OK; A2_definition_file_located=OK; A3_config_causal_cutoff=OK",
+   "family": "existence_absence",
+   "hypothesis_id": "H-C4C6-A-API-GETCWD",
+   "passed": true,
+   "roles": {
+    "A1_absence_in_pinned_build": {
+     "evidence": "negative facts for 'getcwd': F-0005",
+     "satisfied": true
+    },
+    "A2_definition_file_located": {
+     "evidence": "probe file 'fixture/libs/libc/unistd/lib_getcwd.c' in frozen snapshot, coverage fact=True",
+     "satisfied": true
+    },
+    "A3_config_causal_cutoff": {
+     "evidence": "config-caused compiled-out condition fact on 'fixture/libs/libc/unistd/lib_getcwd.c': {'fact_id': 'F-SWEEP-0001', 'condition': 'CONFIG_DISABLE_ENVIRON'}; subject is itself a guard symbol=False (a missing CONFIG_* macro is the cause, not a consequence)",
+     "satisfied": true
+    }
+   },
+   "rulecard_id": "RC-C4C6-A-API-GETCWD",
+   "target_tag": "api-getcwd"
+  }
+ ]
+}

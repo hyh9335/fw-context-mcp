@@ -1,0 +1,12 @@
+{
+  "_format": "fw-context-cc/5",
+  "defines": [
+    "-DCONFIG_ACCEL_SAMPLE=1",
+    "-DCONFIG_ACCEL_TRIGGER=1",
+    "-DCONFIG_ACCEL_TRIGGER_GLOBAL_THREAD=1"
+  ],
+  "dialect": [
+    "-Wno-unknown-warning-option"
+  ],
+  "project_root": "D:\\github\\fw-context-mcp\\implementation\\scratch_i6_c1\\work\\proj_01716427"
+}

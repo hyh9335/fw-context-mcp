@@ -1,0 +1,146 @@
+{
+ "checks": [
+  {
+   "detail": "52 passed, 2 warnings in 11.24s",
+   "idx": 1,
+   "name": "pytest suite green (52 passed)",
+   "pass": true
+  },
+  {
+   "detail": "{'C1': ['FREEZE_C1.json'], 'C4-twin': ['FREEZE_I7-A.json'], 'C6-twin': ['FREEZE_I7-B.json'], 'C5-tripwire': ['FREEZE_C5.json']}",
+   "idx": 2,
+   "name": "A1: >=4 frozen case-rounds",
+   "pass": true
+  },
+  {
+   "detail": "['A', 'B', 'C']",
+   "idx": 3,
+   "name": "A2: >=2 lineages",
+   "pass": true
+  },
+  {
+   "detail": "20/29 = 0.690, shape_ok=True",
+   "idx": 4,
+   "name": "A3: sampling >=30% + field shape",
+   "pass": true
+  },
+  {
+   "detail": "[]",
+   "idx": 5,
+   "name": "A4: zero silent unsupported claims",
+   "pass": true
+  },
+  {
+   "detail": "7 cards, failures=[]",
+   "idx": 6,
+   "name": "A5: all promoted cards schema-valid",
+   "pass": true
+  },
+  {
+   "detail": "[]",
+   "idx": 7,
+   "name": "A6: RS1-RS3 executed + frozen state per card",
+   "pass": true
+  },
+  {
+   "detail": "{'PT-G1': True, 'PT-G4': True, 'PT-G6': True, 'PT-G7': True, 'PT-G8': True}",
+   "idx": 8,
+   "name": "A7: PT-G1/G4/G6/G7/G8 PASS",
+   "pass": true
+  },
+  {
+   "detail": "[]",
+   "idx": 9,
+   "name": "A8: custody verified per round, zero breach",
+   "pass": true
+  },
+  {
+   "detail": "oracle_files=9, leaks=[]",
+   "idx": 10,
+   "name": "A9: oracle isolation (byte-hash)",
+   "pass": true
+  },
+  {
+   "detail": "absence_cards=0",
+   "idx": 11,
+   "name": "A10: C6 zero false absence cards",
+   "pass": true
+  },
+  {
+   "detail": "WAVE1_MVP_ACCEPTED_WITH_NONBLOCKING_LIMITATIONS",
+   "idx": 12,
+   "name": "verdict consistent with recomputed gates",
+   "pass": true
+  },
+  {
+   "detail": "missing=[]",
+   "idx": 13,
+   "name": "deliverables present",
+   "pass": true
+  },
+  {
+   "detail": "n=7, bad=[]",
+   "idx": 14,
+   "name": "7 RuleCards with id/evidence/refutation_result",
+   "pass": true
+  },
+  {
+   "detail": "n=4, bad=[]",
+   "idx": 15,
+   "name": "4 freeze manifests, combined hash recomputes",
+   "pass": true
+  },
+  {
+   "detail": "missing=[]",
+   "idx": 16,
+   "name": "REFUTATION_RESULTS covers every promoted card",
+   "pass": true
+  },
+  {
+   "detail": "ids_ok=True, actioned=[]",
+   "idx": 17,
+   "name": "Track-B: 8 findings handoff, none actioned",
+   "pass": true
+  },
+  {
+   "detail": "n=12, incorrect=[], impact='NONE \u2014 diagnostic only'",
+   "idx": 18,
+   "name": "KC-2A: deviation receipt + underpowered + non-gating",
+   "pass": true
+  },
+  {
+   "detail": "[]",
+   "idx": 19,
+   "name": "package isolation: substrate imports only via k1/substrate.py",
+   "pass": true
+  },
+  {
+   "detail": "HEAD=d8f08a41d3fb, src_status=''",
+   "idx": 20,
+   "name": "substrate untouched: HEAD pinned + src clean",
+   "pass": true
+  },
+  {
+   "detail": "",
+   "idx": 21,
+   "name": "error taxonomy includes E-COVERAGE (I7 fix shipped)",
+   "pass": true
+  },
+  {
+   "detail": "",
+   "idx": 22,
+   "name": "absence-soundness coverage precondition present (E-COVERAGE fail-closed)",
+   "pass": true
+  },
+  {
+   "detail": "",
+   "idx": 23,
+   "name": "I7 A/B split: A absence card, B none, zero false positives",
+   "pass": true
+  }
+ ],
+ "passed": 23,
+ "phase": "I11_FRESH_VERIFIER_23_CHECKS",
+ "total": 23,
+ "verdict": "AUDIT_PASS"
+}

@@ -1,0 +1,1927 @@
+"""MCP tool handlers that serve source-code and symbol-metadata queries.
+
+Each handler translates a user-facing MCP tool call into one or more
+index lookups against the libclang-powered SQLite symbol database and
+returns structured, tool-ready results.
+
+Handlers in this module:
+  - explain_symbol    — human-readable explanation of a symbol's purpose
+  - get_source        — exact function/enum body via libclang extents
+  - get_symbol_context — body + callers + callees + indirect calls in one
+  - get_file_map      — structural table of contents for a source file
+  - read_file         — ifdef-filtered file content, line numbers preserved
+
+Execution pattern (shared by all handlers):
+
+1. Resolve the project database context (config hash + root path) via
+   ``BaseHandler.resolve_db_context``.
+2. Define a ``_query`` closure that runs **under** the executor lock on
+   the single shared SQLite connection — no handler opens its own
+   connection.  Timeout enforcement is delegated to ``_wrap_tool``
+   (300 s + interrupt).
+3. Execute ``_query`` via ``db.executor.execute_sync``, which serialises
+   all DB access to prevent SQLite "database is locked" errors.
+4. Post-process the raw query result: read source bodies from disk,
+   format output keys, attach optional metadata (LLM analysis, override
+   info, enum constants).
+
+Private helper functions provide reusable building blocks:
+
+  - _lookup_definition    — multi-tier best-match symbol lookup with
+                            kind-priority and project-priority ordering
+  - _lookup_try_columns   — column-level search strategy: try each column,
+                            definition-first then any-match with
+                            definition-descent sort
+  - _read_symbol_body     — windowed file reading with brace-matching
+                            fallback; avoids loading huge generated files
+  - _try_macro_fallback   — #define macro lookup that returns a
+                            standardised result dict callers can chain
+  - _validate_path_in_root — path-security guard used by read_file and
+                            get_file_map
+  - _collect_*            — callers, callees, indirect calls, enum
+                            constants, override metadata, and Phase 3
+                            resolution info
+"""
+
+from __future__ import annotations
+
+import asyncio
+import dataclasses
+import logging
+import sqlite3
+from pathlib import Path
+from typing import Annotated
+
+from pydantic import Field
+
+from ...indexer import db as index_db
+from ...indexer.db import (
+    find_indirect_call_sites,
+    find_refs,
+    get_llm_analysis_for_symbol,
+    get_overrides_for_method,
+    lookup_macro,
+)
+from ...llm.ollama import OllamaError, OllamaModelNotFoundError, call_ollama_async
+from ...utils import abs_path, read_file_lines, read_file_text_exact
+from ..shared.context import _normalize_file_path_query
+from ..shared.stale import _file_differs
+from ._base import BaseHandler
+
+log = logging.getLogger(__name__)
+def _validate_path_in_root(resolved_path: str, root: Path) -> str | None:
+    """Check that *resolved_path* relative to *root* stays within the project.
+
+    Returns an error message string on failure, or ``None`` on success.
+    Uses ``Path.resolve().relative_to()`` which resolves symlinks and ``..``
+    components — a path like ``../../etc/passwd`` is caught even if it
+    appears to be under the project root.
+
+    Used by ``read_file`` and ``get_file_map`` for consistent path-security
+    checks before any disk read.
+    """
+    try:
+        Path(root, resolved_path).resolve().relative_to(root.resolve())
+    except ValueError:
+        return f"Path escapes project root: {resolved_path}"
+    return None
+
+
+# ── Truncation limits ──
+# These prevent blowing up MCP tool responses with multi-megabyte source
+# bodies.  LLMs have token-budget constraints; returning the full body of a
+# 2000-line function wastes tokens and slows tool-calling iteration.
+# Context windows are shared across all tools in a conversation, so every
+# byte saved here is a byte the user's LLM can use for actual reasoning.
+_SOURCE_TRUNCATE_CHARS = 8000   # max chars for get_source / get_symbol_context body
+_EXPLAIN_SNIPPET_CHARS = 4000   # max chars for explain_symbol source snippet
+_CONTEXT_LINES_MAX = 200        # max context_lines parameter for explain_symbol
+_MAX_SYMBOL_BODY_LINES = 1000   # fallback cap on _read_symbol_body; config overrides via IndexConfig.max_symbol_body_lines
+
+
+def _get_max_body_lines() -> int:
+    """Return the max body line cap from config, falling back to _MAX_SYMBOL_BODY_LINES."""
+    try:
+        from fw_context_mcp import config
+        cfg = config.load()
+        return cfg.index.max_symbol_body_lines
+    except (ValueError, TypeError, RuntimeError, OSError):
+        return _MAX_SYMBOL_BODY_LINES
+
+# ── moved from server.py ──
+def _lookup_definition(
+    conn,
+    config_hash: str,
+    name: str,
+    *,
+    preferred_kinds: tuple[str, ...] | None = ("class", "struct"),
+    prefer_project: bool = False,
+):
+    """Find the best-matching symbol definition, trying exact then suffix match.
+
+    Tries exact name match (preferring definitions), then qualified name match.
+    Falls back to suffix-filtering by short name when ``::`` is present and
+    the full name didn't match (e.g. ``Foo::bar`` → match ``bar``, then
+    filter by ``qualified_name`` ending with ``Foo::bar``).
+
+    When *preferred_kinds* is set, a ``CASE s.kind`` expression is prepended
+    to ``ORDER BY`` so each listed kind sorts before any other kind.  Callers
+    that need a specific kind (e.g. ``get_inheritance_chain`` needs
+    ``("class", "struct")``) should pass it explicitly.  Pass ``None`` for
+    bare ``ORDER BY s.line`` (no kind priority).
+
+    When *prefer_project* is True, ``s.is_project DESC`` is inserted before
+    the kind-priority clause so project-code symbols (``is_project=1``) sort
+    before vendor/SDK symbols.  This prevents base-class definitions in SDK
+    headers from shadowing project overrides when both share the same name.
+
+    An assembly definition always sorts last.  A CMSIS startup file defines
+    every interrupt handler weakly so that C code can override it, and both
+    definitions are then in the index under the same name: measured on
+    the Mbed project, 11 names carry one of each.  The C definition is the one
+    the linker keeps, thus it is the one to report — and without this the
+    winner is decided by line number, so a project whose handler sits
+    further down its file than the stub does in the startup file gets the
+    stub, with no callers and no body worth reading.
+
+    The reverse pattern — a weak C definition overridden in assembly — does
+    not appear in the projects measured, and the convention runs the other
+    way.
+    """
+    # substr, not LIKE: the templates below are composed with `%`, so a
+    # literal one in the SQL would be read as a conversion specifier.
+    _order_parts: list[str] = [
+        "CASE WHEN substr(s.usr, 1, 4) = 'asm:' THEN 1 ELSE 0 END"
+    ]
+    if preferred_kinds:
+        for k in preferred_kinds:
+            if not isinstance(k, str) or "'" in k:
+                raise ValueError(
+                    f"Invalid preferred_kinds value: {k!r}. "
+                    f"Must be a valid symbol kind string (no quotes)."
+                )
+        whens = " ".join(f"WHEN '{k}' THEN 0" for k in preferred_kinds)
+        _order_parts.append(f"CASE s.kind {whens} ELSE 1 END")
+    if prefer_project:
+        _order_parts.append("s.is_project DESC")
+    _order_prefix = ", ".join(_order_parts) + ", " if _order_parts else ""
+
+    QUERY_WHERE = "SELECT s.* FROM symbols s WHERE s.config_hash=? AND %s"
+    QUERY_ORDER = f"ORDER BY {_order_prefix}%s s.line"
+
+    result = _lookup_try_columns(
+        conn, f"{QUERY_WHERE} {QUERY_ORDER} LIMIT 1", config_hash, name,
+        ("s.name", "s.qualified_name"),
+    )
+    if result:
+        return result
+
+    if "::" in name:
+        short_name = name.rsplit("::", 1)[-1]
+        result = _lookup_try_columns(
+            conn, f"{QUERY_WHERE} {QUERY_ORDER}", config_hash, short_name,
+            ("s.name", "s.qualified_name"),
+            suffix_filter=name,
+        )
+        if result:
+            return result
+        # Plain-name fallback: e.g. "the Mbed project::NoinitStruct" where the symbol
+        # is global (qualified_name == name, no namespace prefix).
+        result = _lookup_try_columns(
+            conn, f"{QUERY_WHERE} AND s.qualified_name = s.name {QUERY_ORDER} LIMIT 1",
+            config_hash, short_name,
+            ("s.name",),
+        )
+        if result:
+            return result
+    return None
+
+
+def _lookup_try_columns(
+    conn,
+    query_template: str,
+    config_hash: str,
+    search_name: str,
+    columns: tuple[str, ...],
+    *,
+    suffix_filter: str | None = None,
+):
+    """Try *search_name* against each column in *columns*, returning the first match.
+
+    Strategy (per-column, two-pass):
+    1. Exact-column match with ``is_definition=1`` — prefer the definition site
+       over forward declarations.
+    2. Exact-column match without the definition filter, sorted with
+       ``is_definition DESC`` — gets any match when no definition exists.
+
+    When *suffix_filter* is set, only rows whose ``qualified_name`` ends with
+    that string survive.  This is used by ``_lookup_definition`` to
+    disambiguate ``Foo::bar`` from an unrelated ``bar`` in another namespace.
+
+    Returns ``None`` when no row matches across all columns.  This function is
+    intentionally single-purpose — callers compose it with their own
+    ``query_template`` for kind-priority ordering, project-priority sorting,
+    and result limits.
+    """
+    for column in columns:
+        for is_def, replace in ((True, ""), (False, "s.is_definition DESC,")):
+            where = f"{column}=? AND s.is_definition=1" if is_def else f"{column}=?"
+            rows = conn.execute(
+                query_template % (where, replace),
+                (config_hash, search_name),
+            ).fetchall()
+            for row in rows:
+                if suffix_filter is None or row["qualified_name"].endswith(suffix_filter):
+                    return row
+    return None
+
+# ── moved from server.py ──
+def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines: int = 400) -> str:
+    """Read up to *max_lines* lines around *line_no* without loading the entire file.
+
+    When *end_line* is provided (from libclang) it is used as the exact body
+    boundary.  Otherwise brace-matching finds the closing ``}``.
+
+    Every line gets a ``"%4d  "`` prefix with its number in the file, thus
+    the caller can cite a statement inside the body without counting.  This
+    is the only body text in the tool surface that is numbered — the
+    ``source`` column that ``search_bodies`` returns is bare, and so is the
+    ``content`` of ``read_file``.
+    """
+    try:
+        p = Path(file_path)
+        if not p.exists():
+            return ""
+        # Read only the needed window — avoid loading huge generated files
+        start_idx = max(0, line_no - 1)
+        read_start = max(0, start_idx - 5)  # small margin for brace matching
+        read_end = end_line + 5 if end_line else start_idx + max_lines + 5
+        read_end = min(read_end, start_idx + _get_max_body_lines())
+        from itertools import islice
+
+        with p.open(errors="replace") as fh:
+            window = [line.rstrip("\n\r") for line in islice(fh, read_start, read_end)]
+    except OSError:
+        return ""
+
+    if start_idx < read_start or not window:
+        return ""
+    local_start = start_idx - read_start
+    if local_start < 0 or local_start >= len(window):
+        return ""
+
+    if end_line and end_line >= line_no:
+        local_end = min(len(window) - 1, end_line - 1 - read_start)
+        return "\n".join(f"{read_start + i + 1:4d}  {window[i]}" for i in range(local_start, local_end + 1))
+
+    # Brace matching with basic string/comment awareness —
+    # delegated to the shared brace_matcher module.
+    from fw_context_mcp.mcp.shared.brace_matcher import find_closing_brace
+
+    local_end = find_closing_brace(window, local_start)
+    return "\n".join(f"{read_start + i + 1:4d}  {window[i]}" for i in range(local_start, local_end + 1))
+
+
+# ── stale-aware body reading ──
+# A body and its line number both come from the index while the file on disk
+# still matches it, because only the indexed body is ifdef-filtered.  Once
+# the file changes, the disk holds the current text and the index holds the
+# filtered one, and the two cannot both be right.
+#
+# An edit that adds or removes lines above a symbol moves that symbol, and
+# the stored line number then points at unrelated code.  That code reads as
+# a valid function body, thus the caller cannot see the error.  The helpers
+# below detect this condition and give the caller a body it can trust.
+
+# Lines from the start of the window that can hold the symbol name.  A
+# definition can start with attributes, a template header, or a signature
+# that continues over more than one line, thus the name is not always on
+# the first line.
+_NAME_PROBE_LINES = 3
+
+
+def _stored_file_state(conn: sqlite3.Connection, file_id: int) -> tuple[float, str]:
+    """Return ``(mtime, source_hash)`` that the index holds for *file_id*.
+
+    Returns ``(0.0, "")`` when the row is absent or the columns hold NULL.
+    That pair makes ``_file_differs`` report the file as changed, thus an
+    index that predates either column degrades to the safe path instead of a
+    silent wrong answer.
+
+    The hash matters because the timestamp lies in both directions: git
+    rewrites it without changing the bytes, and a write inside the tolerance
+    band keeps it.  With the hash the timestamp only raises the question.
+    """
+    try:
+        row = conn.execute(
+            "SELECT mtime, source_hash FROM files WHERE id = ?", (file_id,)
+        ).fetchone()
+    except sqlite3.Error:
+        return 0.0, ""
+    if row is None or row["mtime"] is None:
+        return 0.0, ""
+    return float(row["mtime"]), row["source_hash"] or ""
+
+
+def _read_probe_lines(file_path: str, line_no: int, count: int = _NAME_PROBE_LINES) -> list[str]:
+    """Read *count* lines from *file_path*, starting at 1-based *line_no*.
+
+    Gives the raw text, without the line numbers that ``_read_symbol_body``
+    adds.  ``_body_matches_symbol`` compares this text, thus it must not
+    hold the number prefix.
+    """
+    from itertools import islice
+
+    start = max(0, line_no - 1)
+    try:
+        with Path(file_path).open(errors="replace") as fh:
+            return [line.rstrip("\n\r") for line in islice(fh, start, start + count)]
+    except OSError:
+        return []
+
+
+def _first_content_line(text: str) -> str:
+    """Return the first line of *text* that is not empty, with spaces collapsed."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return " ".join(stripped.split())
+    return ""
+
+
+def _number_lines(text: str, start_line: int) -> str:
+    """Add the line-number prefix that ``_read_symbol_body`` uses.
+
+    Keeps one output format for both body origins.  Without it the caller
+    gets numbered text from the disk and bare text from the index, and it
+    cannot tell the two apart from the shape alone.
+
+    The numbers are the ones the index holds.  For an unchanged file they are
+    the numbers of the file, because the index read that same file.  For a
+    file that changed after the index run they can differ, and the warning
+    that goes with that body says so.
+
+    The text is clamped to ``index.max_symbol_body_lines``, which is the cap
+    that ``_read_symbol_body`` applies to the disk.  Both origins must obey
+    it: an unchanged file always takes this path, thus a cap that this
+    function ignores has no effect on the common case.  The caller marks a
+    clamped body with ``_source_truncated``.
+    """
+    lines = text.splitlines()[: _get_max_body_lines()]
+    return "\n".join(
+        f"{start_line + offset:4d}  {line}"
+        for offset, line in enumerate(lines)
+    )
+
+
+def _store_capped_source(result: dict, source: str, stored: str) -> None:
+    """Put *source* in *result*, and mark the body when a cap cut it.
+
+    Two caps can cut a body.  ``index.max_symbol_body_lines`` bounds the
+    number of lines, and ``_SOURCE_TRUNCATE_CHARS`` bounds what travels to
+    the caller.  *stored* is the body that the index holds, and its length
+    is what tells whether the line cap cut anything.
+
+    WHY the mark: the character cut lands in the middle of a line, thus a
+    caller that does not learn about it reads a body with an unbalanced
+    brace as the whole function.  The name carries a leading underscore
+    because it reports where the answer came from, and not the answer.
+    """
+    truncated = len(source) > _SOURCE_TRUNCATE_CHARS
+    if truncated:
+        source = source[:_SOURCE_TRUNCATE_CHARS]
+    if stored and len(stored.splitlines()) > _get_max_body_lines():
+        truncated = True
+    result["source"] = source
+    if truncated:
+        result["_source_truncated"] = True
+
+
+def _body_matches_symbol(file_path: str, row) -> bool:
+    """Tell whether the text at the stored line number is still the symbol.
+
+    Two checks, in order of accuracy:
+
+    1. ``symbols.source`` holds the body that the index run read.  Its first
+       content line is the exact start of the symbol, thus a comparison with
+       the disk is definite.
+    2. Without an indexed body, look for the symbol name in the first
+       ``_NAME_PROBE_LINES`` lines of the window.  This check is permissive:
+       it accepts a name that a comment holds.  A false accept keeps the
+       current behaviour, and a false reject only costs the indexed body,
+       thus the permissive direction is the safe one.
+    """
+    probe = _read_probe_lines(file_path, row["line"])
+    if not probe:
+        return False
+
+    indexed_body = row["source"] or ""
+    if indexed_body:
+        indexed_first = _first_content_line(indexed_body)
+        disk_first = _first_content_line("\n".join(probe))
+        if indexed_first and disk_first:
+            return indexed_first == disk_first
+
+    name = row["name"] or ""
+    return bool(name) and any(name in line for line in probe)
+
+
+def _read_verified_body(
+    row, file_path: str, stored_state: tuple[float, str]
+) -> tuple[str, str, str | None]:
+    """Return the symbol body, its origin, and a warning about its age.
+
+    Args:
+        row: The ``symbols`` row of the symbol.  Must hold ``line``,
+            ``end_line``, ``name``, and ``source``.
+        file_path: Absolute path of the file that holds the symbol.
+        stored_state: ``(mtime, source_hash)`` that the index holds for that
+            file.  The hash decides when it exists, because git rewrites the
+            mtime of a file it did not change.
+
+    Returns:
+        tuple: ``(text, origin, warning)``.  *origin* is ``"disk"`` when the
+        text comes from the file, ``"index"`` when it comes from
+        ``symbols.source``, and ``""`` when there is no body.  *warning* is
+        None when the file did not change after the index run.
+
+    WHY the index comes first: only ``symbols.source`` is ifdef-filtered.
+    The disk holds every branch, thus a body read from it shows the code of
+    an inactive ``#if`` as live code.  The two texts are the same for a file
+    with no conditional, and for one with a conditional the index is the
+    text that answers the question the tool promises to answer.
+    """
+    line_no = row["line"]
+    end_line = row["end_line"] or 0
+
+    if not _file_differs(file_path, *stored_state):
+        # The usual path: the file did not change after the index run, thus
+        # the stored body is current AND filtered.  Costs one read of the
+        # file to hash it, and one extra read of one file buys an answer a
+        # stat() cannot give, because git rewrites the stamp of a file it
+        # did not change.
+        indexed_body = row["source"] or ""
+        if indexed_body:
+            return _number_lines(indexed_body, line_no), "index", None
+        # No stored body — a declaration, or an extent of one line.  Only
+        # the disk can answer, and such a symbol has no branch to filter.
+        return _read_symbol_body(file_path, line_no, end_line=end_line), "disk", None
+
+    if _body_matches_symbol(file_path, row):
+        # The file changed, but the symbol did not move.  The disk gives the
+        # current body, which is better than a copy of the earlier text.
+        # Nothing can filter it: which branch compiles now is a question for
+        # the preprocessor, and only an index run asks it.
+        return (
+            _read_symbol_body(file_path, line_no, end_line=end_line),
+            "disk",
+            f"{file_path} changed after the last index run. The body below is "
+            f"current, and it holds EVERY #ifdef branch — the index could not "
+            f"filter the inactive ones. The metadata (callers, callees, line "
+            f"numbers of other symbols) can be out of date.",
+        )
+
+    indexed_body = row["source"] or ""
+    if indexed_body:
+        return (
+            _number_lines(indexed_body, line_no),
+            "index",
+            f"{file_path} changed after the last index run, and the stored line "
+            f"number does not point at {row['name']} any more. The body below "
+            f"comes from the index, not from the disk. Its line numbers can be "
+            f"different now.",
+        )
+
+    return (
+        "",
+        "",
+        f"{file_path} changed after the last index run, and the stored line "
+        f"number does not point at {row['name']} any more. The index holds no "
+        f"body for this symbol. Run `fw-context index`.",
+    )
+
+
+# ── shared macro fallback ──
+def _try_macro_fallback(
+    conn: sqlite3.Connection, config_hash: str, name: str, root: Path,
+    *, include_empty_refs: bool = False,
+) -> dict | None:
+    """Look up *name* as a macro and return a standardised result dict.
+
+    Returns ``None`` when no matching macro is found so callers can chain
+    with ``if (m := _try_macro_fallback(...)): return m``.
+
+    When *include_empty_refs* is True, empty ``callers`` and ``callees``
+    lists are added so the result shape matches ``get_symbol_context``
+    output (which always has these keys).  ``explain_symbol`` and
+    ``get_source`` set this to False — they do not emit caller/callee keys.
+    """
+    macros = lookup_macro(conn, config_hash, name, exact=True, limit=1)
+    if not macros:
+        return None
+    m = macros[0]
+    result: dict = {
+        "name": m["name"],
+        "kind": "macro",
+        "file": abs_path(root, m["file_path"]),
+        "line": m["line"],
+        "signature": f"#define {m['name']}",
+        "source": f"#define {m['name']} {m['value']}",
+        "value": m["value"],
+    }
+    if m["expanded_value"]:
+        result["expanded_value"] = m["expanded_value"]
+    if include_empty_refs:
+        result["callers"] = []
+        result["callees"] = []
+    return result
+# ── moved from server.py ──
+async def explain_symbol(
+    name: Annotated[str, Field(description="Symbol name to explain. E.g. 'uart_init', 'ModemMsg::send'.")],
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    context_lines: Annotated[int, Field(description="Lines of source context around the symbol definition.")] = 40,
+    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+) -> dict:
+    """Explain what a C/C++ symbol does in plain English — libclang-aware
+    analysis. Uses pre-computed LLM analysis when available (instant),
+    falls back to on-demand LLM. Falls back to macro explanation when
+    the name matches a ``#define``.
+
+    Read-only. No side effects — uses pre-computed LLM analysis when available
+    (instant, generated during ``fw-context index --analyze``), falls back to
+    calling an LLM on-demand. Returns the symbol's purpose, inputs, outputs,
+    and side effects.
+
+    For raw source code use ``get_source``. For symbol metadata without
+    explanation use ``lookup_symbol``. For body + callers + callees use
+    ``get_symbol_context``.
+
+    Args:
+        name: Symbol name to explain. E.g. ``uart_init``, ``ModemMsg::send``.
+        project_root: Project root directory. Auto-detected if omitted.
+        context_lines: Lines of source context around the symbol definition
+            (default 40, max 200). Only used when no pre-computed analysis exists.
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+
+    Returns:
+        dict: {name, kind, file, line, signature, explanation, llm_analysis
+        (if pre-computed)}, plus source/explain_prompt on fallback. Macro
+        fallback returns ``kind="macro"``, ``signature`` (as ``#define NAME``),
+        ``value`` (raw definition), and ``expanded_value``.
+
+        A ``warning`` key means that the local LLM gave no explanation —
+        the request timed out, or the model is not available.  The dict then
+        holds ``source`` and ``explain_prompt``: read the source, and answer
+        the prompt yourself.
+
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str).  ``stale_warning`` is
+        separate from ``warning``, which the LLM error paths use.  A symbol
+        that moved gives its indexed body, not the code that now sits at the
+        stored line number.
+
+        On failure the dict holds only ``error`` with the reason.
+    """
+    try:
+        db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    if len(db.scopes) > 1:
+        # Wildcard provenance (ADR-006 e, T14 SLICE-E pattern): one annotated
+        # record per build scope.  fan_out_records is sync-only and this
+        # handler awaits Ollama on the on-demand path, so the fan-out runs
+        # here with the same annotation rules (error/warning records stay
+        # unannotated — a failure does not describe one build).
+        out: list = []
+        for scope in db.scopes:
+            single = dataclasses.replace(
+                db,
+                config_hash=scope["config_hash"],
+                scopes=[scope],
+                multi=False,
+            )
+            rec = await _explain_symbol_for_scope(single, name, context_lines)
+            if (
+                isinstance(rec, dict)
+                and "error" not in rec
+                and "warning" not in rec
+            ):
+                rec = dict(rec)
+                rec["variant"] = scope["variant"]
+                rec["image"] = scope["image"]
+                rec["config_hash"] = scope["config_hash"]
+            out.append(rec)
+        return out
+    return await _explain_symbol_for_scope(db, name, context_lines)
+
+
+async def _explain_symbol_for_scope(db, name: str, context_lines: int) -> dict:
+    """Single-scope ``explain_symbol`` body (see :func:`explain_symbol`)."""
+    cfg = db.cfg
+    root = db.root
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        row = _lookup_definition(conn, config_hash, name, prefer_project=True)
+        if not row:
+            # Macro fallback
+            if (m := _try_macro_fallback(conn, config_hash, name, root)):
+                return m
+            return {"error": f"Symbol not found: {name}"}
+        file_path = abs_path(root, row["file_path"])
+        # Defense-in-depth: validate path is within project root
+        try:
+            from pathlib import Path as _Path
+            _Path(file_path).resolve().relative_to(root.resolve())
+        except ValueError:
+            return {"error": f"Path {file_path} outside project root"}
+        # Check for pre-computed LLM analysis (instant, no Ollama call)
+        llm_analysis = get_llm_analysis_for_symbol(conn, row["id"])
+        return row, file_path, llm_analysis, _stored_file_state(conn, row["file_id"])
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        return query_result
+    row, file_path, llm_analysis, stored_state = query_result
+    # A changed file can move the symbol, thus the stored line number can
+    # point at unrelated code.  The prompt below must never carry that code.
+    file_changed = _file_differs(file_path, *stored_state)
+    symbol_moved = file_changed and not _body_matches_symbol(file_path, row)
+    stale_warning = (
+        f"{file_path} changed after the last index run. The result below can "
+        f"be out of date."
+        if file_changed
+        else None
+    )
+    line_no = row["line"]
+    signature = row["signature"] or ""
+    kind = row["kind"]
+
+    result: dict = {
+        "name": name,
+        "kind": kind,
+        "file": file_path,
+        "line": line_no,
+        "signature": signature,
+    }
+
+    # Pre-computed LLM analysis (from `fw-context index --analyze`) is
+    # instant — no Ollama network call.  Return immediately when available
+    # so the caller gets a response in <1 ms instead of 10–30 s.
+    if llm_analysis:
+        explanation = llm_analysis["summary"]
+        if llm_analysis["inputs"]:
+            explanation += f"\n\nInputs: {llm_analysis['inputs']}"
+        if llm_analysis["outputs"]:
+            explanation += f"\nOutputs: {llm_analysis['outputs']}"
+        result["explanation"] = explanation
+        result["llm_analysis"] = llm_analysis
+        if stale_warning:
+            # The stored analysis describes the code as it was at index time.
+            result["stale_warning"] = stale_warning
+            result["stale"] = True
+        return result
+
+    # No pre-computed analysis — fall through to the on-demand path.
+    # Build a source-context window around the symbol so the LLM can
+    # see what the code actually does, not just the signature.
+    context_lines = max(1, min(context_lines, _CONTEXT_LINES_MAX))
+    source_snippet = ""
+    if symbol_moved:
+        # The disk window would show unrelated code.  The indexed body is
+        # older, but it is the code of this symbol.
+        source_snippet = row["source"] or ""
+        stale_warning = (
+            f"{file_path} changed after the last index run, and the stored line "
+            f"number does not point at {name} any more. The source below comes "
+            f"from the index, not from the disk."
+        )
+    else:
+        try:
+            lines = Path(file_path).read_text(errors="replace").splitlines()
+            start = max(0, line_no - context_lines - 1)
+            end = min(len(lines), line_no + context_lines)
+            numbered = "\n".join(
+                f"{i + start + 1:4d}  {lines[i + start]}" for i in range(end - start)
+            )
+            source_snippet = numbered
+        except (IndexError, ValueError, OSError):
+            pass
+    if stale_warning:
+        # Set before the Ollama call, thus every return path below carries it.
+        # A separate key keeps it clear of ``warning``, which the LLM error
+        # paths use.
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
+    prompt = (
+        f"You are a C/C++ embedded firmware expert.\n"
+        f"Explain what the following {kind} does. "
+        f"Cover: (1) what it does and why, (2) key mechanism or logic, (3) when/how it fits in the system.\n\n"
+        f"Symbol: {name}\n"
+        f"File: {file_path}:{line_no}\n"
+        f"Signature: {signature}\n"
+    )
+    if source_snippet:
+        prompt += f"\nSource context:\n```cpp\n{source_snippet}\n```\n"
+    if cfg.llm.enabled:
+        # Three distinct error types form a progressive-degradation strategy:
+        # - TimeoutError  → user knows the request completed (just too slow)
+        # - ModelNotFound → actionable: install the model or switch to cloud
+        # - OllamaError   → generic failure (server down, OOM, etc.)
+        # Each produces a warning + raw data so the user's LLM can still
+        # interpret the symbol from source + prompt without our server.
+        try:
+            result["explanation"] = await asyncio.wait_for(
+                call_ollama_async(prompt, cfg.llm),
+                timeout=cfg.llm.timeout,
+            )
+        except TimeoutError:
+            result["warning"] = (
+                f"LLM request timed out after {cfg.llm.timeout:.0f}s. "
+                "No local LLM — interpret the 'source' and "
+                "'explain_prompt' fields below with your own LLM to provide the explanation."
+            )
+        except OllamaModelNotFoundError as e:
+            result["warning"] = (
+                f"{e}. No LLM model available — interpret the 'source' and "
+                f"'explain_prompt' fields below with your own LLM to provide the explanation."
+            )
+        except OllamaError as e:
+            result["warning"] = (
+                f"LLM unavailable: {e}. No local LLM — interpret the 'source' and "
+                f"'explain_prompt' fields below with your own LLM to provide the explanation."
+            )
+        else:
+            return result
+        result["source"] = source_snippet[:_EXPLAIN_SNIPPET_CHARS] if len(source_snippet) > _EXPLAIN_SNIPPET_CHARS else source_snippet
+    result["explain_prompt"] = prompt
+    return result
+
+# ── moved from server.py ──
+def get_source(
+    name: Annotated[str, Field(description="Fully qualified symbol name. Returns exact function body via libclang extent.")],
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+) -> dict:
+    """Read a C/C++ function/method/enum/macro body using libclang exact
+    extents — no guessing line numbers. Uses AST-precise {start, end}
+    extents so you get exactly the function body. Generic file readers
+    don't know where a function actually ends — libclang tracks exact
+    {start, end} from the AST.
+
+    The body is **ifdef-filtered**: a line of an inactive ``#if`` branch
+    comes back blank, thus the text holds only the code that compiles for
+    this build.  The line numbers do not move.  ``source_origin`` says where
+    the text came from — ``"index"`` is the filtered copy, ``"disk"`` is the
+    file itself and holds EVERY branch.  A body reaches you from the disk
+    only when the file changed after the last index run, and
+    ``stale_warning`` says so.
+
+    For enums, includes a ``constants`` array listing all member constants
+    with their values. For macros, returns kind="macro" with ``value``
+    (raw definition) and ``expanded_value`` (preprocessor-resolved).
+
+    For rich context (who calls this, what does it call) use
+    ``get_symbol_context`` instead — it returns body, callers, and callees
+    in a single call. For the full file, use a normal file read.
+
+    Read-only. No side effects.
+
+    Args:
+        name: Fully qualified symbol name. Returns exact function body
+            via libclang extent.
+        project_root: Project root. Auto-detected if omitted.
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+
+    Returns:
+        dict: {name, qualified_name, kind, file, line, signature,
+        docstring, is_definition, is_template, is_virtual, is_pure_virtual,
+        source (str — the function/enum/macro body, truncated at 8000 chars),
+        warning (str, optional — when source file cannot be read)}.
+        May also include ``end_line`` (the last line of the extent),
+        ``template_usr``, ``parent_usr``, ``enum_value``, ``constants``
+        (list for enums), ``value`` (raw macro definition),
+        ``expanded_value`` (preprocessor-resolved macro value) when
+        applicable.  A declaration has no extent, thus it gets no
+        ``end_line``.
+
+        ``line`` and ``end_line`` are the extent of the symbol, thus they
+        are the citation: quote ``file:line-end_line``.  Do not count the
+        lines of ``source`` to find the end.
+
+        ``source`` carries a line-number prefix on every line — four
+        columns, right-aligned, then two spaces (``"  20     bool ..."``).
+        This tool always numbers its text.  ``read_file`` numbers its
+        ``content`` when you pass ``line_numbers=True``, and the ``source``
+        of ``search_bodies`` is always bare.  Strip the prefix before you
+        compare the text with anything.
+
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str).  ``source_origin`` then
+        tells where the body comes from: ``"disk"`` when the symbol did not
+        move, ``"index"`` when it did and the body comes from the index
+        instead.  A moved symbol never gives the code of another symbol.
+
+        ``_source_truncated`` (True) marks a body that a cap cut:
+        ``index.max_symbol_body_lines`` bounds the number of lines, and a
+        second cap bounds the characters.  The character cut lands in the
+        middle of a line, thus a body with this mark can end in an
+        unbalanced brace.  Read the rest with ``read_file`` and a range.
+
+        On failure the dict holds only ``error`` with the reason.
+    """
+    try:
+        db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    if len(db.scopes) > 1:
+        # Wildcard provenance (T14 SLICE-E): one annotated record per build
+        # scope — a single arbitrary scope's dict cannot say which build it
+        # came from, and same-second created_at ties make that arbitrary.
+        return db.fan_out_records(_get_source_for_scope, name=name)
+    return _get_source_for_scope(db, name)
+
+
+def _get_source_for_scope(db, name: str) -> dict:
+    """Single-scope ``get_source`` body (see :func:`get_source`)."""
+    root = db.root
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        row = _lookup_definition(conn, config_hash, name, prefer_project=True)
+        if not row:
+            # Macro fallback
+            if (m := _try_macro_fallback(conn, config_hash, name, root)):
+                return m
+            return {"error": f"Symbol not found: {name}"}
+        file_path = abs_path(root, row["file_path"])
+        # Defense-in-depth: validate path is within project root
+        try:
+            from pathlib import Path as _Path
+            _Path(file_path).resolve().relative_to(root.resolve())
+        except ValueError:
+            return {"error": f"Path {file_path} outside project root"}
+        result: dict = {
+            "name": row["name"],
+            "qualified_name": row["qualified_name"],
+            "kind": row["kind"],
+            "file": file_path,
+            "line": row["line"],
+            "signature": row["signature"] or "",
+            "is_definition": bool(row["is_definition"]),
+            "is_template": bool(row["is_template"]),
+            "is_virtual": bool(row["is_virtual"]),
+            "is_pure_virtual": bool(row["is_pure_virtual"]),
+            "docstring": row["docstring"] or "",
+        }
+        # `end_line` completes the citation.  With `line` alone a caller
+        # that must quote `file:start-end` has to count the lines of
+        # `source` by hand, and one that reads the body from disk has no
+        # bound to stop at.  The column holds 0 for a declaration, which
+        # has no extent to report, thus the key appears only when it
+        # carries an answer.
+        if row["end_line"]:
+            result["end_line"] = row["end_line"]
+        if row["template_usr"]:
+            result["template_usr"] = row["template_usr"]
+        if row["parent_usr"]:
+            result["parent_usr"] = row["parent_usr"]
+        if row["enum_value"] is not None:
+            result["enum_value"] = row["enum_value"]
+        # For enums, collect all member constants.
+        # Two LIKE patterns cover both unqualified (EnumName::CONST) and
+        # namespaced (prefix::EnumName::CONST, e.g. inner enum in a class).
+        # SQLite GLOB/REGEXP would be cleaner but LIKE is indexed for FTS5
+        # prefix scans and avoids a second table lookup per enum.
+        if row["kind"] == "enum":
+            qn = row["qualified_name"]
+            const_rows = conn.execute(
+                """SELECT name, qualified_name, line, enum_value
+                   FROM symbols
+                   WHERE config_hash = ? AND kind = 'enum_constant'
+                     AND (qualified_name LIKE ? OR qualified_name LIKE ?)
+                   ORDER BY line""",
+                (config_hash, f"{qn}::%", f"%{qn}::%"),
+            ).fetchall()
+            if const_rows:
+                result["constants"] = [
+                    {
+                        "name": c["name"],
+                        **({"enum_value": c["enum_value"]} if c["enum_value"] is not None else {}),
+                    }
+                    for c in const_rows
+                ]
+        # The mtime must come from the same connection as the symbol row —
+        # _read_verified_body compares it against the file on disk to decide
+        # whether the stored line number still points at this symbol.
+        return result, file_path, row, _stored_file_state(conn, row["file_id"])
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        # Early-return path from the closure: macro fallback or error dict.
+        return query_result
+    result, file_path, row, stored_state = query_result
+    source, origin, stale_warning = _read_verified_body(row, file_path, stored_state)
+    if stale_warning:
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
+    if source:
+        _store_capped_source(result, source, row["source"] or "")
+        result["source_origin"] = origin
+    elif not stale_warning:
+        result["warning"] = f"Could not read source from {file_path}"
+    return result
+
+# ── moved from server.py ──
+def get_file_map(
+    file_path: Annotated[str, Field(description="Path to source file — relative to project root or just filename.")],
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    signatures: Annotated[bool, Field(description="Include full function signatures in output.")] = False,
+    max_per_kind: Annotated[int, Field(description="Max items per symbol kind group (default 30, 0 = unlimited).")] = 30,
+    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+) -> dict:
+    """Fast structural map of all C/C++ symbols in a file grouped by kind —
+    libclang-powered table of contents. Like a table of contents before
+    reading a chapter: see what functions, classes, and enums a file
+    defines at a glance.
+
+    Paths are validated against the project root before read —
+    :func:`_validate_path_in_root` ensures resolved paths stay within bounds.
+
+    Pass a path relative to the project root (``src/main.cpp``) or just the
+    filename (``main.cpp``). Returns symbols keyed by kind (function, method,
+    class, struct, enum, ...). Each kind has count (total) and items (first N,
+    default 30). Set max_per_kind=0 for unlimited, signatures=true for full sigs.
+
+    Enum constants (``enum_constant``) are grouped into ``subgroups`` by
+    parent enum. Each subgroup has ``name``, ``count``, and ``constants``
+    (list of ``{name, qualified_name, line, enum_value}``). The subgroup
+    count reflects the real total even when ``max_per_kind`` limits the
+    constants list.
+
+    For detailed symbol information use ``get_symbol_context`` or
+    ``lookup_symbol``.
+
+    Read-only. No side effects. Use before reading a large file to
+    orient yourself — see what functions, classes, and enums it defines.
+
+    Args:
+        file_path: Path relative to project root, or just the filename.
+        project_root: Project directory. Auto-detected if omitted.
+        signatures: Include full function signatures. Default: False.
+        max_per_kind: Max items per kind group (default 30, 0 = unlimited).
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+
+    Returns:
+        dict: {file, total_symbols, symbols: {kind: {count, items[],
+        subgroups?[]}}}
+
+        Each item holds ``name``, ``qualified_name``, and ``line``, plus
+        ``end_line`` when the symbol is a definition.  The two line numbers
+        are the extent, thus ``file:line-end_line`` is the citation.
+
+        On failure the dict holds only ``error`` with the reason.
+    """
+    try:
+        db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    if len(db.scopes) > 1:
+        # Wildcard provenance (ADR-006 e, T14 SLICE-E pattern): one annotated
+        # record per build scope — a single arbitrary scope's dict cannot say
+        # which build it came from.
+        return db.fan_out_records(
+            _get_file_map_for_scope,
+            file_path=file_path, signatures=signatures, max_per_kind=max_per_kind,
+        )
+    return _get_file_map_for_scope(
+        db, file_path=file_path, signatures=signatures, max_per_kind=max_per_kind,
+    )
+
+
+def _get_file_map_for_scope(
+    db, *, file_path: str, signatures: bool, max_per_kind: int
+) -> dict:
+    """Single-scope ``get_file_map`` body (see :func:`get_file_map`)."""
+    root = db.root
+    file_path = _normalize_file_path_query(file_path)
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        # Path resolution: exact match first, then suffix LIKE fallback.
+        # Users often pass just "main.cpp" or "src/main.cpp" — the suffix
+        # match finds the canonical path without requiring the full relative
+        # prefix.  When multiple candidates exist, choose the shortest path
+        # because it is the least-nested (most canonical) match.
+        exact = conn.execute(
+            "SELECT COUNT(*) FROM symbols WHERE config_hash=? AND file_path=?",
+            (config_hash, file_path),
+        ).fetchone()[0]
+        if not exact:
+            # Try to find the canonical path from the files table
+            candidates = conn.execute(
+                "SELECT path FROM files WHERE config_hash=? AND path LIKE ? LIMIT 3",
+                (config_hash, f"%{file_path}"),
+            ).fetchall()
+            if not candidates:
+                return {"error": f"File not found in index: {file_path}. Check the path — use relative paths like 'src/main.cpp'."}
+            # Pick the best match (shortest path that ends with file_path)
+            resolved = min((c["path"] for c in candidates), key=len)
+        else:
+            resolved = file_path
+        # Defense-in-depth: validate resolved path stays within project root
+        err = _validate_path_in_root(resolved, root)
+        if err:
+            return {"error": err}
+        return index_db.get_file_map(
+            conn, config_hash, resolved,
+            signatures=signatures, max_per_kind=max_per_kind,
+        )
+
+    from ..shared.stale import with_stale_annotation
+
+    return with_stale_annotation(root, db.executor, _query, db.config_hash)
+
+# ── moved from server.py ──
+# ── get_symbol_context collectors ───────────────────────────────────
+
+
+def _collect_callers(
+    conn: sqlite3.Connection, config_hash: str, name: str, root: Path
+) -> list[dict]:
+    """Return immediate callers (direct + indirect) for a symbol."""
+    callers = find_refs(conn, config_hash, name, ref_kind=["call", "indirect"])
+    return [
+        {"name": c["caller_name"] or "?", "qualified_name": c["caller_qname"] or "",
+         "file": abs_path(root, c["caller_file"] or c["from_file"]),
+         "line": c["from_line"], "kind": c["caller_kind"] or "",
+         "ref_kind": c["ref_kind"]}
+        for c in callers
+    ]
+
+
+def _collect_callees(
+    conn: sqlite3.Connection, config_hash: str, symbol_usr: str, root: Path
+) -> list[dict]:
+    """Return immediate callees (direct + indirect calls made by this symbol)."""
+    callees_rows = conn.execute(
+        """SELECT s.name, s.qualified_name, s.kind, s.file_path, r.ref_kind
+           FROM refs r
+           JOIN symbols s ON s.usr = r.to_usr AND s.config_hash = r.config_hash
+           WHERE r.from_usr = ? AND r.config_hash = ?
+             AND r.ref_kind IN ('call', 'indirect')""",
+        (symbol_usr, config_hash),
+    ).fetchall()
+    return [
+        {"name": c["name"], "qualified_name": c["qualified_name"] or "",
+         "kind": c["kind"], "file": abs_path(root, c["file_path"]),
+         "ref_kind": c["ref_kind"]}
+        for c in callees_rows
+    ]
+
+
+def _collect_indirect_calls(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    row: sqlite3.Row,
+    symbol_usr: str,
+    root: Path,
+) -> list[dict]:
+    """Return indirect call sites for a symbol — dual-purpose by symbol kind.
+
+    For **field/variable** kinds (function-pointer fields): returns call sites
+    where this field is actually invoked (e.g. ``driver.onData(buf, len)``).
+    Uses ``find_indirect_call_sites`` which queries the Phase 3 link table.
+
+    For **function/method** kinds: returns indirect call sites made BY this
+    function — calls through function pointers that originate inside this
+    function's body (e.g. ``stored_callback(42)`` inside ``dispatch_event``).
+
+    Returns an empty list for all other kinds (enum, class, struct, etc.).
+    """
+    kind = row["kind"]
+    if kind in ("field", "variable", "varglobal", "varlocal"):
+        ics_rows = find_indirect_call_sites(
+            conn, config_hash, row["qualified_name"] or row["name"], limit=200
+        )
+        return [
+            {
+                "file": abs_path(root, r["from_file"]),
+                "line": r["from_line"],
+                "expr_text": r["expr_text"],
+                "fn_ptr_type": r["fn_ptr_type"],
+                "caller": r["caller_qname"] or r["caller_name"] or "<file scope>",
+            }
+            for r in ics_rows
+        ]
+    if kind in ("function", "method"):
+        ics_rows = conn.execute(
+            """SELECT ics.*, caller.name AS caller_name,
+                      caller.qualified_name AS caller_qname,
+                      caller.kind AS caller_kind
+               FROM indirect_call_sites ics
+               LEFT JOIN symbols caller
+                 ON caller.config_hash = ics.config_hash
+                AND caller.usr = ics.from_usr
+               WHERE ics.config_hash = ? AND ics.from_usr = ?
+               ORDER BY ics.from_file, ics.from_line
+               LIMIT 200""",
+            (config_hash, symbol_usr),
+        ).fetchall()
+        return [
+            {
+                "file": abs_path(root, r["from_file"]),
+                "line": r["from_line"],
+                "expr_text": r["expr_text"],
+                "fn_ptr_type": r["fn_ptr_type"],
+                "caller": r["caller_qname"] or r["caller_name"] or "<file scope>",
+            }
+            for r in ics_rows
+        ]
+    return []
+
+
+def _collect_resolution_info(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    row: sqlite3.Row,
+    symbol_usr: str,
+    indirect_calls_list: list[dict],
+) -> dict | None:
+    """Build Phase 3 resolution metadata for function-pointer symbols.
+
+    Phase 3 links function-pointer *assignments* (who is attached to this
+    field?) with *call sites* (where is this field actually invoked?).  When
+    both sides are populated the resolution is "fully resolved" — the LLM
+    (and the user) can trace the data flow from registration through
+    invocation.  When one side is missing, the `note` explains why
+    (assignments in unindexed code, type-erased API, etc.).
+
+    Returns ``None`` when the symbol is not a function-pointer-bearing
+    field/variable (kinds other than field/variable/varglobal/varlocal)
+    OR when neither assignments nor call sites exist — no need to emit
+    empty resolution metadata.
+    """
+    kind = row["kind"]
+    if kind not in ("field", "variable", "varglobal", "varlocal"):
+        return None
+    assign_count = conn.execute(
+        "SELECT COUNT(*) FROM fp_assignments WHERE config_hash = ? AND lhs_usr = ?",
+        (config_hash, symbol_usr),
+    ).fetchone()[0]
+    ics_count = len(indirect_calls_list)
+    if assign_count == 0 and ics_count == 0:
+        return None
+    resolved = assign_count > 0 and ics_count > 0
+    note_parts: list[str] = []
+    if assign_count > 0:
+        note_parts.append(f"{assign_count} function(s) assigned")
+    else:
+        note_parts.append("no assignments found")
+    if ics_count > 0:
+        note_parts.append(f"{ics_count} call site(s)")
+    else:
+        note_parts.append("no call sites found")
+    if resolved:
+        note_parts.append("fully resolved")
+    else:
+        note_parts.append(
+            "not fully resolved — "
+            + ("assignment may be in unindexed code or through type-erased API"
+               if assign_count == 0
+               else "call sites may be in unindexed code")
+        )
+    return {
+        "assignments_found": assign_count,
+        "call_sites_found": ics_count,
+        "resolved": resolved,
+        "note": "; ".join(note_parts),
+    }
+
+
+def _collect_enum_constants(
+    conn: sqlite3.Connection, config_hash: str, row: sqlite3.Row
+) -> list[dict]:
+    """Return enum member constants (name + value) for an enum symbol.
+
+    Uses two LIKE patterns to match both unqualified constants
+    (``EnumName::CONST``) and namespaced ones (``prefix::EnumName::CONST``).
+    LIKE is preferred over GLOB/REGEXP because SQLite can optimise it with
+    the FTS5-backed index prefix scan, a pattern repeated in ``get_source``.
+    """
+    if row["kind"] != "enum":
+        return []
+    qn = row["qualified_name"]
+    const_rows = conn.execute(
+        """SELECT name, qualified_name, line, enum_value
+           FROM symbols
+           WHERE config_hash = ? AND kind = 'enum_constant'
+             AND (qualified_name LIKE ? OR qualified_name LIKE ?)
+           ORDER BY line""",
+        (config_hash, f"{qn}::%", f"%{qn}::%"),
+    ).fetchall()
+    return [
+        {
+            "name": c["name"],
+            **({"enum_value": c["enum_value"]} if c["enum_value"] is not None else {}),
+        }
+        for c in const_rows
+    ]
+
+
+def _collect_override_info(
+    conn: sqlite3.Connection, config_hash: str, row: sqlite3.Row
+) -> dict | None:
+    """Return virtual-method override metadata when applicable.
+
+    Only methods and destructors marked ``is_virtual`` or ``is_pure_virtual``
+    trigger this lookup — non-virtual methods return ``None`` immediately.
+    The override data (``overrides`` → base-class method, ``overridden_by``
+    → derived-class methods) is stored in the ``overrides`` table populated
+    during ``fw-context index`` post-processing of the inheritance graph.
+    """
+    kind = row["kind"]
+    if kind not in ("method", "destructor"):
+        return None
+    if not (row["is_virtual"] or row["is_pure_virtual"]):
+        return None
+    return get_overrides_for_method(conn, config_hash, row["usr"])
+
+
+# ── moved from server.py ──
+def get_symbol_context(
+    name: Annotated[str, Field(description="Symbol name. Returns body, signature, all direct callers and callees.")],
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+) -> dict:
+    """Rich one-shot context for a C/C++ symbol: body, signature, all direct
+    callers and callees. Answers "what does this do and how does it fit in
+    the system?" in a single response — libclang powers the call graph,
+    not regex. Falls back to macro display when the symbol is not found.
+
+    Prefer this over ``get_source`` when you also need callers, callees,
+    indirect call sites, or LLM analysis — all returned in a single call.
+    If you only need the raw function body (no metadata), ``get_source`` is
+    slightly faster. For transitive call-graph exploration use
+    ``find_all_callers_recursive`` or ``find_callees_recursive``.
+
+    Returns ALL callers and callees including vendor/SDK code — the call
+    graph naturally spans project and vendor boundaries in both directions
+    (project → vendor API, vendor callback → project handler).
+
+    The body is **ifdef-filtered**, the same as in ``get_source``: a line of
+    an inactive ``#if`` branch comes back blank and the line numbers do not
+    move.  ``source_origin`` says whether the text is the filtered copy
+    (``"index"``) or the file itself (``"disk"``, every branch present).
+
+    Read-only. No side effects.
+
+    Args:
+        name: Symbol name. Returns body, signature, all direct callers
+            and callees.
+        project_root: Project root. Auto-detected if omitted.
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+
+    Returns:
+        dict with: name, qualified_name, kind, file, line, signature,
+        docstring (raw Doxygen comment text), is_definition, callers (list),
+        callees (list), source (body text),
+        indirect_call_sites (list, for field/variable symbols — where the
+        function pointer is actually invoked).
+        For field and variable symbols that have function pointer type,
+        also includes ``resolution``: {assignments_found, call_sites_found,
+        resolved, note} indicating whether assignments and call sites are
+        linked (Phase 3).  ``resolved=False`` with a note when parts are
+        missing — LLM can detect uncertainty.
+        For enums also returns constants and enum_value.
+        For macros returns ``kind="macro"``, ``value`` (raw definition), and
+        ``expanded_value`` (preprocessor-resolved).
+        When LLM analysis has been generated (``fw-context index --analyze``),
+        includes ``llm_analysis``: {summary, inputs, outputs, model, analyzed_at}
+        with a structured description of the symbol's purpose, parameters, and
+        return values/side effects.
+
+        When the file changed after the last index run, the dict adds
+        ``stale`` (True) and ``stale_warning`` (str), and ``source_origin``
+        tells where the body comes from: ``"disk"`` when the symbol did not
+        move, ``"index"`` when it did.  The callers and callees come from the
+        index in all cases, thus a stale dict can hold an incomplete list.
+
+        The dict also carries the libclang flags of the symbol:
+        is_virtual, is_pure_virtual, is_template, parent_usr, and
+        template_usr.  For a virtual method it adds ``overrides`` (the base
+        methods that this method overrides) and ``overridden_by`` (the
+        derived methods that override it) — use these two before you change
+        a virtual method.
+
+        On failure the dict holds only ``error`` with the reason.
+    """
+    try:
+        db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    if len(db.scopes) > 1:
+        # Wildcard provenance (T14 SLICE-E): one annotated record per build scope.
+        return db.fan_out_records(_get_symbol_context_for_scope, name=name)
+    return _get_symbol_context_for_scope(db, name)
+
+
+def _get_symbol_context_for_scope(db, name: str) -> dict:
+    """Single-scope ``get_symbol_context`` body (see :func:`get_symbol_context`)."""
+    root = db.root
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        row = _lookup_definition(conn, config_hash, name, prefer_project=True)
+        if not row:
+            # Macro fallback — macros have no callers/callees, return basic info
+            if (m := _try_macro_fallback(conn, config_hash, name, root, include_empty_refs=True)):
+                return m
+            return {"error": f"Symbol not found: {name}"}
+        file_path = abs_path(root, row["file_path"])
+        # Defense-in-depth: validate path is within project root
+        try:
+            from pathlib import Path as _Path
+            _Path(file_path).resolve().relative_to(root.resolve())
+        except ValueError:
+            return {"error": f"Path {file_path} outside project root"}
+        symbol_usr = row["usr"]
+
+        # Assemble six independent data sources inside a single DB transaction
+        # (via execute_sync) so the caller gets a complete picture in one
+        # response — avoids N+1 MCP round-trips for callers, callees, etc.
+        # Each collector is a separate function for readability; the DB lock
+        # is held for the entire _query closure so the snapshot is consistent.
+
+        # Immediate callers (who calls this symbol, direct + indirect).
+        callers_list = _collect_callers(conn, config_hash, name, root)
+
+        # Immediate callees (what this symbol calls, direct + indirect).
+        callees_list = _collect_callees(conn, config_hash, symbol_usr, root)
+
+        # Indirect call sites — for function pointer fields and variables,
+        # and indirect calls made BY functions/methods.
+        indirect_calls_list = _collect_indirect_calls(conn, config_hash, row, symbol_usr, root)
+
+        # Resolution info — for function pointer fields/variables
+        resolution = _collect_resolution_info(conn, config_hash, row, symbol_usr, indirect_calls_list)
+
+        # For enums, collect all constants with their values
+        enum_constants = _collect_enum_constants(conn, config_hash, row)
+
+        # Pre-computed LLM analysis (if available)
+        llm_analysis = get_llm_analysis_for_symbol(conn, row["id"])
+
+        # Override info for virtual methods
+        overrides_info = _collect_override_info(conn, config_hash, row)
+
+        return (
+            row, file_path, callers_list, callees_list, indirect_calls_list,
+            resolution, enum_constants, llm_analysis, overrides_info,
+            _stored_file_state(conn, row["file_id"]),
+        )
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        # Early-return path from the closure: macro fallback or error dict.
+        return query_result
+    (
+        row, file_path, callers_list, callees_list, indirect_calls_list,
+        resolution, enum_constants, llm_analysis, overrides_info,
+        stored_state,
+    ) = query_result
+
+    source, source_origin, stale_warning = _read_verified_body(row, file_path, stored_state)
+    result: dict = {
+        "name": row["name"],
+        "qualified_name": row["qualified_name"],
+        "kind": row["kind"],
+        "file": file_path,
+        "line": row["line"],
+        "signature": row["signature"] or "",
+        "is_definition": bool(row["is_definition"]),
+        "is_template": bool(row["is_template"]),
+        "is_virtual": bool(row["is_virtual"]),
+        "is_pure_virtual": bool(row["is_pure_virtual"]),
+        "callers": callers_list,
+        "callees": callees_list,
+        "indirect_call_sites": indirect_calls_list,
+        "docstring": row["docstring"] or "",
+    }
+    if resolution:
+        result["resolution"] = resolution
+    if row["template_usr"]:
+        result["template_usr"] = row["template_usr"]
+    if row["parent_usr"]:
+        result["parent_usr"] = row["parent_usr"]
+    if row["enum_value"] is not None:
+        result["enum_value"] = row["enum_value"]
+    if enum_constants:
+        result["constants"] = enum_constants
+    if llm_analysis:
+        result["llm_analysis"] = llm_analysis
+    if overrides_info:
+        result["overrides"] = overrides_info["overrides"]
+        result["overridden_by"] = overrides_info["overridden_by"]
+    if source:
+        _store_capped_source(result, source, row["source"] or "")
+        result["source_origin"] = source_origin
+    if stale_warning:
+        # The callers and callees come from the index, thus a changed file
+        # makes them incomplete as well.  One warning covers the whole dict.
+        result["stale_warning"] = stale_warning
+        result["stale"] = True
+    return result
+
+
+# ── moved from server.py ──
+
+# Least width of the line-number prefix.  Four columns keep a short file
+# aligned with the body that ``get_source`` prints, and a longer file widens
+# the column — a fixed "%4d" loses the alignment above 9999 lines, and an
+# embedded project reaches that in generated and vendor headers.
+_LINE_NUMBER_MIN_WIDTH = 4
+
+
+def _shape_file_lines(
+    lines_list: list[str], start_line: int, end_line: int, line_numbers: bool,
+) -> tuple[str, int, int] | str:
+    """Cut *lines_list* to a range and number it, or say what is wrong.
+
+    Returns ``(text, first_line, last_line)``, or an error message when the
+    range makes no sense.  Both bounds are 1-based and inclusive, and 0 on
+    either means "no bound on this side" — the caller that passes neither
+    gets the whole file, which is what every caller before the range
+    parameters got.
+
+    WHY the numbers are optional and not always there: the text of this tool
+    is read by a machine that also compares it with a patch or a diff, and a
+    prefix would have to be stripped first.  The caller that needs to cite a
+    line asks for the numbers; the caller that needs the code does not.
+    """
+    total = len(lines_list)
+    if start_line < 0 or end_line < 0:
+        return "start_line and end_line must not be negative."
+    if start_line and end_line and end_line < start_line:
+        return f"end_line ({end_line}) is before start_line ({start_line})."
+    if start_line > total:
+        return f"start_line ({start_line}) is past the end of the file ({total} lines)."
+    first = start_line or 1
+    last = min(end_line or total, total)
+    window = lines_list[first - 1:last]
+    if line_numbers:
+        width = max(_LINE_NUMBER_MIN_WIDTH, len(str(last)))
+        window = [f"{first + i:>{width}}  {text}" for i, text in enumerate(window)]
+    return "\n".join(window), first, last
+
+
+# ── T12 / ADR-012 content read modes ──────────────────────────────────────
+
+_FILE_MODES = ("active", "raw", "directives")
+
+# The directive kinds that make up the conditional skeleton annotations
+# (C8): the structure of the #if tree, both taken and untaken.  Non-
+# conditional directives (#define, #include, #pragma, ...) are not
+# structure — the directives view lists them, the skeleton does not.
+_SKELETON_KINDS = frozenset({"if", "ifdef", "ifndef", "elif", "else", "endif"})
+
+
+def _resolve_file_query(
+    conn: sqlite3.Connection, config_hash: str, file_path: str, root: Path,
+) -> "tuple[str, sqlite3.Row] | dict":
+    """Resolve *file_path* to one indexed row, shared by every read mode.
+
+    Exact ``(config_hash, path)`` first, then a suffix LIKE fallback with
+    the shortest candidate winning — users often pass bare filenames.
+    Every mode ends on the same row shape, so the resolution is one
+    helper.  Returns ``(resolved, row)``, or an error dict.
+    """
+    exact = conn.execute(
+        "SELECT COUNT(*) FROM files WHERE config_hash=? AND path=?",
+        (config_hash, file_path),
+    ).fetchone()[0]
+    if not exact:
+        candidates = conn.execute(
+            "SELECT path FROM files WHERE config_hash=? AND path LIKE ? LIMIT 3",
+            (config_hash, f"%{file_path}"),
+        ).fetchall()
+        if not candidates:
+            return {
+                "error": f"File not found in index: {file_path}. "
+                f"Check the path — use relative paths like 'src/main.cpp'."
+            }
+        resolved = min((c["path"] for c in candidates), key=len)
+    else:
+        resolved = file_path
+
+    # Defense-in-depth: validate resolved path stays within project root
+    err = _validate_path_in_root(resolved, root)
+    if err:
+        return {"error": err}
+
+    row = conn.execute(
+        "SELECT content, language, path, mtime, source_hash "
+        "FROM files WHERE config_hash=? AND path=?",
+        (config_hash, resolved),
+    ).fetchone()
+    return resolved, row
+
+
+def _shape_read_result(
+    result: dict, content: str, start_line: int, end_line: int, line_numbers: bool,
+) -> dict:
+    """Attach *content* to *result* with the shared window semantics.
+
+    The whole file, bare: hand over the text itself — rebuilding it from
+    the split would drop the closing newline, and a caller that compares
+    the text with the file would see a difference that is not there.
+    Otherwise cut the window, keeping ``lines`` the length of the whole
+    file whatever range was asked for.
+    """
+    lines_list = content.splitlines()
+    result["lines"] = len(lines_list)
+    if not (start_line or end_line or line_numbers):
+        result["content"] = content
+        return result
+    shaped = _shape_file_lines(lines_list, start_line, end_line, line_numbers)
+    if isinstance(shaped, str):
+        return {"error": shaped}
+    result["content"], first, last = shaped
+    if start_line or end_line:
+        result["start_line"] = first
+        result["end_line"] = last
+    return result
+
+
+def read_file(
+    file_path: Annotated[str, Field(description="Path to source file — relative to project root or just filename.")],
+    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
+    line_numbers: Annotated[bool, Field(description="Prefix every line with its line number, like get_source. Default False (bare text).")] = False,
+    start_line: Annotated[int, Field(description="First line to return, 1-based inclusive. 0 = from the start of the file.")] = 0,
+    end_line: Annotated[int, Field(description="Last line to return, 1-based inclusive. 0 = to the end of the file.")] = 0,
+    variant: Annotated[str | None, Field(description="Build variant (multi-project). Omit for the default variant, '*' for all.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image in the variant. Omit for all images of the variant.")] = None,
+    mode: Annotated[str, Field(description="Content view: 'active' (default) = ifdef-filtered text that compiles for the active build, with the conditional skeleton as 'skeleton' annotations; 'raw' = the file exactly as on disk, every branch included; 'directives' = the preprocessor directive lines as a structured list.")] = "active",
+) -> dict:
+    """Read a complete C/C++ source file with **ifdef-filtered** content —
+    only code that actually compiles for the current build configuration.
+    Inactive ``#ifdef`` branches are replaced with blank lines (preserving
+    original line numbers).
+
+    Use this to read a file without leaving the fw-context ecosystem.
+    Unlike generic file readers, this tool returns build-accurate content:
+    code gated behind ``#ifdef BOARD_V2`` stays visible only when
+    ``BOARD_V2`` is actually defined for this build.  Line numbers match
+    the original file — inactive branches appear as blank lines, and the
+    text spans the whole file, thus ``lines`` is the length of the file.
+
+    A blank line is an answer, and not a defect: it says that the line is
+    in a branch the build does not take.  When EVERY line of the file is
+    blank, the dict carries ``all_lines_inactive`` and a ``warning`` — such
+    a file holds code, and the active build compiles none of it.
+
+    **The ``mode`` parameter (ADR-012)** picks one of three views:
+
+    - ``active`` (default) — the ifdef-filtered text, as above.  The
+      conditional skeleton travels beside it: when the file holds
+      conditional directives, the result adds ``skeleton``, a list of
+      ``{line, kind, text}`` annotations for the ``#if``/``#elif``/
+      ``#else``/``#endif`` lines of BOTH taken and untaken branches.  The
+      annotations are a separate channel, never lines of ``content`` —
+      the line numbers stay stable and the text cannot be re-parsed as
+      code.  Taken boundary lines (a taken ``#elif``, the ``#endif`` that
+      closes an untaken last branch) are also real text in ``content``.
+    - ``raw`` — the file exactly as it is on disk, every branch included:
+      the text an editor or a grep would show.  The answer is the disk
+      truth, not the indexed view; ``stale``/``stale_warning`` say so when
+      the file changed after the last index run.  ``mode`` names the view.
+    - ``directives`` — no content blob: ``directives`` lists every
+      preprocessor directive line the index recorded for the file, as
+      ``{line, kind, text}`` in line order (``#if``/``#define``/``#include``/
+      ``#pragma``/...), independent of taken or untaken.  ``start_line``/
+      ``end_line`` window the list; ``lines`` stays the file length.
+
+    ``content`` is bare text by default and carries NO line-number prefix —
+    unlike the ``source`` of ``get_source``, which numbers every line.
+    Never count the lines here to find a number.  Take it from a field
+    instead: the ``match_lines`` of ``search_bodies`` or ``search_content``,
+    the ``line`` / ``end_line`` of ``get_source`` and ``get_file_map``, or
+    pass ``line_numbers=True`` and read the number off the line.
+
+    ``start_line`` and ``end_line`` cut a window out of the file (1-based,
+    both ends inclusive, 0 = no bound on that side).  Reading around a
+    known line costs a fraction of the whole file — 40 lines around a match
+    instead of 2000 lines of a header.
+
+    A comment and a preprocessor directive are part of the answer.  Both
+    are text that the file holds and the build reads, thus both stay — an
+    include guard, a ``#define``, and the description of a register in a
+    vendor header included.  A blank line is therefore an inactive line, or
+    a line that is blank on disk, and nothing else.
+
+    For reading a single function body with libclang exact extents use
+    ``get_source``.  For body + callers + callees in one call use
+    ``get_symbol_context``.  For a structural overview without content use
+    ``get_file_map``.  For searching patterns across files use
+    ``search_content``.
+
+    Read-only. No side effects.  In active mode it falls back to raw disk
+    content (with a warning) when the indexed ``files.content`` column is
+    empty — e.g. on a legacy index that predates this feature.  Run
+    ``fw-context index`` to populate the ifdef-filtered content.
+
+    Args:
+        file_path: Path relative to project root, or just the filename.
+            E.g. ``src/main.cpp`` or ``main.cpp``.
+        project_root: Project root. Auto-detected if omitted.
+        line_numbers: Prefix every line with its number, right-aligned and
+            followed by two spaces, as ``get_source`` does. Default False.
+        start_line: First line to return, 1-based inclusive. 0 = file start.
+        end_line: Last line to return, 1-based inclusive. 0 = file end.
+        variant: Build variant (multi-project). Omit for the default
+            variant, ``"*"`` for all.
+        image: Sysbuild image in the variant. Omit for all images.
+        mode: ``active`` (default) | ``raw`` | ``directives`` — the view
+            of the file (see above).  An unknown name is an error, never a
+            silent fallback.
+
+    Returns:
+        dict: {file (str), language (str — ``"c"`` or ``"cpp"``),
+        mtime (float), lines (int — total line count of the WHOLE file,
+        whatever range was asked for),
+        content (str — the ifdef-filtered text, bare unless
+        ``line_numbers`` was set; raw mode: the disk text),
+        skeleton (list, optional — active mode: ``{line, kind, text}``
+        conditional-structure annotations),
+        directives (list, optional — directives mode: ``{line, kind,
+        text}`` rows in line order),
+        mode (str, optional — echoed for raw and directives),
+        warning (str, optional — when reading from raw disk instead of
+        indexed content, or when no line of the file is active),
+        stale / stale_warning (optional — the file changed after the last
+        index run; raw mode reads the disk anyway, active mode serves the
+        older indexed text),
+        all_lines_inactive (True, optional)}.
+
+        ``all_lines_inactive`` marks a file that the active build compiles
+        no line of: every line is inside an inactive ``#if`` branch, thus
+        ``content`` holds the correct number of lines and no text.  Without
+        this field that answer reads as an empty file, and the two mean
+        opposite things.
+
+        A range adds ``start_line`` and ``end_line`` — the first and last
+        line the ``content`` really holds, after the end was clamped to the
+        length of the file.
+
+        On failure the dict holds only ``error`` with the reason: a
+        negative bound, an ``end_line`` before ``start_line``, a
+        ``start_line`` past the end of the file, an unknown ``mode``, or a
+        path the index does not know.
+    """
+    try:
+        db = BaseHandler.resolve_db_context(project_root, variant=variant, image=image)
+    except RuntimeError as e:
+        return {"error": str(e)}
+    if mode not in _FILE_MODES:
+        return {
+            "error": f"Unknown mode {mode!r} — use 'active', 'raw' or 'directives'."
+        }
+    impl = _read_file_for_scope
+    if mode == "raw":
+        impl = _read_file_raw_for_scope
+    elif mode == "directives":
+        impl = _read_file_directives_for_scope
+    if len(db.scopes) > 1:
+        # Wildcard provenance (T14 SLICE-E): one annotated record per build
+        # scope — the ifdef-filtered content itself differs per build, so a
+        # single arbitrary scope would silently hide the others.  Raw mode
+        # is scope-agnostic disk truth, but the row it resolves (mtime,
+        # language) is not, so every mode fans out the same way.
+        return db.fan_out_records(
+            impl, file_path=file_path,
+            start_line=start_line, end_line=end_line, line_numbers=line_numbers,
+        )
+    return impl(db, file_path, start_line, end_line, line_numbers)
+
+
+def _read_file_for_scope(
+    db, file_path: str, start_line: int = 0, end_line: int = 0, line_numbers: bool = False,
+) -> dict:
+    """Single-scope ``read_file`` body, active mode (see :func:`read_file`)."""
+    root = db.root
+    file_path = _normalize_file_path_query(file_path)
+
+    def _query(conn, config_hash):
+        # Runs under the executor lock on the single shared connection;
+        # must not open its own connection.  Timeout is enforced by
+        # _wrap_tool (300 s + interrupt), not here.
+        resolved_row = _resolve_file_query(conn, config_hash, file_path, root)
+        if isinstance(resolved_row, dict):
+            # Early-return path from the resolver: error dict.
+            return resolved_row
+        resolved, row = resolved_row
+        # The conditional skeleton (T12-C8): the directive lines of both
+        # taken and untaken branches, as annotations beside the content.
+        skeleton = index_db.get_file_directives(
+            conn, config_hash, resolved, kinds=_SKELETON_KINDS
+        )
+        return resolved, row, skeleton
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        # Early-return path from the closure: error dict.
+        return query_result
+    resolved, row, skeleton = query_result
+
+    if not row:
+        return {"error": f"File not found in index: {file_path}"}
+
+    content = row["content"] or ""
+    result: dict = {
+        "file": abs_path(root, row["path"]),
+        "language": row["language"],
+        "mtime": row["mtime"],
+    }
+
+    if content:
+        # Normal path: ifdef-filtered content is available from the index.
+        # This is the preferred code path — inactive #ifdef branches are
+        # already stripped, line numbers are preserved as blank lines.
+        if not content.strip():
+            # Every line of the file is inside an inactive branch.  The text
+            # keeps the length of the file, thus it is truthy and reaches
+            # this branch as a normal answer — but content of the correct
+            # length that holds no text reads exactly like an empty file.
+            # The two mean opposite things: an empty file has no code, and
+            # this file has code that the active build does not compile.
+            result["all_lines_inactive"] = True
+            result["warning"] = (
+                f"The active build compiles no line of {row['path']}. Every line "
+                f"is inside an inactive #if branch, thus the content below is "
+                f"blank and the file is NOT empty on disk."
+            )
+        if _file_differs(result["file"], row["mtime"] or 0.0, row["source_hash"] or ""):
+            # The content comes from the index, thus a changed file makes it
+            # a copy of an older state.  The disk path below does not need
+            # this warning: it reads the file as it is now.
+            result["stale"] = True
+            result["stale_warning"] = (
+                f"{result['file']} changed after the last index run. The content "
+                f"below comes from the index, not from the disk."
+            )
+    else:
+        # No stored content.  Two causes, and the warning covers both:
+        #   1. A legacy index, written before the content column was filled.
+        #   2. A file that the parse saw with no active line at all — the
+        #      content pass skips it, thus no text was ever stored.  A header
+        #      with no include guard whose whole body is one dead #ifdef is
+        #      such a file: the #define of a guard would have been an active
+        #      line, and without one nothing is.
+        # Read from raw disk instead and warn, because this content is NOT
+        # build-accurate — it holds every #ifdef branch.
+        disk_lines = read_file_lines(abs_path(root, resolved))
+        if disk_lines is None:
+            return {"error": f"Could not read file: {abs_path(root, resolved)}"}
+        content = "".join(disk_lines)
+        result["warning"] = (
+            "Raw disk content — ifdef-filtered content not available. "
+            "Run 'fw-context index' to populate build-accurate content."
+        )
+
+    if skeleton:
+        # T12-C8: the skeleton is an annotation channel beside the content,
+        # never lines of it — line numbers stay stable and nothing here can
+        # be re-parsed as code.
+        result["skeleton"] = skeleton
+
+    return _shape_read_result(result, content, start_line, end_line, line_numbers)
+
+
+def _read_file_raw_for_scope(
+    db, file_path: str, start_line: int = 0, end_line: int = 0, line_numbers: bool = False,
+) -> dict:
+    """Single-scope ``read_file`` body, raw mode (see :func:`read_file`).
+
+    The text comes from DISK at answer time — the file exactly as it is
+    now, every branch included (T12-C5, ADR-012: raw is never a second
+    stored copy).  Byte-exact (AUD-R9, D8): the read uses ``newline=""``,
+    so a CRLF file round-trips its CRLF bytes — ``content.encode()`` is
+    identical to the disk bytes for UTF-8 input.  The index contributes
+    only the resolution and the metadata; ``stale`` says when the disk
+    text is newer than the index.
+    """
+    root = db.root
+    file_path = _normalize_file_path_query(file_path)
+
+    def _query(conn, config_hash):
+        return _resolve_file_query(conn, config_hash, file_path, root)
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        return query_result
+    _resolved, row = query_result
+    if not row:
+        return {"error": f"File not found in index: {file_path}"}
+
+    file_abs = abs_path(root, row["path"])
+    disk_text = read_file_text_exact(file_abs)
+    if disk_text is None:
+        return {"error": f"Could not read file: {file_abs}"}
+
+    result: dict = {
+        "file": file_abs,
+        "language": row["language"],
+        "mtime": row["mtime"],
+        "mode": "raw",
+    }
+    if _file_differs(file_abs, row["mtime"] or 0.0, row["source_hash"] or ""):
+        # Raw mode already serves the disk truth, so the text below is not
+        # the stale part — the INDEX is: the active view and the symbol
+        # rows predate this edit.
+        result["stale"] = True
+        result["stale_warning"] = (
+            f"{file_abs} changed after the last index run. The raw text "
+            f"below is the current disk state; the indexed active view and "
+            f"symbol rows are older."
+        )
+    return _shape_read_result(
+        result, disk_text, start_line, end_line, line_numbers
+    )
+
+
+def _read_file_directives_for_scope(
+    db, file_path: str, start_line: int = 0, end_line: int = 0, line_numbers: bool = False,
+) -> dict:
+    """Single-scope ``read_file`` body, directives mode (ADR-012 §2).
+
+    No content blob: the answer is the ``file_directives`` rows of the
+    file — one ``{line, kind, text}`` per preprocessor directive line,
+    taken and untaken alike (T12-C6).  ``line_numbers`` is a no-op here:
+    the structured rows carry their own ``line``.
+    """
+    root = db.root
+    file_path = _normalize_file_path_query(file_path)
+
+    def _query(conn, config_hash):
+        resolved_row = _resolve_file_query(conn, config_hash, file_path, root)
+        if isinstance(resolved_row, dict):
+            return resolved_row
+        resolved, row = resolved_row
+        directives = index_db.get_file_directives(conn, config_hash, resolved)
+        return resolved, row, directives
+
+    query_result = db.executor.execute_sync(_query, db.config_hash)
+    if isinstance(query_result, dict):
+        return query_result
+    _resolved, row, directives = query_result
+    if not row:
+        return {"error": f"File not found in index: {file_path}"}
+
+    if start_line < 0 or end_line < 0:
+        return {"error": "start_line and end_line must not be negative."}
+    total = len((row["content"] or "").splitlines())
+    if start_line and end_line and end_line < start_line:
+        return {"error": f"end_line ({end_line}) is before start_line ({start_line})."}
+    if start_line > total:
+        return {"error": f"start_line ({start_line}) is past the end of the file ({total} lines)."}
+
+    result: dict = {
+        "file": abs_path(root, row["path"]),
+        "language": row["language"],
+        "mtime": row["mtime"],
+        "mode": "directives",
+        # `lines` stays the length of the file, as in every other mode: the
+        # directives rows are positions IN it, not the file itself.
+        "lines": total,
+    }
+    first = start_line or 1
+    last = min(end_line or total, total) if end_line or start_line else None
+    if first > 1 or last is not None:
+        result["directives"] = [
+            d for d in directives if first <= d["line"] <= (last if last is not None else total)
+        ]
+        result["start_line"] = first
+        result["end_line"] = last if last is not None else total
+    else:
+        result["directives"] = directives
+    return result

@@ -1,0 +1,21 @@
+using BOARD="native64" as "native" on a 64-bit system
+/home/h00969597/fwctx-v2-work/R1/riot-src/examples/basic/default/../../../Makefile.include:345: Neither unzip nor 7z is installed.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards compile-commands
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/init compile-commands
+make[3]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/native64 compile-commands
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/native compile-commands
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/boards/common/native/drivers compile-commands
+make[4]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/core compile-commands
+make[2]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/core/lib compile-commands
+make[2]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native compile-commands
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/cpu/native/periph compile-commands
+make[3]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers compile-commands
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/drivers/saul compile-commands
+make[3]: Nothing to be done for 'compile-commands'.
+"make" -C /home/h00969597/fwctx-v2-work/R1/riot-src/sys compile-commands
+make[2]: Nothing to be done for 'compile-commands'.

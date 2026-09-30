@@ -1,0 +1,11 @@
+add A: exit 0
+Added variant 'A'.
+Index it with: fw-context index --build --variant A
+
+add B: exit 0
+Added variant 'B'.
+Index it with: fw-context index --build --variant B
+
+add C: exit 0
+Added variant 'C'.
+Index it with: fw-context index --build --variant C

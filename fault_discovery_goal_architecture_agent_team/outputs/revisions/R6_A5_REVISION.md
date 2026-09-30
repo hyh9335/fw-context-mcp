@@ -1,0 +1,40 @@
+# R6 — A5 Revision (System Architect)
+
+Reads: R1_A5.md, DEBATE_ROUND_1.md, SCENARIO_STRESS_TEST.md, RED_TEAM_REPORT.md, FACT_LEDGER.json, CONTRADICTIONS.json. No other R6 files read (isolation). Labels inline.
+
+## POSITION CHANGES
+
+**PC-1 — A8's V7 verdict ACCEPTED: C0–C8 is my domain map; K1/K2/K3 becomes my build-plan candidate.**
+- What changed: I stop defending the 9-component decomposition as the thing to build.
+- Why (INFERENCE): C0–C8 was derived from the authoritative pipeline (FACT F1) — correct as coverage of the goal contract — but at zero Agent LOC (FACT F-R0-18) a 9-component first build commits the same speculative-structure error I argued against in S1; A8's "a component needs a measured miss to exist" is the correct build rule (R5 §1 V7, §2 complexity verdict).
+- Mapping I accept (INFERENCE): K1 = C1+C2+C3 Evidence Gateway; K2 = C4+C6 Hypothesis-and-Rule Loop; K3 = C7 Audit-and-FP Harness; C0 loop plumbing = buy-candidate under the ALT-S-buy contingency (R5 §2); C8 = artifact contract, not a component (see OBJ-2).
+- Consequence I accept (INFERENCE): my P4 "R1+R2 first" yields to S-narrow — wave 1 is config-class R2 only; R1 static-pattern rules arrive with family #2. Honest loss: wave 1 never exercises the call-graph differentiator (FACT: recorded in R5 §2).
+
+**PC-2 — A8's guards-vs-contracts correction ACCEPTED; G1–G7 demoted from "complete defense" to named detectors.**
+- What changed: my R1 implication "ZERO substrate code changes; all seven defects become Agent-side guards G1–G7" is RETRACTED as a completeness claim.
+- Why (FACT): GA-1 measured my own guard list INCOMPLETE against its own 7-defect input — no macro-observability guard, no slot-classification guard (R4 §2); scenario 03 is a no-guard ceiling for every strategy (R4 §2). Guards enumerate known classes and fail open; contract semantics fail safe (R5 §2).
+- New placement (PROPOSAL): (a) G1–G7 continue as run-time detectors — G1/G4 inside K1, G2/G3/G5/G6/G7 in the K3 checklist — each now carrying a measured-miss citation and an expiry date (V2 mitigation); (b) four fail-safe contract rows enter the design-time SUBSTRATE SPEC as written text, not code: refusal-not-warn (macro values until a surface exists), exact-no-fallback (substrate mirror of F-V2-002/G6), deterministic enumeration (mirror of G7), unsupported-data-refusal (C-03 empty-result ambiguity/G5); (c) two detector gaps become named guards: G8 macro-observability (config-class rule citing a macro VALUE without independent-channel attestation → "unattested value", never silent), G9 slot-classification (G10 slot-0 data symbol).
+- Boundary honesty (INFERENCE): "zero substrate CODE changes for MVP" survives; "zero substrate changes" does not — the written contract spec is a real, cheap substrate artifact whose roadmap criticality is justified per F9 (as amended in U-F9 below).
+
+**PC-3 — C5 under S-narrow: DEFERRED as a component; edge vocabulary survives as schema; confidence moves into K2.**
+- What changed: C5 (causal/evidence graph) is not built in wave 1; A8's re-earn event "family #2 admission" is adopted as-is.
+- Why (INFERENCE from FACT): config-class R2 hypotheses are condition-flips whose evidence is explain_condition/list_conditional_regions condition text + grep — no call path, no DAG; C5's inputs do not exist under S-narrow (R5 §2 ALT-S-narrow). Deferral is evidence-consistent, not concession.
+- What survives (PROPOSAL): K3's refutation log adopts C5's edge vocabulary (supports/refutes/alternative) as log-record fields — a degenerate graph costs nothing and preserves the audit trail; per-rule confidence = f(fact certainty, guard outcomes, refutation results) computed in K2's loop, replacing my R1 "confidence via DAG propagation".
+
+## POSITION UNCHANGED
+- **U-INF-1 (INFERENCE, from F3/F4)**: the Agent is an orchestration+reasoning layer over the substrate evidence kernel; no second parser, no re-implementation of indexing. K1 IS that layer's gateway; nothing in K1–K3 alters this.
+- **U-P3 (PROPOSAL, reaffirmed with one status change)**: the R1 delegation map survives nearly verbatim, but grep + `clang -dM -E` move from "complement" to the program's load-bearing independent channel — which makes A7's gap-3 representativeness question the top risk of MY position, not a side issue (FACT: same-lineage-harness finding, R4 §2).
+- **U-MVP (INFERENCE)**: single-variant-or-G1-gated multi-variant MVP scoping stands; provenance discipline (A1/A2: every tool result is evidence-with-provenance; explicit project parameter on every call) stands unchanged as K1's core rule.
+- **U-F9 (FACT + amendment)**: the anti-anchor rule stands; per PC-2 a contract-semantics spec row now also counts as valid roadmap-critical justification, alongside guard-deletion and family-unlock.
+
+## REMAINING OBJECTIONS
+- **OBJ-1 (objection to K2 as specified)**: fusing C4+C6 must not dissolve the family library. My C4 split existed so (required fact types, trigger predicate, mechanism template, missing-evidence list) stays a reviewable DATA artifact — the missing-evidence list is exactly what the K3 checklist iterates. PROPOSAL: K2 carries the family-library schema as data files; the loop consumes them. Without this, refutation loses its checklist source and the loop becomes unfalsifiable structure.
+- **OBJ-2 (objection to K3 absorbing C8)**: the human-review gate is a goal-contract non-goal boundary ("eliminating human review" is forbidden — FACT F2), not an audit step. Review status must remain a first-class RuleCard field whose semantics the S0 rubric fixes; audit (K3) measures rule quality, review (C8's residue) authorizes "verified". I will not converge on a plan where one harness silently does both.
+- **OBJ-3 (objection to "measured miss" as a universal rule)**: right for COMPONENTS, wrong for SCHEMAS. FactRecord/RuleCard/refutation-log schemas should freeze before wave 1 regardless of measured misses — schema rework after cases exist is the expensive failure mode (R3 UQ-2/UQ-6). PROPOSAL: components earn existence; schemas freeze early.
+- **OBJ-4 (flag, V3)**: K1–K3 as stated are entirely source-side; the minimal dynamic leg has no home (R5 §1 V3). Acceptable for wave 1 (config-class is source-verifiable), but family #2 admission needs a named placeholder for R3 runtime-observable rules — register it now so V3 does not resurface at R7 as a surprise.
+
+## ASKS TO CONTROLLER
+- **ASK-1 (UQ-1, owner A4; blocks my G1 contract text)**: I still need A4's answer on a G1-sufficient per-variant provenance signal at 0.31.0 — no longer to enable multi-variant MVP, but to write the G1 refusal contract precisely (what the BuildManifest refuses on; R4 established no in-band detection exists for scenario 01). UNCERTAINTY: unanswered as of R4. PROPOSAL: if still unanswered at R7, I pre-commit to the default single-variant-only MVP; multi-variant enters only via a Track-B fix or measured external truth — GA-4 already bans scenario 01 from MVP corpora either way (FACT).
+- **ASK-2 (UQ-3, owner A0)**: adjudicate the macro-value boundary as: wave 1 = NO macro-value channel (my REPLACEABLE stance stands — config-class rules cite condition text + def_source from explain_condition, not values); macro-export stays an S-gated Track-B coverage surface per the R5 adopted boundary; A8's first-class framing re-earns only when the surface does. Gap-4 note: the planted macro-context probe must be able to fail the GUARD/contract independently of whether the surface is ever built.
+- **ASK-3 (UQ-2, sequencing)**: RuleCard schema freeze sequenced AFTER the S0 rubric confirmation (the rubric defines "verified", which RuleCard's review-status must express) and BEFORE wave-1 code: S0 gate → RuleCard freeze (R7 artifact) → build. Freezing before S0 risks enum rework; freezing after first cases risks the OBJ-3 rework mode.
+- **ASK-4 (new; V2 mitigation ownership)**: guard expiry dates and re-earn events need an owner. PROPOSAL: K3's harness owns the register; every guard/spec row carries a measured-miss citation plus a review trigger at family #2 admission; uncited guards are deletable by rule.

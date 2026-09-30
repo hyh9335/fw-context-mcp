@@ -1,0 +1,25 @@
+# Build artifacts
+BUILD/
+build/
+cmake_build/
+arduino-build/
+.pio/
+mbed-os
+_deps/
+compile_commands.json
+test_app
+*.o
+*.d
+sdkconfig.old
+
+# fw-context init artifacts (generated at test time)
+.fw-context/
+.git
+.agents/
+.claude/
+.codex/
+.cursor/
+.kilo/
+.opencode/
+AGENTS.md
+CLAUDE.md

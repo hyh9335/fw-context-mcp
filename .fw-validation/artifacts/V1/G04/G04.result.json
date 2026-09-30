@@ -1,0 +1,13 @@
+{
+  "case_id": "G04",
+  "command": "D:\\github\\fw-context-mcp\\.fw-validation\\venv-win\\Scripts\\python.exe -m fw_context_mcp.cli index --build --variants A,B,C --project C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G04\\work --no-analyze --no-embeddings",
+  "exit_code": 1,
+  "expected": null,
+  "observed": {
+    "stdout_tail": "Project: work  path=C:\\Users\\h00969597\\fwctx-validation-work\\V1\\G04\\work  build=bare\n",
+    "stderr_tail": "10:41:18 INFO Detected build system: bare (clean=True)\n10:41:18 INFO Using generate path for bare\nerror: variant 'A': Compiler 'gcc' not found in PATH. Install gcc or set [build] compiler in .fw-context/config.toml\n10:41:19 INFO Detected build system: bare (clean=True)\n10:41:19 INFO Using generate path for bare\nerror: variant 'B': Compiler 'gcc' not found in PATH. Install gcc or set [build] compiler in .fw-context/config.toml\n10:41:19 INFO Detected build system: bare (clean=True)\n10:41:19 INFO Using generate path for bare\nerror: variant 'C': Compiler 'gcc' not found in PATH. Install gcc or set [build] compiler in .fw-context/config.toml\nerror: no builds to index\n"
+  },
+  "comparison": "CLI index failed",
+  "status": "FAIL_PRODUCT",
+  "notes": []
+}

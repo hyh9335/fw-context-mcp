@@ -1,0 +1,127 @@
+{
+  "case_id": "A4_source_delete_add",
+  "phase": "V4_ADVERSARIAL",
+  "status": "PASS",
+  "expected": "deleting slave.c removes its TU contribution (count drops); adding master2.c re-derives its symbol (exact rows, no fallback); DB consistent",
+  "observed": {
+    "pre_symbols": 6,
+    "mid_symbols": 3,
+    "post_symbols": 6,
+    "added_present": true,
+    "added_rows": [
+      "master2_entry"
+    ],
+    "fallback_rows": [],
+    "integrity": "ok"
+  },
+  "notes": [
+    "exact=True lookup of deleted slave_entry: recorded verbatim (F-V2-002 known fallback issue may show here)"
+  ],
+  "responses": {
+    "final::{\"exact\": true, \"name\": \"master2_entry\"}": {
+      "tool": "lookup_symbol",
+      "arguments": {
+        "name": "master2_entry",
+        "exact": true
+      },
+      "elapsed_s": 0.017,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"master2_entry\",\n  \"qualified_name\": \"master2_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A4_source_delete_add\\\\work\\\\master2.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int master2_entry()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "name": "master2_entry",
+                "qualified_name": "master2_entry",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A4_source_delete_add\\work\\master2.c",
+                "line": 2,
+                "is_definition": true,
+                "signature": "int master2_entry()",
+                "docstring": "",
+                "is_template": false,
+                "is_virtual": false,
+                "is_pure_virtual": false
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"name\": \"master2_entry\",\n  \"qualified_name\": \"master2_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A4_source_delete_add\\\\work\\\\master2.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int master2_entry()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false\n}",
+      "json": {
+        "name": "master2_entry",
+        "qualified_name": "master2_entry",
+        "kind": "function",
+        "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A4_source_delete_add\\work\\master2.c",
+        "line": 2,
+        "is_definition": true,
+        "signature": "int master2_entry()",
+        "docstring": "",
+        "is_template": false,
+        "is_virtual": false,
+        "is_pure_virtual": false
+      }
+    },
+    "final2::{\"exact\": true, \"name\": \"slave_entry\"}": {
+      "tool": "lookup_symbol",
+      "arguments": {
+        "name": "slave_entry",
+        "exact": true
+      },
+      "elapsed_s": 0.008,
+      "isError": false,
+      "raw_response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A4_source_delete_add\\\\work\\\\master.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int master_entry()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"_fallback\": true\n}"
+            },
+            {
+              "type": "text",
+              "text": "{\n  \"_did_you_mean\": [\n    \"master_entry\",\n    \"master2_entry\"\n  ]\n}"
+            }
+          ],
+          "structuredContent": {
+            "result": [
+              {
+                "name": "master_entry",
+                "qualified_name": "master_entry",
+                "kind": "function",
+                "file": "C:\\Users\\h00969597\\fwctx-validation-work\\V4\\A4_source_delete_add\\work\\master.c",
+                "line": 2,
+                "is_definition": true,
+                "signature": "int master_entry()",
+                "docstring": "",
+                "is_template": false,
+                "is_virtual": false,
+                "is_pure_virtual": false,
+                "_fallback": true
+              },
+              {
+                "_did_you_mean": [
+                  "master_entry",
+                  "master2_entry"
+                ]
+              }
+            ]
+          },
+          "isError": false
+        }
+      },
+      "text": "{\n  \"name\": \"master_entry\",\n  \"qualified_name\": \"master_entry\",\n  \"kind\": \"function\",\n  \"file\": \"C:\\\\Users\\\\h00969597\\\\fwctx-validation-work\\\\V4\\\\A4_source_delete_add\\\\work\\\\master.c\",\n  \"line\": 2,\n  \"is_definition\": true,\n  \"signature\": \"int master_entry()\",\n  \"docstring\": \"\",\n  \"is_template\": false,\n  \"is_virtual\": false,\n  \"is_pure_virtual\": false,\n  \"_fallback\": true\n}\n{\n  \"_did_you_mean\": [\n    \"master_entry\",\n    \"master2_entry\"\n  ]\n}",
+      "json": null
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+ "A": {
+  "absence_cards": [
+   {
+    "family": "existence_absence",
+    "polarity": "negative",
+    "rulecard_id": "RC-I7-A-API-GETCWD",
+    "statement": "the public API getcwd has a compiled definition under the pinned build (BUILD-C4C6-DISABLE-ENVIRON); its definition file and build listing a",
+    "verdict": "PASS"
+   }
+  ],
+  "freeze_id": "FRZ-I7-A-20260920T094226Z",
+  "outcomes": [
+   {
+    "family": "condition_config_gated",
+    "kind": "rulecard",
+    "missing_evidence": [],
+    "polarity": "positive"
+   },
+   {
+    "family": "existence_absence",
+    "kind": "rulecard",
+    "missing_evidence": [],
+    "polarity": "negative"
+   }
+  ],
+  "present_cards": [],
+  "refutations": [
+   {
+    "rulecard_id": "RC-I7-A-LIB-GETCWD-38",
+    "state": "NOT_REFUTED_WITHIN_SCOPE"
+   },
+   {
+    "rulecard_id": "RC-I7-A-API-GETCWD",
+    "state": "NOT_REFUTED_WITHIN_SCOPE"
+   }
+  ],
+  "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_A",
+  "scores": [
+   {
+    "family": "condition_config_gated",
+    "polarity": "positive",
+    "rulecard_id": "RC-I7-A-LIB-GETCWD-38",
+    "statement": "region fixture/libs/libc/unistd/lib_getcwd.c:38-138 guarded by 'CONFIG_DISABLE_ENVIRON' is compiled OUT under the pinned build (BUILD-C4C6-D",
+    "verdict": "PASS"
+   },
+   {
+    "family": "existence_absence",
+    "polarity": "negative",
+    "rulecard_id": "RC-I7-A-API-GETCWD",
+    "statement": "the public API getcwd has a compiled definition under the pinned build (BUILD-C4C6-DISABLE-ENVIRON); its definition file and build listing a",
+    "verdict": "PASS"
+   }
+  ]
+ },
+ "B": {
+  "absence_cards": [],
+  "freeze_id": "FRZ-I7-B-20260920T094227Z",
+  "outcomes": [
+   {
+    "family": "condition_config_gated",
+    "kind": "rulecard",
+    "missing_evidence": [],
+    "polarity": "positive"
+   },
+   {
+    "family": null,
+    "kind": "insufficient_evidence",
+    "missing_evidence": [],
+    "polarity": null
+   }
+  ],
+  "present_cards": [],
+  "refutations": [
+   {
+    "rulecard_id": "RC-I7-B-LIB-GETCWD-107",
+    "state": "NOT_REFUTED_WITHIN_SCOPE"
+   }
+  ],
+  "round_dir": "D:\\github\\fw-context-mcp\\implementation\\rounds\\I7_C4C6_B",
+  "scores": [
+   {
+    "family": "condition_config_gated",
+    "polarity": "positive",
+    "rulecard_id": "RC-I7-B-LIB-GETCWD-107",
+    "statement": "region fixture/libs/libc/unistd/lib_getcwd.c:107-110 guarded by 'CONFIG_DISABLE_ENVIRON' is compiled OUT under the pinned build (BUILD-C4C6-",
+    "verdict": "PASS"
+   }
+  ]
+ }
+}

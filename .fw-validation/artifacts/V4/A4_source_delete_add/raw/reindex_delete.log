@@ -1,0 +1,39 @@
+exit: 0
+Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A4_source_delete_add\work  build=unknown
+Indexed. config_hash=fb6a5c50428124b4…  db=C:\Users\h00969597\fwctx-validation-work\V4\A4_source_delete_add\index\12e6e8dbee86438c9424e6dd1b92cf74\index.db
+
+18:53:57 INFO TUs to index: 1
+18:53:57 INFO vendor patterns for work: none
+18:53:57 INFO manifest.json (preliminary): 1 TUs, config_hash=fb6a5c504281
+18:53:57 INFO 
+18:53:57 INFO project=work project_id=12e6e8dbee86438c9424e6dd1b92cf74 config_hash=fb6a5c504281
+18:53:57 INFO 
+18:53:57 INFO content fill: 2 files from TU master.c in 0.0s
+18:53:57 INFO [1/1] master.c: 3 syms, 4 refs, 0.1s
+18:53:57 INFO linker script: none found for this build
+18:53:57 INFO Post-process: purge_missing (0.0s)
+18:53:57 INFO Post-process: fts5 (0.0s)
+18:53:57 INFO Post-process: orphans (0.0s)
+18:53:57 INFO Post-process: is_project (0.0s)
+18:53:57 INFO Building manifest.json from 1 pre-collected TU headers...
+18:53:57 INFO manifest.json: 1 updated (from tu_headers), 0 reused, 0 needs_reparse
+18:53:57 INFO manifest.json saved: 1 TUs, 1 distinct headers (1 references), config_hash=fb6a5c504281
+18:53:57 INFO Post-process: manifest (0.0s)
+18:53:57 INFO Post-process: generated_flag (0.0s)
+18:53:57 INFO Post-process: coverage_purge (0.0s)
+18:53:57 INFO Post-process: macros (0.0s)
+18:53:57 INFO Post-process: dispatch_edges (0.0s)
+18:53:57 INFO No virtual methods found — skipping override analysis
+18:53:57 INFO Post-process: overrides (0.0s)
+18:53:57 INFO Post-process: cross_tu_refs (0.0s)
+18:53:57 INFO Post-process: variant_switches (0.0s)
+18:53:57 INFO PageRank converged after 3 iterations
+18:53:57 INFO PageRank stored: 3 nodes
+18:53:57 INFO Hotspot cache stored: 2 entries
+18:53:57 INFO Post-process: pagerank_hotspot (0.0s)
+18:53:57 INFO Post-process: verify_integrity (0.0s)
+18:53:57 INFO Post-process: finalize_manifest (0.0s)
+18:53:57 INFO Post-process: cleanup_old (0.0s)
+18:53:57 INFO Post-process: wal_checkpoint (0.0s)
+18:53:57 INFO 
+18:53:57 INFO 1 updated, 0 unchanged, 0 skipped  config_hash=fb6a5c504281
