@@ -1021,20 +1021,46 @@ _flag_cache: bool | None = None
 
 
 def v2_shadow_enabled() -> bool:
-    """Flag gate: env override ``FW_CONTEXT_SHADOW_V2`` or cfg.index flag."""
+    """Flag gate: env override ``FW_CONTEXT_SHADOW_V2`` or cfg.index flag.
+
+    M5: when v2 is the production default (v2_write_authority=True and
+    legacy_compatibility_mode=False), the v2 certify/publication/binding
+    path is the SOLE semantic engine and MUST always run.
+
+    Priority (M5-aware):
+    1. ``FW_CONTEXT_SHADOW_V2=1`` → v2 ON (explicit M4-era opt-in)
+    2. ``FW_CONTEXT_SHADOW_V2=0`` → v2 OFF (explicit opt-out)
+    3. Otherwise, if ``v2_write_authority=True`` → v2 ON
+       (M4/M5: write-authority requires the v2 write path)
+    4. Otherwise → v2 OFF (legacy-primary)
+    """
     global _flag_cache
     with _flag_lock:
         if _flag_cache is not None:
             return _flag_cache
+    # M4-era explicit env override has highest priority.
     env = os.environ.get("FW_CONTEXT_SHADOW_V2")
     if env is not None:
         enabled = env == "1"
-    else:
-        try:
-            from fw_context_mcp.config import load
-            enabled = bool(load().index.shadow_v2_enabled)
-        except Exception:
-            enabled = False
+        with _flag_lock:
+            _flag_cache = enabled
+        return enabled
+    # M4/M5: write-authority implies the v2 write path is active.
+    try:
+        from fw_context_mcp.indexer._unit_processor import (
+            _v2_write_authority_on)
+        if _v2_write_authority_on():
+            with _flag_lock:
+                _flag_cache = True
+            return True
+    except Exception:
+        pass
+    # Fall back to the config flag.
+    try:
+        from fw_context_mcp.config import load
+        enabled = bool(load().index.shadow_v2_enabled)
+    except Exception:
+        enabled = False
     with _flag_lock:
         _flag_cache = enabled
     return enabled

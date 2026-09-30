@@ -1,6 +1,6 @@
 {
   "test": "S3_HIDDEN_FALLBACK_TEST",
   "verdict": "PASS",
-  "head": "b9653733e80f132a4e5a39dcb22dde0b6aec9724",
+  "head": "8af4f1754a79905c9418cbf2328f4368cc6e6e61",
   "detail": "Scanner detected 1 injected legacy fallbacks"
 }

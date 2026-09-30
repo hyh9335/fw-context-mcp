@@ -48,6 +48,7 @@ from ._unit_processor import (
     _check_and_parse_unit,
     _handle_unchanged,
     _process_unit,
+    _v2_shadow_flag_on,
     _v2_write_authority_on,
 )
 from .compile_commands import parse as parse_compile_commands
@@ -576,23 +577,31 @@ def run(
     from .context_identity import unit_identity_fields
 
     unit_identities: dict[int, dict] = {}
-    with transaction(conn, checkpoint=False):
+    # M5: unit_identity_fields is a computation (no DB needed). The legacy
+    # upsert_build_context write is gated behind _legacy_compat.
+    if _legacy_compat:
+        with transaction(conn, checkpoint=False):
+            for i, unit in enumerate(units):
+                fields = unit_identity_fields(unit, config_hash, project_root, entry_index=i)
+                unit_identities[i] = fields
+                upsert_build_context(conn, config_hash, fields["context_id"], **{
+                    key: value
+                    for key, value in fields.items()
+                    if key not in ("config_hash", "context_id")
+                })
+    else:
         for i, unit in enumerate(units):
-            fields = unit_identity_fields(unit, config_hash, project_root, entry_index=i)
-            unit_identities[i] = fields
-            upsert_build_context(conn, config_hash, fields["context_id"], **{
-                key: value
-                for key, value in fields.items()
-                if key not in ("config_hash", "context_id")
-            })
+            unit_identities[i] = unit_identity_fields(
+                unit, config_hash, project_root, entry_index=i)
 
     # Staleness records per (path, context_id).  A TU's Tier-1/2 comparison
     # must read the row of ITS context — the path-keyed view would let the
     # first context's record falsely skip a second context's never-indexed
     # command of the same file (T02 RC2 incremental false-claim).
     existing_by_context: dict[str, dict] = {}
-    for (path, ctx), rec in get_file_hashes_by_context(conn, config_hash).items():
-        existing_by_context.setdefault(ctx, {})[path] = rec
+    if _legacy_compat:
+        for (path, ctx), rec in get_file_hashes_by_context(conn, config_hash).items():
+            existing_by_context.setdefault(ctx, {})[path] = rec
 
     # Pre-build lookup dict for O(1) manifest entry access during Tier 2 checks.
     # *manifest* was loaded above (before config_hash computation) — reuse it.
@@ -655,18 +664,20 @@ def run(
     # If a previous run crashed after drop_fts_triggers() but before
     # rebuild_fts(), the triggers are missing — repair now so FTS stays
     # consistent during this run.
+    # M5: FTS trigger maintenance is legacy DB only.
     missing_triggers = False
-    for trigger_name in ("symbols_ai", "files_ai", "macros_ai"):
-        cur = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?",
-            (trigger_name,)
-        )
-        if cur.fetchone() is None:
-            missing_triggers = True
-    if missing_triggers and not defer_fts:
-        log.info("FTS5 triggers missing (possibly from a crashed run) — rebuilding FTS first")
-        rebuild_fts(conn)
-    drop_fts_triggers(conn)
+    if _legacy_compat:
+        for trigger_name in ("symbols_ai", "files_ai", "macros_ai"):
+            cur = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?",
+                (trigger_name,)
+            )
+            if cur.fetchone() is None:
+                missing_triggers = True
+        if missing_triggers and not defer_fts:
+            log.info("FTS5 triggers missing (possibly from a crashed run) — rebuilding FTS first")
+            rebuild_fts(conn)
+        drop_fts_triggers(conn)
 
     total_syms = 0
     total_refs = 0
@@ -707,6 +718,8 @@ def run(
             (config_hash,),
         ).fetchone()
         is not None
+        if _legacy_compat
+        else False
     )
 
     # Header-claim map, per context: ``{path: context_id}`` — the context
@@ -723,27 +736,28 @@ def run(
     log.info("", extra={"phase": f"Parsing ({len(units)} TUs)"})
 
     # ── Phase-4 Slice 2: construct the v2 world context ONCE per run.
-    # M5: v2 is the DEFAULT semantic engine. When legacy compat is OFF
-    # (normal mode), v2 world context is ALWAYS built. When compat is ON
-    # (explicit legacy mirror), v2 still runs alongside (M4 authority) but
-    # the flag-gated path is preserved for backward compatibility.
+    # M5: v2 is the DEFAULT semantic engine. When v2 is enabled (either
+    # v2_write_authority=True OR FW_CONTEXT_SHADOW_V2=1), the v2 world
+    # context is built. When v2 is explicitly disabled (v2_write_authority
+    # =False AND shadow_v2=0), v2 is not run (legacy-primary mode).
     world_ctx = None
-    try:
-        # M5: v2 is the DEFAULT semantic engine. The v2 world context is
-        # ALWAYS built — in v2-only mode (default) it is the sole path, and
-        # in compat mode it runs alongside legacy (M4 authority).
-        import importlib
-        _worlds_mod = importlib.import_module(
-            "fw_context_mcp.store_v2.worlds")
-        world_ctx = _worlds_mod.build_world_context(
-            project_root=project_root,
-            build_dir_patterns=build_dir_patterns,
-            build_system=build_system,
-            project_id=project_id)
-    except Exception as _w_exc:                       # pragma: no cover
-        log.debug("v2 world context unavailable: %s",
-                  _w_exc)
-        world_ctx = None
+    if _v2_shadow_flag_on():
+        try:
+            # M5: v2 is the DEFAULT semantic engine. The v2 world context is
+            # ALWAYS built — in v2-only mode (default) it is the sole path, and
+            # in compat mode it runs alongside legacy (M4 authority).
+            import importlib
+            _worlds_mod = importlib.import_module(
+                "fw_context_mcp.store_v2.worlds")
+            world_ctx = _worlds_mod.build_world_context(
+                project_root=project_root,
+                build_dir_patterns=build_dir_patterns,
+                build_system=build_system,
+                project_id=project_id)
+        except Exception as _w_exc:                       # pragma: no cover
+            log.debug("v2 world context unavailable: %s",
+                      _w_exc)
+            world_ctx = None
 
     # Single sequential loop with per-TU write lock for responsiveness.
     # The lock is acquired and released for each translation unit so that

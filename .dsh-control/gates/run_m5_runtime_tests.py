@@ -103,30 +103,101 @@ def test_c31_clean_project_v2_only() -> dict:
 
 
 def test_c32_legacy_unavailable_normal_mode() -> dict:
-    """C32: Legacy unavailable normal mode — verify that in v2-only mode,
-    the normal index path does NOT create a legacy index.db file.
-
-    We verify this by checking the runner code: when _legacy_compat is False,
-    open_db is not called (conn=None).
+    """C32: Legacy unavailable normal mode — actually run `runner.run()`
+    end-to-end in default (v2-only) mode on the keep_only fixture and
+    verify NO legacy index.db is created.
     """
-    try:
-        runner = SRC / "fw_context_mcp" / "indexer" / "runner.py"
-        text = runner.read_text(encoding="utf-8")
-        # The legacy DB open must be gated behind _legacy_compat
-        if "if _legacy_compat:" not in text:
-            return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
-                "No _legacy_compat guard found in runner.py")
-        # Verify open_db is inside the guard
-        compat_guard_line = text.index("if _legacy_compat:")
-        open_db_line = text.index("open_db(db_path)")
-        if open_db_line < compat_guard_line:
-            return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
-                "open_db appears BEFORE the _legacy_compat guard")
-        return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "PASS",
-            "open_db is gated behind _legacy_compat — no legacy DB in default mode")
-    except Exception as exc:
+    import shutil, sqlite3
+    fixture = ROOT / "tests" / "fixtures" / "keep_only"
+    if not fixture.exists():
         return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
-            f"Exception: {exc}")
+            f"keep_only fixture not found at {fixture}")
+
+    try:
+        for key in ("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE",
+                     "FW_CONTEXT_V2_WRITE_AUTHORITY",
+                     "FW_CONTEXT_SHADOW_V2"):
+            os.environ.pop(key, None)
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            proj = td_path / "proj"
+            proj.mkdir()
+            index_dir = td_path / "index"
+            project_id = "m5testkeeponly0000000000000000"
+
+            # Copy fixture files
+            (proj / "main.c").write_text(
+                (fixture / "main.c").read_text(encoding="utf-8"),
+                encoding="utf-8")
+            (proj / "linker.ld").write_text(
+                (fixture / "linker.ld").read_text(encoding="utf-8"),
+                encoding="utf-8")
+
+            # Materialize compile_commands.json with absolute paths
+            import json as _json
+            payload = _json.loads(
+                (fixture / "compile_commands.json").read_text(encoding="utf-8"))
+            for entry in payload:
+                entry["directory"] = str(proj)
+                entry["file"] = str(proj / "main.c")
+            cc = proj / "compile_commands.json"
+            cc.write_text(_json.dumps(payload, indent=1), encoding="utf-8")
+
+            # Create .fw-context/config.toml
+            (proj / ".fw-context").mkdir()
+            (proj / ".fw-context" / "config.toml").write_text(
+                f'[project]\nname = "m5-test-keep-only"\nid = "{project_id}"\n\n'
+                f'[index]\ndb_dir = "{str(index_dir).replace(chr(92), "/")}"\n'
+                f'index_refs = true\nindex_embeddings = false\n\n'
+                f'[llm]\nenabled = false\n',
+                encoding="utf-8")
+
+            # Reset legacy compat cache to ensure default mode
+            from fw_context_mcp.indexer._unit_processor import _reset_legacy_compat_cache
+            _reset_legacy_compat_cache()
+
+            # Run the indexer in default mode (v2-only)
+            from fw_context_mcp.indexer.runner import run as index_run
+            db_path = index_dir / project_id / "index.db"
+            try:
+                ch = index_run(
+                    compile_commands=cc,
+                    db_path=db_path,
+                    project_root=proj,
+                    project_id=project_id,
+                    index_refs=True,
+                    index_embeddings=False,
+                    analyze_symbols=False,
+                )
+            except Exception as exc:
+                import traceback
+                tb = traceback.format_exc()
+                # A crash here means default-mode indexing is broken.
+                # But first check: was a legacy index.db created before crash?
+                legacy_dbs = list(proj.rglob("index.db")) + list(index_dir.rglob("index.db")) if index_dir.exists() else []
+                if legacy_dbs:
+                    return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
+                        f"runner.run() crashed AND legacy index.db was created: "
+                        f"{legacy_dbs}; exc={exc}\n{tb[:400]}")
+                return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
+                    f"runner.run() crashed in default mode (no legacy DB created, "
+                    f"but indexing broken): {exc}\n{tb[:400]}")
+
+            # Verify NO legacy index.db was created
+            legacy_dbs = list(proj.rglob("index.db")) + list(index_dir.rglob("index.db")) if index_dir.exists() else []
+            if legacy_dbs:
+                return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
+                    f"Legacy index.db created in default mode: {legacy_dbs}")
+
+            return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "PASS",
+                f"runner.run() completed in default v2-only mode (ch={ch}); "
+                f"no legacy index.db created")
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc()
+        return _write_result("C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "FAIL",
+            f"Exception: {exc}\n{tb[:500]}")
 
 
 def test_c33_upgrade_existing_project() -> dict:

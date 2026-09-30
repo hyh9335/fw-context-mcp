@@ -1,5 +1,5 @@
 {
-  "head": "b965373",
+  "head": "8af4f17",
   "passed": 7,
   "total": 7,
   "results": [
@@ -16,7 +16,7 @@
     {
       "name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS",
       "result": "PASS",
-      "detail": "open_db is gated behind _legacy_compat \u2014 no legacy DB in default mode"
+      "detail": "runner.run() completed in default v2-only mode (ch=99b093a70e2b05076a982c562ab07cbb71b1409ccb88cce563f11588b4c9e519); no legacy index.db created"
     },
     {
       "name": "C33_UPGRADE_EXISTING_PROJECT_PASS",
