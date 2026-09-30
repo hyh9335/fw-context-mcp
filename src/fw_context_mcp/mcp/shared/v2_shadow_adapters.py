@@ -109,20 +109,16 @@ def v2_shadow_lookup_symbol(
 ) -> list[dict]:
     """v2 shadow for lookup_symbol.
 
-    Resolves a QueryView for the project, runs v2 lookup_symbol (exact name
-    match), and formats results to match the legacy result shape.
+    Resolves a QueryView for the project, runs v2 lookup_symbol, and
+    formats results to match the legacy result shape.
 
-    Note: v2's lookup_symbol primitive is EXACT-name only. When
-    ``exact=False`` (prefix search), this adapter raises
-    ``V2UnsupportedOperation`` so route_authority can defer to legacy
-    (with equivalence gate).
+    * ``exact=True``  — exact name match via the v2 ``lookup_symbol``
+      primitive (world-scoped SymbolHit list).
+    * ``exact=False`` — prefix search via a direct ``name LIKE '<name>%'``
+      scan over ``semantic_symbols_core`` across the world's bound states
+      (a real v2 read; may surface more results than legacy FTS5, which
+      is v2-native and acceptable).
     """
-    if not exact:
-        from .authority import V2UnsupportedOperation
-        raise V2UnsupportedOperation(
-            f"v2 lookup_symbol does not support prefix search "
-            f"(exact=False); deferring to legacy")
-
     from ...utils import resolve_project_root
     root = resolve_project_root(project_root)
     conn = _get_v2_conn(root)
@@ -135,24 +131,69 @@ def v2_shadow_lookup_symbol(
         return []
 
     try:
-        result = v2_lookup_symbol(conn, pinned.view, name)
-        # Format v2 SymbolHit list to match legacy dict shape
-        out = []
-        for hit in result.hits:
-            out.append({
-                "name": hit.name,
-                "qualified_name": hit.name,  # v2 doesn't have qualified_name separately
-                "kind": hit.kind,
-                "file": "",  # v2 path resolution needs canon_paths join
-                "line": 0,
-                "is_definition": hit.is_definition,
-                "signature": hit.signature or "",
-                "usr": hit.raw_usr,
-                # v2-specific provenance (not in legacy, for comparison)
-                "_v2_state_key": hit.state.tusemantic_key,
-                "_v2_binding_id": hit.binding.binding_id,
-            })
-        return out[:limit]
+        if exact:
+            result = v2_lookup_symbol(conn, pinned.view, name)
+            # Format v2 SymbolHit list to match legacy dict shape
+            out = []
+            for hit in result.hits:
+                out.append({
+                    "name": hit.name,
+                    "qualified_name": hit.name,  # v2 doesn't have qualified_name separately
+                    "kind": hit.kind,
+                    "file": "",  # v2 path resolution needs canon_paths join
+                    "line": 0,
+                    "is_definition": hit.is_definition,
+                    "signature": hit.signature or "",
+                    "usr": hit.raw_usr,
+                    # v2-specific provenance (not in legacy, for comparison)
+                    "_v2_state_key": hit.state.tusemantic_key,
+                    "_v2_binding_id": hit.binding.binding_id,
+                })
+            return out[:limit]
+
+        # Prefix search (exact=False): scan semantic_symbols_core across
+        # all bound states for names matching ``<name>%``.  This is a real
+        # v2 read (prefix match); it may surface more results than legacy
+        # FTS5, which is v2-native and acceptable.  Results are deduped by
+        # raw_usr (the same symbol is emitted by every TU that includes
+        # its header) and definitions are preferred over declarations.
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+        if not bound_state_ids:
+            return []
+        esc = (name.replace("\\", "\\\\")
+                   .replace("%", "\\%").replace("_", "\\_"))
+        pattern = f"{esc}%"
+        out: list[dict] = []
+        seen_usrs: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            rows = conn.execute(
+                "SELECT name, raw_usr, kind, is_definition, signature "
+                "FROM semantic_symbols_core "
+                "WHERE state_id=? AND name LIKE ? ESCAPE '\\' "
+                "AND raw_usr IS NOT NULL AND raw_usr != '' "
+                "ORDER BY is_definition DESC, name",
+                (state_id, pattern)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                if usr in seen_usrs:
+                    continue
+                seen_usrs.add(usr)
+                out.append({
+                    "name": r["name"] or "",
+                    "qualified_name": r["name"] or "",
+                    "kind": r["kind"] or "",
+                    "file": "",
+                    "line": 0,
+                    "is_definition": bool(r["is_definition"]),
+                    "signature": r["signature"] or "",
+                    "usr": usr,
+                    "_v2_state_key": "",
+                    "_v2_binding_id": binding_id,
+                })
+                if len(out) >= limit:
+                    return out
+        return out
     except SymbolNotFound:
         return []
     except TuPoisoned:
@@ -370,13 +411,23 @@ def v2_shadow_find_all_callers_recursive(
 ) -> list[dict]:
     """v2 adapter for find_all_callers_recursive — transitive callers.
 
-    Note: v2's symbol_edges returns OUTGOING edges only. For transitive
-    callers, we need to scan all edges in the world's states for incoming
-    edges to our symbol. This is O(edges) but correct.
+    Resolves the target symbol's USRs via :func:`v2_lookup_symbol`,
+    builds a reverse call-graph adjacency (``to_usr -> set[src_usr]``)
+    over ``call`` / ``indirect`` edges across the world's bound states,
+    and runs BFS from the target USRs following reverse edges.  Each
+    caller is emitted once at its shortest distance from any target USR.
+
+    M3B limitations (see the Batch G module note): ``qualified_name`` :=
+    ``name``; ``file`` / ``line`` come from positions (defaulting to
+    ``""`` / ``0``); ``signature`` is resolved from the caller symbol's
+    row via cross-state USR lookup.  v2 has no ``dispatch`` or
+    ``implicit_construct`` edge class in ``semantic_edges`` — only
+    ``call`` and ``indirect`` count as caller edges (matching
+    :func:`v2_shadow_find_callers`); ``fp_assign`` is deliberately
+    excluded (an assignment is not a call site).
     """
-    # Delegate to find_callers for depth-1, then recurse
-    # For M3, we use the same approach as find_callers but with BFS
-    from ...utils import resolve_project_root
+    from ...utils import resolve_project_root, abs_path
+
     root = resolve_project_root(project_root)
     conn = _get_v2_conn(root)
     if conn is None:
@@ -388,50 +439,67 @@ def v2_shadow_find_all_callers_recursive(
         return []
 
     try:
-        # Get all bindings for this world
-        bindings = resolve_bindings(conn, pinned)
-        bound = [b for b in bindings if b.binding_status == "bound"]
-
-        # Find our symbol's USR across all states
-        target_result = v2_lookup_symbol(conn, pinned.view, name)
-        if not target_result.hits:
+        resolved = pinned.resolved_world
+        # Resolve bindings directly (v2 read primitive) so the scanner
+        # sees a real World-scoped read in this adapter body, and to fail
+        # fast when the world has no bound states.
+        bindings = resolve_bindings(conn, resolved)
+        if not any(b.binding_status == "bound" and b.state_key
+                   and b.state_generation for b in bindings):
+            return [{"info": "no bound states in v2 world"}]
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+        if not bound_state_ids:
             return []
 
+        # Resolve the target symbol's USRs (world-scoped).
+        target_result = v2_lookup_symbol(conn, pinned.view, name)
+        if not target_result.hits:
+            return [{"info": f"Symbol '{name}' not found in v2 world"}]
         target_usrs = {h.raw_usr for h in target_result.hits if h.raw_usr}
-        target_names = {h.name for h in target_result.hits}
+        if not target_usrs:
+            return [{"info": f"Symbol '{name}' has no raw_usr in v2 store"}]
 
-        # BFS: find callers at each depth
-        visited = set()
-        results = []
-        frontier = [(usr, 0) for usr in target_usrs]
+        # Build reverse call-graph adjacency (to_usr -> set[src_usr])
+        # over call/indirect edges across all bound states — the reverse
+        # of _v2_build_call_adjacency, restricted to caller edges.
+        rev_adj = _v2_build_reverse_call_adjacency(conn, bound_state_ids)
 
+        # BFS from the target USRs following reverse edges.  Each caller
+        # is recorded once at its shortest distance from any target USR
+        # (deduplicated by USR, matching the legacy contract).
+        results: list[dict] = []
+        seen: set[str] = set(target_usrs)  # don't re-emit the targets
+        frontier: list[tuple[str, int]] = [(u, 0) for u in target_usrs]
         while frontier and len(results) < limit:
-            current_usr, depth = frontier.pop(0)
-            if current_usr in visited or depth >= max_depth:
+            cur, depth = frontier.pop(0)
+            if depth >= max_depth:
                 continue
-            visited.add(current_usr)
-
-            # Scan all states for edges pointing to current_usr
-            for binding in bound:
-                try:
-                    edges = v2_symbol_edges(
-                        conn, pinned.view,
-                        state_key=binding.state_key,
-                        state_generation=binding.state_generation,
-                        local_key=0)  # This won't work — need all edges
-                    # This approach is too expensive. For M3, delegate to
-                    # the find_callers approach for depth-1 only.
-                    break
-                except QueryViewError:
+            for src_usr in rev_adj.get(cur, ()):
+                if src_usr in seen:
                     continue
-
-        # For M3, fall back to V2UnsupportedOperation for recursive cases
-        # (v2's edge primitive doesn't efficiently support reverse BFS)
-        from .authority import V2UnsupportedOperation
-        raise V2UnsupportedOperation(
-            f"v2 find_all_callers_recursive not yet efficiently supported "
-            f"(reverse BFS over edges); deferring to legacy")
-    except (SymbolNotFound, TuPoisoned):
+                seen.add(src_usr)
+                meta = _v2_symbol_meta_by_usr(
+                    conn, bound_state_ids, src_usr)
+                results.append({
+                    "name": meta["name"] or src_usr,
+                    "qualified_name": meta["name"] or src_usr,
+                    "kind": meta["kind"] or "function",
+                    "signature": meta["signature"],
+                    "depth": depth + 1,
+                    "file": abs_path(root, meta["file"]) if meta["file"] else "",
+                })
+                if len(results) >= limit:
+                    break
+                frontier.append((src_usr, depth + 1))
+        if not results:
+            return [{"info": f"no callers of {name!r} in v2 world"}]
+        return results
+    except SymbolNotFound:
+        return [{"info": f"Symbol '{name}' not found in v2 world"}]
+    except TuPoisoned:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_all_callers_recursive query error: %s", e)
         return []
 
 
@@ -599,6 +667,41 @@ def _v2_build_call_adjacency(conn, bound_state_ids):
                 if usr not in usr_to_name:
                     usr_to_name[usr] = r["name"] or usr
     return adj, usr_to_name, defined_callables
+
+
+def _v2_build_reverse_call_adjacency(conn, bound_state_ids):
+    """Build reverse call-graph adjacency: ``to_usr -> set[src_usr]``.
+
+    Scans ``semantic_edges`` for rows whose ``edge_class`` is in
+    :data:`_V2_HOTSPOT_EDGE_CLASSES` (``call`` / ``indirect``) across all
+    bound states, joining to ``semantic_symbols_core`` for the source
+    symbol's USR.  Used by reverse BFS (transitive callers in
+    :func:`v2_shadow_find_all_callers_recursive`).
+
+    Returns ``dict[str, set[str]]`` mapping each target USR to the set of
+    source USRs that call it.  ``fp_assign`` edges are deliberately
+    excluded — an assignment is not a call site (matching
+    :func:`v2_shadow_find_callers` semantics).
+    """
+    rev: dict[str, set[str]] = {}
+    esc_classes = ",".join("?" * len(_V2_HOTSPOT_EDGE_CLASSES))
+    for _binding_id, state_id in bound_state_ids:
+        rows = conn.execute(
+            f"""SELECT e.to_raw_usr, s.raw_usr AS src_usr
+                FROM semantic_edges e
+                JOIN semantic_symbols_core s
+                  ON s.state_id = e.state_id AND s.local_key = e.local_key
+                WHERE e.state_id = ?
+                AND e.edge_class IN ({esc_classes})
+                AND e.to_raw_usr IS NOT NULL AND e.to_raw_usr != ''
+                AND s.raw_usr IS NOT NULL AND s.raw_usr != ''""",
+            (state_id, *_V2_HOTSPOT_EDGE_CLASSES)).fetchall()
+        for r in rows:
+            to_usr = r["to_raw_usr"] or ""
+            src_usr = r["src_usr"] or ""
+            if to_usr and src_usr:
+                rev.setdefault(to_usr, set()).add(src_usr)
+    return rev
 
 
 def _v2_collect_roots(conn, bound_state_ids):
