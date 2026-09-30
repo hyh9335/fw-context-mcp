@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "milestone": "M3B_NATIVE_V2_READ_ENGINE_COMPLETE",
-  "generated_at_utc": "2026-09-30T03:28:02Z",
+  "generated_at_utc": "2026-09-30T03:33:52Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "fa0d52f30d7fd27bb4d1f7328719aaf83b190527",
-    "short": "fa0d52f",
+    "head": "90c1ec9144bbba677a563373ec14189f74c25f6f",
+    "short": "90c1ec9",
     "branch": "main",
     "dirty": true
   },
   "counters": {
     "CORE_NORMAL_USE_SEMANTIC_TOOLS": 29,
     "CORE_V2_ROUTED": 29,
-    "CORE_V2_NATIVE_READ": 8,
-    "CORE_LEGACY_SEMANTIC_EXECUTION": 23,
+    "CORE_V2_NATIVE_READ": 12,
+    "CORE_LEGACY_SEMANTIC_EXECUTION": 19,
     "CORE_UNSAFE_FALLBACK": 0,
     "UNRESOLVED_NORMAL_USE_V2_BUGS": 0
   },
@@ -432,16 +432,20 @@
       "v2_adapter": "v2_shadow_get_class_members",
       "legacy_handler": "get_class_members",
       "server_line": 1300,
-      "classification": "V2_ROUTED_LEGACY_EXEC",
+      "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 722,
-        "end_line": 737,
-        "v2_read_calls": [],
-        "delegated_to": [],
-        "raise_v2unsupported_lines": [
-          735
+        "def_line": 868,
+        "end_line": 994,
+        "v2_read_calls": [
+          "v2_lookup_symbol@905",
+          "fetchone@924",
+          "fetchall@946",
+          "execute@924",
+          "execute@946"
         ],
+        "delegated_to": [],
+        "raise_v2unsupported_lines": [],
         "raise_snippets": []
       }
     },
@@ -450,16 +454,26 @@
       "v2_adapter": "v2_shadow_get_inheritance_chain",
       "legacy_handler": "get_inheritance_chain",
       "server_line": 1304,
-      "classification": "V2_ROUTED_LEGACY_EXEC",
+      "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 740,
-        "end_line": 754,
-        "v2_read_calls": [],
-        "delegated_to": [],
-        "raise_v2unsupported_lines": [
-          752
+        "def_line": 997,
+        "end_line": 1230,
+        "v2_read_calls": [
+          "v2_lookup_symbol@1035",
+          "fetchone@1049",
+          "fetchall@1068",
+          "fetchall@1092",
+          "execute@1049",
+          "execute@1068",
+          "execute@1092",
+          "fetchall@1157",
+          "fetchall@1204",
+          "execute@1157",
+          "execute@1204"
         ],
+        "delegated_to": [],
+        "raise_v2unsupported_lines": [],
         "raise_snippets": []
       }
     },
@@ -468,16 +482,26 @@
       "v2_adapter": "v2_shadow_get_method_overrides",
       "legacy_handler": "get_method_overrides",
       "server_line": 1308,
-      "classification": "V2_ROUTED_LEGACY_EXEC",
+      "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 757,
-        "end_line": 771,
-        "v2_read_calls": [],
-        "delegated_to": [],
-        "raise_v2unsupported_lines": [
-          769
+        "def_line": 1233,
+        "end_line": 1456,
+        "v2_read_calls": [
+          "v2_lookup_symbol@1281",
+          "fetchone@1300",
+          "fetchall@1343",
+          "fetchall@1396",
+          "execute@1300",
+          "fetchall@1360",
+          "fetchall@1417",
+          "execute@1343",
+          "execute@1396",
+          "execute@1360",
+          "execute@1417"
         ],
+        "delegated_to": [],
+        "raise_v2unsupported_lines": [],
         "raise_snippets": []
       }
     },
@@ -486,16 +510,22 @@
       "v2_adapter": "v2_shadow_get_template_instances",
       "legacy_handler": "get_template_instances",
       "server_line": 1312,
-      "classification": "V2_ROUTED_LEGACY_EXEC",
+      "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 774,
-        "end_line": 789,
-        "v2_read_calls": [],
-        "delegated_to": [],
-        "raise_v2unsupported_lines": [
-          787
+        "def_line": 1459,
+        "end_line": 1635,
+        "v2_read_calls": [
+          "v2_lookup_symbol@1501",
+          "fetchone@1540",
+          "fetchall@1562",
+          "fetchall@1578",
+          "execute@1540",
+          "execute@1562",
+          "execute@1578"
         ],
+        "delegated_to": [],
+        "raise_v2unsupported_lines": [],
         "raise_snippets": []
       }
     },
@@ -507,14 +537,14 @@
       "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 904,
-        "end_line": 1023,
+        "def_line": 1750,
+        "end_line": 1869,
         "v2_read_calls": [
-          "resolve_bindings@957",
-          "fetchone@961",
-          "fetchall@971",
-          "execute@961",
-          "execute@971"
+          "resolve_bindings@1803",
+          "fetchone@1807",
+          "fetchall@1817",
+          "execute@1807",
+          "execute@1817"
         ],
         "delegated_to": [],
         "raise_v2unsupported_lines": [],
@@ -529,18 +559,18 @@
       "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 1026,
-        "end_line": 1146,
+        "def_line": 1872,
+        "end_line": 1992,
         "v2_read_calls": [
-          "resolve_bindings@1071",
-          "fetchone@1081",
-          "fetchall@1090",
-          "fetchall@1099",
-          "fetchall@1111",
-          "execute@1081",
-          "execute@1090",
-          "execute@1099",
-          "execute@1111"
+          "resolve_bindings@1917",
+          "fetchone@1927",
+          "fetchall@1936",
+          "fetchall@1945",
+          "fetchall@1957",
+          "execute@1927",
+          "execute@1936",
+          "execute@1945",
+          "execute@1957"
         ],
         "delegated_to": [],
         "raise_v2unsupported_lines": [],
@@ -555,20 +585,20 @@
       "classification": "V2_NATIVE",
       "detail": {
         "file": "D:\\github\\fw-context-mcp\\src\\fw_context_mcp\\mcp\\shared\\v2_shadow_adapters.py",
-        "def_line": 1149,
-        "end_line": 1274,
+        "def_line": 1995,
+        "end_line": 2120,
         "v2_read_calls": [
-          "resolve_bindings@1186",
-          "fetchone@1199",
-          "fetchall@1227",
-          "fetchall@1238",
-          "fetchall@1210",
-          "fetchall@1217",
-          "execute@1199",
-          "execute@1227",
-          "execute@1238",
-          "execute@1210",
-          "execute@1217"
+          "resolve_bindings@2032",
+          "fetchone@2045",
+          "fetchall@2073",
+          "fetchall@2084",
+          "fetchall@2056",
+          "fetchall@2063",
+          "execute@2045",
+          "execute@2073",
+          "execute@2084",
+          "execute@2056",
+          "execute@2063"
         ],
         "delegated_to": [],
         "raise_v2unsupported_lines": [],

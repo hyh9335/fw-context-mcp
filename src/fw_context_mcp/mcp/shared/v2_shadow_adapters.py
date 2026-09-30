@@ -717,7 +717,153 @@ def v2_shadow_smart_search(
         f"v2 smart_search is a composite tool; deferring to legacy")
 
 
-# ── Batch E: OO/Inheritance adapters (M3) ──────────────────────────────────
+# ── Batch E: OO/Inheritance adapters (M3B v2-native read) ─────────────────
+#
+# M3B v2-native read adapters for the inheritance / OO tools. Each resolves
+# the pinned QueryView, walks the World's bound bindings, and reads v2
+# World-scoped facts directly (semantic_symbols_core / semantic_edges /
+# semantic_state_positions / binding_file_map), formatting the result to
+# the legacy handler's shape.
+#
+# Documented M3B limitations — these are v2 hot-schema gaps, NOT weakenings
+# of the equivalence gate. Each adapter computes exactly what v2 stores:
+#
+#  * semantic_symbols_core has no qualified_name / parent_usr column ->
+#    qualified_name := name; the enclosing-class USR for a method is
+#    derived from the method USR by stripping the trailing '@F@...' suffix.
+#  * semantic_edges stores edge_class='inherit' (certainty := access level,
+#    resolution_kind := 'virtual' | '') but the indexer NEVER writes
+#    edge_class='override' rows (overrides live in the legacy-only
+#    ``overrides`` post-process table).  get_method_overrides therefore
+#    DERIVES the override relation by joining ``inherit`` edges between
+#    the enclosing classes with same-name method matches — a conservative
+#    over-approximation that surfaces every candidate (virtual or not);
+#    the equivalence gate decides whether to defer to legacy for
+#    byte-identical parity.
+#  * semantic_symbols_core has no template_usr column -> instance
+#    discovery uses a name + USR-shape heuristic: symbols with the same
+#    name as the template whose USR carries template-argument markers
+#    ('<' / '>') and is_template=0 are reported as instances.  This is a
+#    v2 hot-schema limitation, not a gate weakening.
+#  * file/line for edge-target symbols comes from the binding's file map
+#    joined to semantic_state_positions; absent a position row, file is ""
+#    and line is 0 (documented).
+
+
+def _v2_state_ids_for_bindings(conn, resolved) -> list[tuple[int, int]]:
+    """Return ``[(binding_id, state_id), ...]`` for every 'bound' binding of
+    the resolved world.  Used to scope cross-state scans (incoming edges,
+    instance discovery) to the visible states only."""
+    out: list[tuple[int, int]] = []
+    for b in resolve_bindings(conn, resolved):
+        if b.binding_status != "bound" or not b.state_key or \
+                not b.state_generation:
+            continue
+        state_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (b.state_key, b.state_generation)).fetchone()
+        if state_row is not None:
+            out.append((b.binding_id, int(state_row["state_id"])))
+    return out
+
+
+def _v2_lookup_by_usr(conn, bound_state_ids, usr):
+    """Find a symbol row by raw_usr across the given bound states.
+
+    Returns a dict with ``name``, ``kind``, ``file`` (canon path) and
+    ``state_id_local_key`` ``(state_id, local_key)`` for callers that need
+    to query that symbol's outgoing edges.  Definitions are preferred over
+    declarations when both are present (``ORDER BY is_definition DESC``).
+    Empty values when no bound state carries the USR.
+    """
+    for binding_id, state_id in bound_state_ids:
+        r = conn.execute(
+            "SELECT s.name, s.kind, s.local_key "
+            "FROM semantic_symbols_core s "
+            "WHERE s.state_id=? AND s.raw_usr=? "
+            "ORDER BY s.is_definition DESC LIMIT 1",
+            (state_id, usr)).fetchone()
+        if r is not None:
+            file_path = _v2_symbol_file(
+                conn, binding_id, state_id, int(r["local_key"]))
+            return {
+                "name": r["name"] or "",
+                "kind": r["kind"] or "",
+                "file": file_path,
+                "state_id_local_key": (state_id, int(r["local_key"])),
+            }
+    return {"name": "", "kind": "", "file": "",
+            "state_id_local_key": None}
+
+
+def _v2_symbol_file(conn, binding_id, state_id, local_key) -> str:
+    """Return the canon path for a symbol's first position row, or ""."""
+    r = conn.execute(
+        "SELECT cp.path FROM semantic_state_positions p "
+        "JOIN binding_file_map bfm "
+        "  ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal "
+        "JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id "
+        "WHERE p.state_id=? AND p.symbol_local_key=? "
+        "ORDER BY p.line LIMIT 1",
+        (binding_id, state_id, local_key)).fetchone()
+    return (r["path"] or "") if r is not None else ""
+
+
+def _v2_symbol_pos(conn, binding_id, state_id, local_key):
+    """Return ``(canon_path, line)`` for the symbol's first position, or
+    ``None`` when no position row exists.  ``line`` is 0 when stored as
+    NULL."""
+    r = conn.execute(
+        "SELECT p.line, cp.path FROM semantic_state_positions p "
+        "JOIN binding_file_map bfm "
+        "  ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal "
+        "JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id "
+        "WHERE p.state_id=? AND p.symbol_local_key=? "
+        "ORDER BY p.line LIMIT 1",
+        (binding_id, state_id, local_key)).fetchone()
+    if r is None:
+        return None
+    return (r["path"] or "", int(r["line"]) if r["line"] is not None else 0)
+
+
+def _v2_symbol_row(conn, hit):
+    """Re-fetch the full ``semantic_symbols_core`` row for a SymbolHit.
+
+    ``SymbolHit`` exposes only ``name / raw_usr / kind / is_definition /
+    signature / local_key``; columns like ``is_template``, ``is_virtual``
+    and ``is_pure_virtual`` are NOT on the dataclass.  Callers that need
+    them re-fetch the row by ``(state_id, local_key)``.
+    """
+    state_row = conn.execute(
+        "SELECT state_id FROM semantic_states WHERE "
+        "tusemantic_key=? AND parser_generation=?",
+        (hit.state.tusemantic_key,
+         hit.state.parser_generation)).fetchone()
+    if state_row is None:
+        return None
+    return conn.execute(
+        "SELECT * FROM semantic_symbols_core "
+        "WHERE state_id=? AND local_key=?",
+        (int(state_row["state_id"]), hit.local_key)).fetchone()
+
+
+def _v2_pick_class_hit(hits, class_name):
+    """Pick the best class/struct hit from a v2_lookup_symbol result.
+
+    Prefers a definition of kind class/struct, then any class/struct, then
+    the first hit.  Returns ``None`` when *hits* is empty.
+    """
+    if not hits:
+        return None
+    for h in hits:
+        if h.is_definition and h.kind in ("class", "struct"):
+            return h
+    for h in hits:
+        if h.kind in ("class", "struct"):
+            return h
+    return hits[0]
+
 
 def v2_shadow_get_class_members(
     class_name: str,
@@ -728,30 +874,360 @@ def v2_shadow_get_class_members(
 ) -> dict:
     """v2 adapter for get_class_members — class member table.
 
-    v2 doesn't expose class hierarchy through public query functions yet.
-    Defer to legacy (with equivalence gate).
+    Reads v2 World-scoped symbols (``semantic_symbols_core``) filtered to
+    children of the queried class — by USR prefix ``'<class_usr>@%'`` (clang
+    USR encoding: a method/field/nested-type of class with
+    ``raw_usr=c:@C@Cls`` carries a USR that begins with ``c:@C@Cls@``) —
+    joined to per-state positions (``semantic_state_positions``) and the
+    per-world file map (``binding_file_map``) for line/file, and grouped
+    by ``kind`` to match the legacy member-table shape.
+
+    M3B limitations (see the Batch E module note): ``qualified_name`` :=
+    ``name`` (v2 has no qualified_name column); member ``file``/``line``
+    come from positions, defaulting to ``""``/``0`` when no row exists;
+    only direct USR-prefix children are returned (a class with a base
+    whose members are inherited but not re-declared will not list them,
+    matching legacy ``get_class_members`` semantics).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_class_members requires class hierarchy primitive; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        resolved = pinned.resolved_world
+        cls_result = v2_lookup_symbol(conn, pinned.view, class_name)
+        cls_hit = _v2_pick_class_hit(cls_result.hits, class_name)
+        if cls_hit is None:
+            return {"error": f"Symbol not found: {class_name}"}
+        if cls_hit.kind not in ("class", "struct"):
+            return {"error": f"'{class_name}' is a {cls_hit.kind}, "
+                              f"not a class or struct."}
+        cls_usr = cls_hit.raw_usr or ""
+        if not cls_usr:
+            return {"error": f"class {class_name!r} has no raw_usr in v2 store"}
+
+        # USR prefix for direct children: '<cls_usr>@%'.  Escaped for LIKE.
+        esc = (cls_usr.replace("\\", "\\\\")
+                      .replace("%", "\\%").replace("_", "\\_"))
+        pattern = f"{esc}@%"
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Resolve the class header's own file/line from its defining state.
+        cls_state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (cls_hit.state.tusemantic_key,
+             cls_hit.state.parser_generation)).fetchone()
+        cls_file = ""
+        cls_line = 0
+        if cls_state_id_row is not None:
+            cls_state_id = int(cls_state_id_row["state_id"])
+            pos = _v2_symbol_pos(conn, cls_hit.binding.binding_id,
+                                 cls_state_id, cls_hit.local_key)
+            if pos is not None:
+                cls_file = pos[0]
+                cls_line = pos[1]
+
+        # Walk all bound states for member rows whose USR begins with the
+        # class USR + '@'.  Deduplicate by raw_usr (the same declaration is
+        # emitted by every TU that includes the header).
+        members_by_kind: dict[str, list[dict]] = {}
+        member_count = 0
+        seen_usrs: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            rows = conn.execute(
+                """SELECT s.name, s.raw_usr, s.kind, s.signature,
+                          s.is_virtual, s.is_pure_virtual, s.local_key,
+                          (SELECT MIN(p.line) FROM semantic_state_positions p
+                           WHERE p.state_id=s.state_id
+                             AND p.symbol_local_key=s.local_key) AS line,
+                          (SELECT cp.path FROM semantic_state_positions p
+                           JOIN binding_file_map bfm
+                             ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                           JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                           WHERE p.state_id=s.state_id
+                             AND p.symbol_local_key=s.local_key
+                           ORDER BY p.line LIMIT 1) AS canon_path
+                   FROM semantic_symbols_core s
+                   WHERE s.state_id=? AND s.raw_usr LIKE ? ESCAPE '\\'
+                     AND s.raw_usr != ?
+                   ORDER BY s.kind, s.name, line
+                   LIMIT 500""",
+                (binding_id, state_id, pattern, cls_usr)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                if usr in seen_usrs:
+                    continue
+                seen_usrs.add(usr)
+                k = r["kind"] or "unknown"
+                members_by_kind.setdefault(k, []).append({
+                    "name": r["name"] or "",
+                    "qualified_name": r["name"] or "",
+                    "signature": r["signature"] or "",
+                    "is_virtual": bool(r["is_virtual"]),
+                    "is_pure_virtual": bool(r["is_pure_virtual"]),
+                    "line": int(r["line"]) if r["line"] is not None else 0,
+                })
+                member_count += 1
+
+        return {
+            "name": cls_hit.name,
+            "qualified_name": cls_hit.name,
+            "kind": cls_hit.kind,
+            "file": abs_path(root, cls_file) if cls_file else "",
+            "line": cls_line,
+            "members": members_by_kind,
+            "member_count": member_count,
+        }
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {class_name}"}
+    except QueryViewError as e:
+        log.debug("v2 get_class_members query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_get_inheritance_chain(
     class_name: str,
     project_root: str | None = None,
+    transitive: bool = False,
+    max_depth: int = 10,
     variant: str | None = None,
     image: str | None = None,
     **kwargs,
 ) -> dict:
     """v2 adapter for get_inheritance_chain — base/derived classes.
 
-    Defer to legacy — needs inheritance data.
+    Reads v2 World-scoped ``inherit`` edges (``semantic_edges`` where
+    ``edge_class='inherit'``).  For BASES: edges whose source is the
+    queried class symbol — ``to_raw_usr`` is the base-class USR.  For
+    DERIVED: edges across all bound states whose ``to_raw_usr`` matches
+    the queried class USR — the source symbol is the derived class.  The
+    ``certainty`` column carries the access level (public/private/
+    protected) and ``resolution_kind`` is ``'virtual'`` when virtual.
+
+    M3B limitations (see the Batch E module note): ``qualified_name`` :=
+    ``name``; base/derived ``file`` is resolved via the source/target
+    symbol's position row (empty when no position exists); only proven
+    inherit edges are stored (v2 has no 'possible' inherit edges); the
+    transitive walk is BFS over the same edges with cycle detection.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_inheritance_chain requires inheritance primitive; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        resolved = pinned.resolved_world
+        cls_result = v2_lookup_symbol(conn, pinned.view, class_name)
+        cls_hit = _v2_pick_class_hit(cls_result.hits, class_name)
+        if cls_hit is None:
+            return {"error": f"Symbol not found: {class_name}"}
+        if cls_hit.kind not in ("class", "struct"):
+            return {"error": f"'{class_name}' is a {cls_hit.kind}, "
+                              f"not a class or struct."}
+        cls_usr = cls_hit.raw_usr or ""
+        if not cls_usr:
+            return {"error": f"class {class_name!r} has no raw_usr in v2 store"}
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Class header file/line from its defining state.
+        cls_state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (cls_hit.state.tusemantic_key,
+             cls_hit.state.parser_generation)).fetchone()
+        cls_file = ""
+        cls_line = 0
+        cls_state_id: int | None = None
+        if cls_state_id_row is not None:
+            cls_state_id = int(cls_state_id_row["state_id"])
+            pos = _v2_symbol_pos(conn, cls_hit.binding.binding_id,
+                                 cls_state_id, cls_hit.local_key)
+            if pos is not None:
+                cls_file = pos[0]
+                cls_line = pos[1]
+
+        # ── Direct bases: outgoing 'inherit' edges from the class symbol ──
+        bases: list[dict] = []
+        if cls_state_id is not None:
+            base_rows = conn.execute(
+                "SELECT e.to_raw_usr, e.certainty, e.resolution_kind "
+                "FROM semantic_edges e "
+                "WHERE e.state_id=? AND e.local_key=? "
+                "AND e.edge_class='inherit' "
+                "ORDER BY e.edge_ordinal",
+                (cls_state_id, cls_hit.local_key)).fetchall()
+            for r in base_rows:
+                b_usr = r["to_raw_usr"] or ""
+                if not b_usr:
+                    continue
+                b_info = _v2_lookup_by_usr(conn, bound_state_ids, b_usr)
+                bases.append({
+                    "name": b_info["name"] or "<unknown>",
+                    "usr": b_usr,
+                    "access": r["certainty"] or "public",
+                    "is_virtual": (r["resolution_kind"] == "virtual"),
+                    "file": b_info["file"],
+                })
+
+        # ── Direct derived: incoming 'inherit' edges to this class USR ──
+        derived: list[dict] = []
+        seen_derived_usrs: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            d_rows = conn.execute(
+                "SELECT e.local_key, e.certainty, e.resolution_kind, "
+                " s.name AS src_name, s.raw_usr AS src_usr "
+                "FROM semantic_edges e "
+                "JOIN semantic_symbols_core s "
+                "  ON s.state_id=e.state_id AND s.local_key=e.local_key "
+                "WHERE e.state_id=? AND e.edge_class='inherit' "
+                "AND e.to_raw_usr=?",
+                (state_id, cls_usr)).fetchall()
+            for r in d_rows:
+                d_usr = r["src_usr"] or ""
+                if d_usr in seen_derived_usrs:
+                    continue
+                seen_derived_usrs.add(d_usr)
+                d_file = _v2_symbol_file(
+                    conn, binding_id, state_id, int(r["local_key"]))
+                derived.append({
+                    "name": r["src_name"] or "<unknown>",
+                    "usr": d_usr,
+                    "access": r["certainty"] or "public",
+                    "is_virtual": (r["resolution_kind"] == "virtual"),
+                    "file": d_file,
+                })
+
+        result: dict = {
+            "name": cls_hit.name,
+            "qualified_name": cls_hit.name,
+            "kind": cls_hit.kind,
+            "file": abs_path(root, cls_file) if cls_file else "",
+            "line": cls_line,
+            "bases": bases,
+            "derived": derived,
+        }
+
+        if transitive:
+            depth_cap = max(1, min(int(max_depth), 50))
+            # BFS up (ancestors)
+            visited_up: set[str] = {cls_usr}
+            all_bases: list[dict] = []
+            frontier = [(b["usr"], b["access"], b["is_virtual"])
+                        for b in bases]
+            for depth in range(1, depth_cap + 1):
+                if not frontier:
+                    break
+                seen_level: set[str] = set()
+                next_frontier: list[tuple[str, str, bool]] = []
+                for cur_usr, access, is_virt in frontier:
+                    if cur_usr in visited_up or cur_usr in seen_level:
+                        continue
+                    seen_level.add(cur_usr)
+                    visited_up.add(cur_usr)
+                    cur_info = _v2_lookup_by_usr(
+                        conn, bound_state_ids, cur_usr)
+                    all_bases.append({
+                        "name": cur_info["name"] or "<unknown>",
+                        "usr": cur_usr,
+                        "access": access,
+                        "is_virtual": is_virt,
+                        "depth": depth,
+                        "file": cur_info["file"],
+                        "kind": cur_info["kind"] or None,
+                    })
+                    cur_sl = cur_info.get("state_id_local_key")
+                    if cur_sl is not None:
+                        c_state_id, c_local_key = cur_sl
+                        more = conn.execute(
+                            "SELECT to_raw_usr, certainty, resolution_kind "
+                            "FROM semantic_edges WHERE state_id=? "
+                            "AND local_key=? AND edge_class='inherit' "
+                            "ORDER BY edge_ordinal",
+                            (c_state_id, c_local_key)).fetchall()
+                        for m in more:
+                            mu = m["to_raw_usr"] or ""
+                            if mu and mu not in visited_up:
+                                next_frontier.append((
+                                    mu, m["certainty"] or "public",
+                                    m["resolution_kind"] == "virtual"))
+                frontier = next_frontier
+            result["all_bases"] = all_bases
+
+            # BFS down (descendants) — derived lookup is a cross-state scan
+            visited_down: set[str] = {cls_usr}
+            all_derived: list[dict] = []
+            d_frontier = [(d["usr"], d["access"], d["is_virtual"])
+                          for d in derived]
+            for depth in range(1, depth_cap + 1):
+                if not d_frontier:
+                    break
+                seen_level: set[str] = set()
+                next_frontier: list[tuple[str, str, bool]] = []
+                for cur_usr, access, is_virt in d_frontier:
+                    if cur_usr in visited_down or cur_usr in seen_level:
+                        continue
+                    seen_level.add(cur_usr)
+                    visited_down.add(cur_usr)
+                    cur_info = _v2_lookup_by_usr(
+                        conn, bound_state_ids, cur_usr)
+                    all_derived.append({
+                        "name": cur_info["name"] or "<unknown>",
+                        "usr": cur_usr,
+                        "access": access,
+                        "is_virtual": is_virt,
+                        "depth": depth,
+                        "file": cur_info["file"],
+                        "kind": cur_info["kind"] or None,
+                    })
+                # Children of this level: scan all states for inherit edges
+                # pointing at any USR in seen_level.
+                if seen_level:
+                    ph = ",".join("?" * len(seen_level))
+                    level_usrs = list(seen_level)
+                    for binding_id, state_id in bound_state_ids:
+                        m_rows = conn.execute(
+                            f"SELECT e.local_key, e.certainty, "
+                            f"e.resolution_kind, s.name AS src_name, "
+                            f"s.raw_usr AS src_usr "
+                            f"FROM semantic_edges e "
+                            f"JOIN semantic_symbols_core s "
+                            f"  ON s.state_id=e.state_id "
+                            f"  AND s.local_key=e.local_key "
+                            f"WHERE e.state_id=? "
+                            f"AND e.edge_class='inherit' "
+                            f"AND e.to_raw_usr IN ({ph})",
+                            (state_id, *level_usrs)).fetchall()
+                        for r in m_rows:
+                            mu = r["src_usr"] or ""
+                            if mu and mu not in visited_down:
+                                next_frontier.append((
+                                    mu, r["certainty"] or "public",
+                                    r["resolution_kind"] == "virtual"))
+                d_frontier = next_frontier
+            result["all_derived"] = all_derived
+
+        return result
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {class_name}"}
+    except QueryViewError as e:
+        log.debug("v2 get_inheritance_chain query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_get_method_overrides(
@@ -763,12 +1239,221 @@ def v2_shadow_get_method_overrides(
 ) -> dict:
     """v2 adapter for get_method_overrides — virtual method overrides.
 
-    Defer to legacy — needs override data.
+    v2's hot schema stores ``inherit`` edges but NOT ``override`` edges
+    (the indexer writes override relationships only to the legacy
+    ``overrides`` post-process table).  This adapter DERIVES the override
+    relation from v2 World-scoped facts:
+
+      * Find the method symbol via ``v2_lookup_symbol`` and derive the
+        enclosing-class USR from the method USR (clang USR encodes
+        parent-child: ``c:@C@Cls@F@method#I`` -> class USR
+        ``c:@C@Cls``).
+      * ``overrides`` (what this method overrides): for each direct base
+        of the enclosing class (``inherit`` edges), look up same-named
+        methods whose USR begins with ``<base_usr>@F@``.
+      * ``overridden_by`` (what overrides this): for each direct derived
+        of the enclosing class (incoming ``inherit`` edges), look up
+        same-named methods whose USR begins with ``<derived_usr>@F@``.
+
+    M3B limitations (see the Batch E module note): ``qualified_name`` :=
+    ``name``; method ``file``/``line`` come from positions, else
+    ``""``/``0``; v2 has no is_virtual flag on edge-derived overrides, so
+    the derived set is a conservative over-approximation (every
+    same-name method in a base/derived class is reported) — the
+    equivalence gate decides whether to defer to legacy for byte-identical
+    parity; ``v2_lookup_symbol`` is exact-name only, so passing a
+    qualified name like ``'Derived::run'`` returns ``Symbol not found``
+    (defers to legacy via the gate).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_method_overrides requires override primitive; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        resolved = pinned.resolved_world
+        meth_result = v2_lookup_symbol(conn, pinned.view, method_name)
+        if not meth_result.hits:
+            return {"error": f"Symbol not found: {method_name}"}
+        # Prefer a method/constructor/destructor hit; fall back to first.
+        meth_hit = None
+        for h in meth_result.hits:
+            if h.kind in ("method", "destructor", "constructor"):
+                meth_hit = h
+                if h.is_definition:
+                    break
+        if meth_hit is None:
+            meth_hit = meth_result.hits[0]
+        if meth_hit.kind not in ("method", "destructor", "constructor"):
+            return {"error": f"'{method_name}' is a {meth_hit.kind}, "
+                              f"not a method."}
+        meth_usr = meth_hit.raw_usr or ""
+        meth_name_short = meth_hit.name or method_name
+
+        # Method header file/line.
+        meth_state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (meth_hit.state.tusemantic_key,
+             meth_hit.state.parser_generation)).fetchone()
+        meth_file = ""
+        meth_line = 0
+        if meth_state_id_row is not None:
+            meth_state_id = int(meth_state_id_row["state_id"])
+            pos = _v2_symbol_pos(conn, meth_hit.binding.binding_id,
+                                 meth_state_id, meth_hit.local_key)
+            if pos is not None:
+                meth_file = pos[0]
+                meth_line = pos[1]
+
+        result: dict = {
+            "name": meth_hit.name,
+            "qualified_name": meth_hit.name,
+            "kind": meth_hit.kind,
+            "file": abs_path(root, meth_file) if meth_file else "",
+            "line": meth_line,
+            "signature": meth_hit.signature or "",
+            "overrides": [],
+            "overridden_by": [],
+        }
+
+        # Derive the enclosing class USR by stripping '@F@...' suffix.
+        sep = "@F@"
+        idx = meth_usr.rfind(sep)
+        enclosing_cls_usr = meth_usr[:idx] if idx > 0 else ""
+        if not enclosing_cls_usr:
+            # No enclosing class (free function) — no overrides possible.
+            return result
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+        cls_info = _v2_lookup_by_usr(
+            conn, bound_state_ids, enclosing_cls_usr)
+        cls_sl = cls_info.get("state_id_local_key")
+
+        # Bases of the enclosing class — ``overrides`` candidates.
+        base_usrs: list[str] = []
+        if cls_sl is not None:
+            c_state_id, c_local_key = cls_sl
+            for r in conn.execute(
+                    "SELECT to_raw_usr FROM semantic_edges "
+                    "WHERE state_id=? AND local_key=? "
+                    "AND edge_class='inherit' "
+                    "ORDER BY edge_ordinal",
+                    (c_state_id, c_local_key)).fetchall():
+                u = r["to_raw_usr"] or ""
+                if u:
+                    base_usrs.append(u)
+
+        overrides: list[dict] = []
+        seen_ov: set[str] = set()
+        for b_usr in base_usrs:
+            b_esc = (b_usr.replace("\\", "\\\\")
+                          .replace("%", "\\%").replace("_", "\\_"))
+            b_pat = f"{b_esc}@F@%"
+            for binding_id, state_id in bound_state_ids:
+                rows = conn.execute(
+                    "SELECT s.raw_usr, s.local_key, s.kind "
+                    "FROM semantic_symbols_core s "
+                    "WHERE s.state_id=? AND s.name=? "
+                    "AND s.raw_usr LIKE ? ESCAPE '\\' "
+                    "ORDER BY s.is_definition DESC LIMIT 5",
+                    (state_id, meth_name_short, b_pat)).fetchall()
+                for r in rows:
+                    ov_usr = r["raw_usr"] or ""
+                    if not ov_usr or ov_usr in seen_ov:
+                        continue
+                    seen_ov.add(ov_usr)
+                    ov_info = _v2_lookup_by_usr(
+                        conn, bound_state_ids, ov_usr)
+                    ov_sl = ov_info.get("state_id_local_key")
+                    ov_file = ov_info["file"]
+                    ov_line = 0
+                    if ov_sl is not None:
+                        ov_pos = _v2_symbol_pos(
+                            conn, binding_id, ov_sl[0], ov_sl[1])
+                        if ov_pos is not None:
+                            ov_file = ov_pos[0] or ov_file
+                            ov_line = ov_pos[1]
+                    overrides.append({
+                        "usr": ov_usr,
+                        "name": ov_info["name"] or meth_name_short,
+                        "qualified_name": ov_info["name"] or meth_name_short,
+                        "kind": ov_info["kind"] or "method",
+                        "file": ov_file,
+                        "line": ov_line,
+                    })
+
+        # Derived classes of the enclosing class — ``overridden_by`` candidates.
+        derived_usrs: list[str] = []
+        seen_du: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            for r in conn.execute(
+                    "SELECT s.raw_usr AS src_usr "
+                    "FROM semantic_edges e "
+                    "JOIN semantic_symbols_core s "
+                    "  ON s.state_id=e.state_id "
+                    "  AND s.local_key=e.local_key "
+                    "WHERE e.state_id=? AND e.edge_class='inherit' "
+                    "AND e.to_raw_usr=?",
+                    (state_id, enclosing_cls_usr)).fetchall():
+                u = r["src_usr"] or ""
+                if u and u not in seen_du:
+                    seen_du.add(u)
+                    derived_usrs.append(u)
+
+        overridden_by: list[dict] = []
+        seen_ob: set[str] = set()
+        for d_usr in derived_usrs:
+            d_esc = (d_usr.replace("\\", "\\\\")
+                          .replace("%", "\\%").replace("_", "\\_"))
+            d_pat = f"{d_esc}@F@%"
+            for binding_id, state_id in bound_state_ids:
+                rows = conn.execute(
+                    "SELECT s.raw_usr, s.local_key, s.kind "
+                    "FROM semantic_symbols_core s "
+                    "WHERE s.state_id=? AND s.name=? "
+                    "AND s.raw_usr LIKE ? ESCAPE '\\' "
+                    "ORDER BY s.is_definition DESC LIMIT 5",
+                    (state_id, meth_name_short, d_pat)).fetchall()
+                for r in rows:
+                    ob_usr = r["raw_usr"] or ""
+                    if not ob_usr or ob_usr in seen_ob:
+                        continue
+                    seen_ob.add(ob_usr)
+                    ob_info = _v2_lookup_by_usr(
+                        conn, bound_state_ids, ob_usr)
+                    ob_sl = ob_info.get("state_id_local_key")
+                    ob_file = ob_info["file"]
+                    ob_line = 0
+                    if ob_sl is not None:
+                        ob_pos = _v2_symbol_pos(
+                            conn, binding_id, ob_sl[0], ob_sl[1])
+                        if ob_pos is not None:
+                            ob_file = ob_pos[0] or ob_file
+                            ob_line = ob_pos[1]
+                    overridden_by.append({
+                        "usr": ob_usr,
+                        "name": ob_info["name"] or meth_name_short,
+                        "qualified_name": ob_info["name"] or meth_name_short,
+                        "kind": ob_info["kind"] or "method",
+                        "file": ob_file,
+                        "line": ob_line,
+                    })
+
+        result["overrides"] = overrides
+        result["overridden_by"] = overridden_by
+        return result
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {method_name}"}
+    except QueryViewError as e:
+        log.debug("v2 get_method_overrides query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_get_template_instances(
@@ -781,12 +1466,173 @@ def v2_shadow_get_template_instances(
 ) -> list[dict]:
     """v2 adapter for get_template_instances — template instantiations.
 
-    Defer to legacy — needs template instance data.
+    v2's hot schema has no ``template_usr`` column, so instance discovery
+    uses a name + USR-shape heuristic over ``semantic_symbols_core``: the
+    template pattern is the row with ``is_template=1`` and ``name =
+    template_name``; instance rows are ``is_template=0`` symbols of the
+    same name whose ``raw_usr`` carries template-argument markers
+    (``'<'`` / ``'>'``).  Partial specializations (``is_template=1`` rows
+    whose USR carries template-argument markers) are added to the USR set
+    so that instances of a partial spec are surfaced under the primary
+    template's query (mirroring the legacy ADR-007 USR-set resolution).
+
+    M3B limitations (see the Batch E module note): ``qualified_name`` :=
+    ``name``; instance ``file``/``line`` come from positions joined to
+    the binding's file map, else ``""``/``0``; ``template_usr`` is the
+    pattern USR (computed, not stored); the heuristic may surface
+    unrelated same-name symbols whose USR happens to carry template-
+    argument markers — the equivalence gate decides whether to defer to
+    legacy for byte-identical parity.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_template_instances requires template instance primitive; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    limit = max(0, min(int(limit), 200))
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return [{"error": "v2 store unavailable"}]
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return [{"error": str(e)}]
+
+    try:
+        resolved = pinned.resolved_world
+        tpl_result = v2_lookup_symbol(conn, pinned.view, template_name)
+        if not tpl_result.hits:
+            return [{"error": f"Symbol not found: {template_name}"}]
+        # SymbolHit does NOT carry is_template — re-fetch the row.  Pick
+        # the first hit whose semantic_symbols_core row has is_template=1;
+        # fall back to the first definition hit, else the first hit.
+        tpl_hit = None
+        for h in tpl_result.hits:
+            row = _v2_symbol_row(conn, h)
+            if row is not None and int(row["is_template"] or 0) == 1 \
+                    and h.is_definition:
+                tpl_hit = h
+                break
+        if tpl_hit is None:
+            for h in tpl_result.hits:
+                row = _v2_symbol_row(conn, h)
+                if row is not None and int(row["is_template"] or 0) == 1:
+                    tpl_hit = h
+                    break
+        if tpl_hit is None:
+            for h in tpl_result.hits:
+                if h.is_definition:
+                    tpl_hit = h
+                    break
+        if tpl_hit is None:
+            tpl_hit = tpl_result.hits[0]
+        # Verify is_template=1 via the re-fetched row.
+        tpl_row = _v2_symbol_row(conn, tpl_hit)
+        if tpl_row is None or int(tpl_row["is_template"] or 0) != 1:
+            return [{"error": f"'{template_name}' is not a template "
+                              f"(kind: {tpl_hit.kind}, is_template: false)."}]
+        tpl_usr = tpl_hit.raw_usr or ""
+        if not tpl_usr:
+            return [{"error": f"template {template_name!r} has no raw_usr "
+                              f"in v2 store"}]
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Template header file/line.
+        tpl_state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (tpl_hit.state.tusemantic_key,
+             tpl_hit.state.parser_generation)).fetchone()
+        tpl_file = ""
+        tpl_line = 0
+        tpl_state_id: int | None = None
+        if tpl_state_id_row is not None:
+            tpl_state_id = int(tpl_state_id_row["state_id"])
+            pos = _v2_symbol_pos(conn, tpl_hit.binding.binding_id,
+                                 tpl_state_id, tpl_hit.local_key)
+            if pos is not None:
+                tpl_file = pos[0]
+                tpl_line = pos[1]
+
+        # Build the USR set: primary template + every partial specialization
+        # (is_template=1 rows whose USR carries template-arg markers AND
+        # whose USR is NOT the primary).  v2 has no template_usr column,
+        # so partial-spec discovery is by name + is_template + USR shape.
+        usr_set = {tpl_usr}
+        for binding_id, state_id in bound_state_ids:
+            for r in conn.execute(
+                    "SELECT raw_usr FROM semantic_symbols_core "
+                    "WHERE state_id=? AND name=? AND is_template=1 "
+                    "AND raw_usr != ?",
+                    (state_id, template_name, tpl_usr)).fetchall():
+                u = r["raw_usr"] or ""
+                if u and ("<" in u or ">" in u):
+                    usr_set.add(u)
+
+        # Instance rows: is_template=0 symbols of the same name whose USR
+        # carries template-argument markers.
+        instances: list[dict] = []
+        seen_inst: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            if len(instances) >= limit:
+                break
+            rows = conn.execute(
+                """SELECT s.name, s.raw_usr, s.kind, s.signature,
+                          s.is_definition, s.local_key,
+                          (SELECT MIN(p.line) FROM semantic_state_positions p
+                           WHERE p.state_id=s.state_id
+                             AND p.symbol_local_key=s.local_key) AS line,
+                          (SELECT cp.path FROM semantic_state_positions p
+                           JOIN binding_file_map bfm
+                             ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                           JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                           WHERE p.state_id=s.state_id
+                             AND p.symbol_local_key=s.local_key
+                           ORDER BY p.line LIMIT 1) AS canon_path
+                   FROM semantic_symbols_core s
+                   WHERE s.state_id=? AND s.name=? AND is_template=0
+                   ORDER BY s.is_definition DESC, s.raw_usr
+                   LIMIT ?""",
+                (binding_id, state_id, template_name,
+                 max(1, limit - len(instances)) * 4)).fetchall()
+            for r in rows:
+                u = r["raw_usr"] or ""
+                if not u or u in seen_inst:
+                    continue
+                # USR-shape filter: instance USRs carry template-arg markers.
+                if "<" not in u and ">" not in u:
+                    continue
+                seen_inst.add(u)
+                canon = r["canon_path"] or ""
+                instances.append({
+                    "usr": u,
+                    "template_usr": tpl_usr,
+                    "name": r["name"] or "",
+                    "qualified_name": r["name"] or "",
+                    "kind": r["kind"] or "",
+                    "file": abs_path(root, canon) if canon else "",
+                    "line": int(r["line"]) if r["line"] is not None else 0,
+                    "signature": r["signature"] or "",
+                    "is_definition": bool(r["is_definition"]),
+                })
+                if len(instances) >= limit:
+                    break
+
+        return [{
+            "name": tpl_hit.name,
+            "qualified_name": tpl_hit.name,
+            "kind": tpl_hit.kind,
+            "file": abs_path(root, tpl_file) if tpl_file else "",
+            "line": tpl_line,
+            "is_definition": bool(tpl_hit.is_definition),
+            "signature": tpl_hit.signature or "",
+            "instances": instances,
+            "instance_count": len(instances),
+        }]
+    except SymbolNotFound:
+        return [{"error": f"Symbol not found: {template_name}"}]
+    except QueryViewError as e:
+        log.debug("v2 get_template_instances query error: %s", e)
+        return [{"error": str(e)}]
 
 
 # ── Batch F: Variables/Conditionals/Variants adapters (M3) ─────────────────
