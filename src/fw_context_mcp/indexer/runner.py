@@ -729,17 +729,17 @@ def run(
     # the flag-gated path is preserved for backward compatibility.
     world_ctx = None
     try:
-        from ._unit_processor import _v2_shadow_flag_on
-        # M5: v2 runs when compat is OFF (v2-only) OR when v2 shadow flag is ON
-        if not _legacy_compat or _v2_shadow_flag_on():
-            import importlib
-            _worlds_mod = importlib.import_module(
-                "fw_context_mcp.store_v2.worlds")
-            world_ctx = _worlds_mod.build_world_context(
-                project_root=project_root,
-                build_dir_patterns=build_dir_patterns,
-                build_system=build_system,
-                project_id=project_id)
+        # M5: v2 is the DEFAULT semantic engine. The v2 world context is
+        # ALWAYS built — in v2-only mode (default) it is the sole path, and
+        # in compat mode it runs alongside legacy (M4 authority).
+        import importlib
+        _worlds_mod = importlib.import_module(
+            "fw_context_mcp.store_v2.worlds")
+        world_ctx = _worlds_mod.build_world_context(
+            project_root=project_root,
+            build_dir_patterns=build_dir_patterns,
+            build_system=build_system,
+            project_id=project_id)
     except Exception as _w_exc:                       # pragma: no cover
         log.debug("v2 world context unavailable: %s",
                   _w_exc)

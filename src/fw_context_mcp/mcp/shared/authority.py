@@ -27,7 +27,6 @@ import os
 from typing import Any, Callable
 
 from .shadow import (
-    shadow_v2_enabled,
     get_telemetry,
 )
 from .queryview import (
@@ -87,17 +86,19 @@ def v2_read_authority_enabled() -> bool:
 def authority_mode() -> str:
     """Return the current authority mode for diagnostic purposes.
 
-    - ``"legacy_sole"`` — legacy only, no v2 (default)
-    - ``"legacy_shadow_v2"`` — legacy authoritative + v2 shadow (M1)
-    - ``"v2_authority_legacy_fallback"`` — v2 first, legacy fallback (M2)
-    - ``"v2_authority_shadow_legacy"`` — v2 authoritative + legacy shadow (M2+)
+    M5 modes:
+    - ``"v2_only"`` — v2 sole authority (default, no legacy)
+    - ``"v2_with_legacy_compat"`` — v2 authority + legacy mirror (compat)
+    - ``"legacy_sole"`` — legacy only (v2 read authority OFF)
     """
     if v2_read_authority_enabled():
-        if shadow_v2_enabled():
-            return "v2_authority_shadow_legacy"
-        return "v2_authority_legacy_fallback"
-    if shadow_v2_enabled():
-        return "legacy_shadow_v2"
+        try:
+            from fw_context_mcp.indexer._unit_processor import _legacy_compat_on
+            if _legacy_compat_on():
+                return "v2_with_legacy_compat"
+        except Exception:
+            pass
+        return "v2_only"
     return "legacy_sole"
 
 
@@ -428,63 +429,8 @@ def format_v2_find_callers(v2_result: list[dict]) -> list[dict]:
     return out
 
 
-# ── Convenience: route with shadow ─────────────────────────────────────────
+# M5-2: route_with_shadow removed (migration scaffolding). The shadow
+# comparator (run_shadow in shadow.py) was M1/M2 dual-read telemetry that
+# is no longer reachable in normal v2-authority mode. The v2 read path
+# uses route_authority (v2 first, legacy fallback only with equivalence).
 
-def route_with_shadow(
-    tool_name: str,
-    legacy_fn: Callable,
-    v2_fn: Callable,
-    comparator: Callable | None = None,
-    format_v2: Callable[[Any], Any] | None = None,
-    *args, **kwargs,
-) -> Any:
-    """Route through authority AND run shadow when both are enabled.
-
-    When v2 read authority is ON and shadow is also ON:
-    - v2 is authoritative (user gets v2 result)
-    - legacy runs as shadow (for comparison/telemetry)
-
-    When v2 read authority is OFF and shadow is ON:
-    - legacy is authoritative (user gets legacy result)
-    - v2 runs as shadow
-
-    When both are OFF: legacy only (unchanged).
-    """
-    from .shadow import run_shadow
-
-    if not v2_read_authority_enabled():
-        # Legacy authoritative + v2 shadow (M1 mode)
-        return run_shadow(
-            tool_name, legacy_fn, v2_fn, comparator, *args, **kwargs)[0]
-
-    # v2 authoritative + legacy shadow (M2+ mode)
-    # Run legacy as shadow, return v2 result
-    def legacy_shadow():
-        return legacy_fn(*args, **kwargs)
-
-    legacy_result, shadow = run_shadow(
-        f"{tool_name}_legacy_shadow", legacy_shadow, None, None)
-    # legacy_result is the shadow; user gets v2
-    # Extract pinned_view/legacy_config_hash/project_root for RISK B check
-    pinned_view = kwargs.get("pinned_view")
-    legacy_config_hash = kwargs.get("legacy_config_hash")
-    project_root = kwargs.get("project_root")
-    try:
-        v2_result = v2_fn(*args, **kwargs)
-        if format_v2 is not None:
-            v2_result = format_v2(v2_result)
-        return v2_result
-    except Exception as e:
-        # RISK B fix (D005): gate fallback through equivalence check
-        if _can_safely_fallback(pinned_view, legacy_config_hash, project_root):
-            log.warning(
-                "v2 authority for %s failed (%s); returning legacy shadow "
-                "result. Equivalence verified (same build).",
-                tool_name, e)
-            get_telemetry().fallback_attempts += 1
-            return legacy_result
-        log.warning(
-            "v2 authority for %s failed (%s); NOT returning legacy shadow "
-            "(equivalence not established). Returning v2 error (RISK B).",
-            tool_name, e)
-        raise

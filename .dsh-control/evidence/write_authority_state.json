@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-09-30T08:24:16Z",
+  "generated_at_utc": "2026-09-30T08:30:45Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "20bd51b7d377be2742b1649aecc338922d1c9962",
-    "short": "20bd51b",
+    "head": "5e16d3506d098e147aa232e36dd34968ca48bef9",
+    "short": "5e16d35",
     "branch": "m3b-native-v2",
     "dirty": true
   },
@@ -44,13 +44,13 @@
     {
       "name": "reindex_file_impl",
       "file": "mcp/handlers/maintenance.py",
-      "line": 2069,
+      "line": 2071,
       "reaches_runner_run": false
     },
     {
       "name": "reindex_file",
       "file": "mcp/handlers/maintenance.py",
-      "line": 2418,
+      "line": 2420,
       "reaches_runner_run": false
     }
   ],
@@ -176,10 +176,10 @@
     "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "default_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "env_flags": {
-      "FW_CONTEXT_V2_WRITE_AUTHORITY": null,
-      "FW_CONTEXT_DUAL_WRITE": null,
       "FW_CONTEXT_V2_WRITE": null,
-      "FW_CONTEXT_V2_PRIMARY": null
+      "FW_CONTEXT_DUAL_WRITE": null,
+      "FW_CONTEXT_V2_PRIMARY": null,
+      "FW_CONTEXT_V2_WRITE_AUTHORITY": null
     },
     "code_default_v2_write_authority": true,
     "env_explicitly_set": false,

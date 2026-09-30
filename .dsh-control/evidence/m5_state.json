@@ -1,6 +1,6 @@
 {
-  "head": "20bd51b7d377be2742b1649aecc338922d1c9962",
-  "head_short": "20bd51b",
+  "head": "5e16d3506d098e147aa232e36dd34968ca48bef9",
+  "head_short": "5e16d35",
   "dirty": true,
   "legacy_db": {
     "reads": 0,
@@ -31,39 +31,16 @@
     "sites": []
   },
   "migration_scaffolding": {
-    "shadow_dual_read_paths": 8,
-    "temporary_authority_flags": 15,
-    "temporary_comparators": 18,
-    "dual_write_migration_paths": 4,
+    "shadow_dual_read_paths": 0,
+    "temporary_authority_flags": 0,
+    "temporary_comparators": 0,
+    "dual_write_migration_paths": 0,
     "obsolete_legacy_gate_clauses": 0,
     "sites": {
-      "shadow_dual_read_paths": [
-        "authority.py:217",
-        "v2_shadow_adapters.py:1",
-        "v2_shadow_adapters.py:4",
-        "v2_shadow_adapters.py:8",
-        "v2_shadow_adapters.py:10"
-      ],
-      "temporary_authority_flags": [
-        "indexer\\runner.py:732",
-        "indexer\\runner.py:734",
-        "indexer\\_unit_processor.py:70",
-        "indexer\\_unit_processor.py:78",
-        "indexer\\_unit_processor.py:116"
-      ],
-      "temporary_comparators": [
-        "authority.py:437",
-        "authority.py:458",
-        "shadow.py:9",
-        "shadow.py:13",
-        "shadow.py:23"
-      ],
-      "dual_write_migration_paths": [
-        "indexer\\runner.py:734",
-        "indexer\\_unit_processor.py:116",
-        "indexer\\_unit_processor.py:532",
-        "mcp\\handlers\\maintenance.py:1543"
-      ],
+      "shadow_dual_read_paths": [],
+      "temporary_authority_flags": [],
+      "temporary_comparators": [],
+      "dual_write_migration_paths": [],
       "obsolete_legacy_gate_clauses": []
     }
   },

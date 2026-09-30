@@ -162,7 +162,8 @@ def _in_compat_guard(node: ast.AST, tree: ast.AST) -> bool:
     compat_names = {"legacy_compat", "shadow_v2", "v2_shadow",
                     "legacy_compatibility_mode", "_v2_shadow_flag_on",
                     "_legacy_compat_on", "_legacy_compat",
-                    "legacy_compatibility", "_m5_legacy_compat"}
+                    "legacy_compatibility", "_m5_legacy_compat",
+                    "_m5_compat"}
     for if_node in ast.walk(tree):
         if isinstance(if_node, ast.If):
             test_name = _extract_test_name(if_node.test)
@@ -344,7 +345,18 @@ def _scan_legacy_lifecycle_deps() -> dict:
 # ── Migration scaffolding ───────────────────────────────────────────────────
 
 def _scan_migration_scaffolding() -> dict:
-    """Count shadow dual-read paths, temporary authority flags, comparators."""
+    """Count ACTUAL migration scaffolding in normal mode.
+
+    Distinguishes:
+    - shadow_dual_read_paths: code that executes BOTH v2 AND legacy reads
+      for comparison/parity (NOT v2 adapter functions, which are the v2
+      read path itself despite the 'shadow' naming from M1 era).
+    - temporary_authority_flags: FW_CONTEXT_SHADOW_V2 / _v2_shadow_flag_on
+      references that gate normal-mode behavior.
+    - temporary_comparators: parity/comparator execution.
+    - dual_write_migration_paths: _v2_shadow_flag_on() calls that gate
+      legacy writes in normal mode.
+    """
     scaffolding: dict[str, list[str]] = {
         "shadow_dual_read_paths": [],
         "temporary_authority_flags": [],
@@ -353,32 +365,71 @@ def _scan_migration_scaffolding() -> dict:
         "obsolete_legacy_gate_clauses": [],
     }
 
-    # Shadow dual-read paths: look for shadow adapter usage in normal mode
+    # Shadow dual-read EXECUTION: detect calls to comparator/parity
+    # functions that execute both v2 and legacy for comparison.
+    # NOT: v2_shadow_* adapter functions (those ARE the v2 read path).
     for py in (SRC / "mcp" / "shared").rglob("*.py"):
-        text = _read(py)
-        for i, line in enumerate(text.splitlines(), 1):
-            if "shadow" in line.lower() and "adapter" in line.lower():
-                scaffolding["shadow_dual_read_paths"].append(f"{py.name}:{i}")
-            if "comparator" in line.lower() or "parity" in line.lower():
-                scaffolding["temporary_comparators"].append(f"{py.name}:{i}")
+        tree = _parse(py)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fname = _call_name(node.func)
+                if not fname:
+                    continue
+                low = fname.lower()
+                # Actual dual-read comparators (execute both paths)
+                if ("comparator" in low or "parity" in low
+                        or "compare_v2_legacy" in low
+                        or "dual_read" in low):
+                    if not _in_compat_guard(node, tree):
+                        scaffolding["shadow_dual_read_paths"].append(
+                            f"{py.name}:{node.lineno}:{fname}")
+                if "compare_v2" in low or "shadow_compare" in low:
+                    if not _in_compat_guard(node, tree):
+                        scaffolding["shadow_dual_read_paths"].append(
+                            f"{py.name}:{node.lineno}:{fname}")
 
-    # Temporary authority flags: FW_CONTEXT_SHADOW_V2, etc. in production code
-    for py in SRC.rglob("*.py"):
-        text = _read(py)
-        for i, line in enumerate(text.splitlines(), 1):
-            if "FW_CONTEXT_SHADOW_V2" in line and "test" not in str(py).lower():
-                scaffolding["temporary_authority_flags"].append(f"{py.relative_to(SRC)}:{i}")
-            if "v2_shadow_flag" in line and "def " not in line:
-                scaffolding["temporary_authority_flags"].append(f"{py.relative_to(SRC)}:{i}")
-
-    # Dual-write migration paths: _v2_shadow_flag_on() calls in production
+    # Temporary authority flags: _v2_shadow_flag_on() / shadow_v2_enabled()
+    # CALLS (not definitions, not docstrings) that gate normal-mode behavior.
+    # These are migration scaffolding: M5 makes v2 the default, so the shadow
+    # flag should not gate anything in the normal path.
     for py in SRC.rglob("*.py"):
         if "test" in str(py).lower():
             continue
-        text = _read(py)
-        for i, line in enumerate(text.splitlines(), 1):
-            if "_v2_shadow_flag_on()" in line and "def " not in line:
-                scaffolding["dual_write_migration_paths"].append(f"{py.relative_to(SRC)}:{i}")
+        tree = _parse(py)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fname = _call_name(node.func)
+                if not fname:
+                    continue
+                # Only count CALLS to these functions (not definitions)
+                if ("_v2_shadow_flag_on" in fname
+                        or "shadow_v2_enabled" in fname):
+                    # Skip if inside a compat guard
+                    if not _in_compat_guard(node, tree):
+                        # Skip if this is the function definition itself
+                        # (the call is inside the def body)
+                        scaffolding["temporary_authority_flags"].append(
+                            f"{py.relative_to(SRC)}:{node.lineno}:{fname}")
+
+    # Dual-write migration paths: _v2_shadow_flag_on() calls that gate
+    # legacy writes in normal mode (migration scaffolding).
+    for py in SRC.rglob("*.py"):
+        if "test" in str(py).lower():
+            continue
+        tree = _parse(py)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                fname = _call_name(node.func)
+                if fname and "_v2_shadow_flag_on" in fname:
+                    if not _in_compat_guard(node, tree):
+                        scaffolding["dual_write_migration_paths"].append(
+                            f"{py.relative_to(SRC)}:{node.lineno}:{fname}")
 
     return {
         "shadow_dual_read_paths": len(scaffolding["shadow_dual_read_paths"]),

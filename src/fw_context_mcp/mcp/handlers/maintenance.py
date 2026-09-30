@@ -1539,8 +1539,10 @@ def _reindex_parse_and_store(
                 # World.  This closes M4-BUG-002 (reindex_file_impl bypassed
                 # v2, leaving the v2 World stale and the M3B read authority
                 # returning stale data).
-                from ...indexer._unit_processor import _v2_shadow_flag_on
-                if _v2_shadow_flag_on():
+                from ...indexer._unit_processor import _legacy_compat_on
+                # M5: v2 certification always runs (default semantic engine).
+                # In compat mode, legacy also runs alongside.
+                if True:
                     try:
                         import importlib as _imp
                         _worlds_mod = _imp.import_module(

@@ -217,7 +217,10 @@ def classify_symbol_lists(
     return "MATCH", detail
 
 
-# ── Shadow runner ───────────────────────────────────────────────────────────
+# ── Shadow runner (M5-2: migration scaffolding — compat-only) ───────────────
+# run_shadow was the M1/M2 dual-read comparator. After M3B (v2 read
+# authority) and M5 (v2-only default), it is unreachable in normal mode.
+# Retained as compat-island diagnostic; gated behind _legacy_compat_on().
 
 def run_shadow(
     tool_name: str,
@@ -228,9 +231,9 @@ def run_shadow(
 ) -> tuple[Any, ShadowResult | None]:
     """Run legacy authoritatively + v2 as shadow, return (legacy_result, shadow).
 
-    The user ALWAYS gets the legacy result. The v2 shadow runs only when
-    ``shadow_v2_enabled()`` is True and ``v2_fn`` is not None. Any v2
-    failure is caught and logged — it NEVER affects the legacy result (P3).
+    M5-2: this function is migration scaffolding. It is only reachable when
+    legacy compatibility mode is explicitly enabled. In normal v2-only mode,
+    the v2 read path uses route_authority (v2 first, no dual-read comparison).
 
     Args:
         tool_name: Name of the MCP tool (for telemetry/logging).
@@ -246,60 +249,70 @@ def run_shadow(
         (legacy_result, shadow_result_or_None). The shadow_result is None
         when shadow is disabled or v2_fn is None.
     """
-    # Legacy is ALWAYS authoritative in M1
-    t0 = time.perf_counter()
-    legacy_result = legacy_fn(*args, **kwargs)
-    legacy_ms = (time.perf_counter() - t0) * 1000
-
-    _telemetry.legacy_authoritative_queries += 1
-
-    if not shadow_v2_enabled() or v2_fn is None:
-        if v2_fn is None:
-            _telemetry.v2_shadow_unsupported += 1
-        return legacy_result, None
-
-    # Run v2 shadow
-    _telemetry.v2_shadow_queries += 1
-    t0 = time.perf_counter()
+    # M5-2: this function is migration scaffolding (compat-only). In
+    # v2-only mode it is never called. The entire body below is gated.
     try:
-        v2_result = v2_fn(*args, **kwargs)
-        v2_ms = (time.perf_counter() - t0) * 1000
-    except Exception as e:
-        v2_ms = (time.perf_counter() - t0) * 1000
-        _telemetry.v2_shadow_failures += 1
+        from fw_context_mcp.indexer._unit_processor import _legacy_compat_on
+        _m5_compat = _legacy_compat_on()
+    except Exception:
+        _m5_compat = False
+    if _m5_compat:
+        # Legacy is ALWAYS authoritative in M1
+        t0 = time.perf_counter()
+        legacy_result = legacy_fn(*args, **kwargs)
+        legacy_ms = (time.perf_counter() - t0) * 1000
+
+        _telemetry.legacy_authoritative_queries += 1
+
+        if not shadow_v2_enabled() or v2_fn is None:
+            if v2_fn is None:
+                _telemetry.v2_shadow_unsupported += 1
+            return legacy_result, None
+
+        # Run v2 shadow
+        _telemetry.v2_shadow_queries += 1
+        t0 = time.perf_counter()
+        try:
+            v2_result = v2_fn(*args, **kwargs)
+            v2_ms = (time.perf_counter() - t0) * 1000
+        except Exception as e:
+            v2_ms = (time.perf_counter() - t0) * 1000
+            _telemetry.v2_shadow_failures += 1
+            shadow = ShadowResult(
+                tool_name=tool_name,
+                legacy_result=legacy_result,
+                v2_result=None,
+                classification="V2_SHADOW_ERROR",
+                detail={"error": str(e), "error_type": type(e).__name__},
+                legacy_latency_ms=legacy_ms,
+                v2_latency_ms=v2_ms,
+                error=f"{type(e).__name__}: {e}",
+            )
+            log.debug("v2 shadow error for %s: %s", tool_name, e)
+            return legacy_result, shadow
+
+        # Classify
+        if comparator is None:
+            comparator = _default_comparator
+        classification, detail = comparator(tool_name, legacy_result, v2_result)
+
+        if classification != "MATCH":
+            _telemetry.record_mismatch(classification)
+            log.info("Shadow mismatch for %s: %s detail=%s",
+                     tool_name, classification, detail)
+
         shadow = ShadowResult(
             tool_name=tool_name,
             legacy_result=legacy_result,
-            v2_result=None,
-            classification="V2_SHADOW_ERROR",
-            detail={"error": str(e), "error_type": type(e).__name__},
+            v2_result=v2_result,
+            classification=classification,
+            detail=detail,
             legacy_latency_ms=legacy_ms,
             v2_latency_ms=v2_ms,
-            error=f"{type(e).__name__}: {e}",
         )
-        log.debug("v2 shadow error for %s: %s", tool_name, e)
         return legacy_result, shadow
-
-    # Classify
-    if comparator is None:
-        comparator = _default_comparator
-    classification, detail = comparator(tool_name, legacy_result, v2_result)
-
-    if classification != "MATCH":
-        _telemetry.record_mismatch(classification)
-        log.info("Shadow mismatch for %s: %s detail=%s",
-                 tool_name, classification, detail)
-
-    shadow = ShadowResult(
-        tool_name=tool_name,
-        legacy_result=legacy_result,
-        v2_result=v2_result,
-        classification=classification,
-        detail=detail,
-        legacy_latency_ms=legacy_ms,
-        v2_latency_ms=v2_ms,
-    )
-    return legacy_result, shadow
+    # v2-only mode: run_shadow should never be called. Fallback.
+    return legacy_fn(*args, **kwargs), None
 
 
 def _default_comparator(

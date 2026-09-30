@@ -529,18 +529,21 @@ def _process_unit(
     # OWN short transaction on the separate v2 store.  The store_v2 module
     # is imported LAZILY (dynamic, only when the flag is on) so the Slice-0
     # inertness gate holds: flag off ⇒ store_v2 is never even loaded.
-    if _v2_shadow_flag_on():
-        try:
-            import importlib
-            _cert_mod = importlib.import_module(
-                "fw_context_mcp.store_v2.certify")
-            _cert_mod.certify_and_publish_for_unit(
-                unit=unit, parsed=parsed, project_root=project_root,
-                config_hash=config_hash, context_id=context_id,
-                db_path=db_path, world=world_ctx)
-        except Exception as _v2_exc:                  # pragma: no cover
-            log.debug("v2 shadow hook returned error (legacy unaffected): %s",
-                      _v2_exc)
+    # ── v2 per-TU certification + publication ──
+    # M5: v2 is the DEFAULT semantic engine. Certification always runs
+    # (it is the sole semantic write path in v2-only mode, and runs
+    # alongside legacy in compat mode). Runs BEFORE the legacy write lock.
+    try:
+        import importlib
+        _cert_mod = importlib.import_module(
+            "fw_context_mcp.store_v2.certify")
+        _cert_mod.certify_and_publish_for_unit(
+            unit=unit, parsed=parsed, project_root=project_root,
+            config_hash=config_hash, context_id=context_id,
+            db_path=db_path, world=world_ctx)
+    except Exception as _v2_exc:                  # pragma: no cover
+        log.debug("v2 certify hook returned error: %s",
+                   _v2_exc)
 
     # ── M5-1: legacy DB writes are gated behind explicit compat mode ──
     # When _legacy_compat_on() is False (the M5 default), normal indexing is
