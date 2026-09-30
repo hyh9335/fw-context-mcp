@@ -1,0 +1,10 @@
+{
+  "canonical_project_root": "D:/github/fw-context-mcp",
+  "bootstrap_timestamp_utc": "2026-09-30T03:04:22Z",
+  "bootstrap_head": "ac76feb6514224691eb97296f8081694676b7a1e",
+  "bootstrap_head_short": "ac76feb",
+  "bootstrap_branch": "main",
+  "bootstrap_dirty": true,
+  "git_dir_present": true,
+  "lock": "All controller scripts MUST refuse to operate outside this canonical root. Resolve any project_root argument against this path; abort if it escapes."
+}
