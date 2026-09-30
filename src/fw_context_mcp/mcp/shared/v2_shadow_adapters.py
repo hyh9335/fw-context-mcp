@@ -1504,10 +1504,31 @@ def v2_shadow_trace_data_flow(
         return []
 
 
-# ── Batch C: Source/Search adapters (M3) ───────────────────────────────────
-# v2 doesn't expose COLD payload (file/line/body) through public query
-# functions yet. These adapters raise V2UnsupportedOperation to defer to
-# legacy (with equivalence gate). v2 still provides World resolution.
+# ── Batch C: Source/Search adapters (M3B v2-native read) ───────────────────
+#
+# M3B v2-native read adapters for the source/file family. Each resolves
+# the pinned QueryView, reads v2 World-scoped facts directly
+# (semantic_symbols_core / semantic_state_positions / state_file_table /
+# file_blobs / semantic_edges / binding_file_map / canon_paths), and
+# formats the result to the legacy handler's shape.
+#
+# Documented M3B limitations — these are v2 hot-schema gaps, NOT weakenings
+# of the equivalence gate. Each adapter computes exactly what v2 stores:
+#
+#  * file_blobs.content holds RAW file bytes (not ifdef-filtered).  The
+#    legacy ``symbols.source`` / ``files.content`` columns carry the
+#    ifdef-filtered copy; v2's hot schema has no filtered-content column.
+#    Bodies and file content therefore hold every ``#ifdef`` branch.
+#  * semantic_symbols_core has no qualified_name / docstring / enum_value /
+#    template_usr / parent_usr column -> qualified_name := name; docstring
+#    := ""; enum_value / constants / template_usr / parent_usr are omitted.
+#  * semantic_state_positions carries line / end_line / file_ordinal; file
+#    for a symbol comes from the binding's file map joined to positions.
+#  * is_template / is_virtual / is_pure_virtual are re-fetched from the
+#    full symbol row (SymbolHit does not expose them).
+#  * read_file has no mtime / skeleton / directives view in v2 — the
+#    'directives' mode reads semantic_condition_index for the file's state.
+
 
 def v2_shadow_get_source(
     name: str,
@@ -1516,15 +1537,92 @@ def v2_shadow_get_source(
     image: str | None = None,
     **kwargs,
 ) -> dict:
-    """v2 adapter for get_source — function body via libclang extents.
+    """v2 adapter for get_source — function/enum/macro body via libclang extents.
 
-    v2 doesn't expose COLD payload (body text, line numbers) through public
-    query functions yet. Defer to legacy (with equivalence gate).
+    Reads v2 World-scoped symbol positions (``semantic_state_positions``)
+    and the content-addressed file blob (``state_file_table`` →
+    ``file_blobs.content``) to extract the symbol's body text (lines
+    ``line``..``end_line``).  The body is number-prefixed to match the
+    legacy ``get_source`` format.
+
+    M3B limitations (see the Batch C module note): ``qualified_name`` :=
+    ``name`` (v2 has no qualified_name column); ``docstring`` is ``""``;
+    ``enum_value`` / ``constants`` / ``template_usr`` / ``parent_usr`` are
+    not emitted; ``source_origin`` is ``"index"`` (the body comes from the
+    v2 store); ``stale`` / ``stale_warning`` are not computed (v2 has no
+    per-file mtime in the hot schema); the body holds every ``#ifdef``
+    branch (``file_blobs`` stores raw bytes, not a filtered copy).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_source requires COLD payload access (body text, line "
-        f"numbers); deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        result = v2_lookup_symbol(conn, pinned.view, name)
+        # Prefer a definition hit (matches legacy _lookup_definition).
+        hit = None
+        for h in result.hits:
+            if h.is_definition:
+                hit = h
+                break
+        if hit is None and result.hits:
+            hit = result.hits[0]
+        if hit is None:
+            return {"error": f"Symbol not found: {name}"}
+
+        state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (hit.state.tusemantic_key,
+             hit.state.parser_generation)).fetchone()
+        if state_id_row is None:
+            return {"error": f"Symbol not found: {name}"}
+        state_id = int(state_id_row["state_id"])
+
+        full_row = _v2_symbol_row(conn, hit)
+        is_template = bool(full_row["is_template"]) if full_row else False
+        is_virtual = bool(full_row["is_virtual"]) if full_row else False
+        is_pure_virtual = bool(full_row["is_pure_virtual"]) if full_row else False
+
+        canon_path, line_no, end_line, body_text = _v2_symbol_body(
+            conn, hit.binding.binding_id, state_id, hit.local_key)
+
+        out: dict = {
+            "name": hit.name,
+            "qualified_name": hit.name,  # v2 has no qualified_name column
+            "kind": hit.kind or "",
+            "file": abs_path(root, canon_path) if canon_path else "",
+            "line": line_no,
+            "signature": hit.signature or "",
+            "is_definition": hit.is_definition,
+            "is_template": is_template,
+            "is_virtual": is_virtual,
+            "is_pure_virtual": is_pure_virtual,
+            "docstring": "",  # v2 hot schema has no docstring column
+        }
+        if end_line:
+            out["end_line"] = end_line
+        if body_text:
+            out["source"] = _v2_number_lines(body_text, line_no)
+            out["source_origin"] = "index"
+        else:
+            out["warning"] = (
+                f"Could not read source from v2 store for {name}")
+        return out
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {name}"}
+    except TuPoisoned:
+        return {"error": f"Symbol not found: {name}"}
+    except QueryViewError as e:
+        log.debug("v2 get_source query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_get_symbol_context(
@@ -1536,13 +1634,160 @@ def v2_shadow_get_symbol_context(
 ) -> dict:
     """v2 adapter for get_symbol_context — body + callers + callees.
 
-    v2 can provide callers/callees via symbol_edges, but not the body.
-    Defer to legacy (with equivalence gate) until COLD payload access exists.
+    Reads the symbol body (same as :func:`v2_shadow_get_source`), then
+    reads v2 World-scoped ``call`` / ``indirect`` edges:
+    * callers — incoming edges (``to_raw_usr`` matches the symbol's USR)
+      across all bound states (the find_callers pattern);
+    * callees — outgoing edges from the symbol's state-local row, with
+      the callee display name resolved from ``to_name`` or a cross-state
+      USR lookup when ``to_name`` is empty.
+
+    M3B limitations (see the Batch C/E/G module notes): ``qualified_name``
+    := ``name``; caller/callee ``file`` / ``line`` come from positions
+    (defaulting to ``""`` / ``0``); ``indirect_call_sites`` and
+    ``resolution`` are not emitted (v2 hot schema has no Phase-3 link
+    table); ``llm_analysis`` / ``overrides`` / ``overridden_by`` are not
+    emitted; the body holds every ``#ifdef`` branch (raw file bytes).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_symbol_context requires COLD payload access (body text); "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        result = v2_lookup_symbol(conn, pinned.view, name)
+        hit = None
+        for h in result.hits:
+            if h.is_definition:
+                hit = h
+                break
+        if hit is None and result.hits:
+            hit = result.hits[0]
+        if hit is None:
+            return {"error": f"Symbol not found: {name}"}
+
+        state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (hit.state.tusemantic_key,
+             hit.state.parser_generation)).fetchone()
+        if state_id_row is None:
+            return {"error": f"Symbol not found: {name}"}
+        state_id = int(state_id_row["state_id"])
+
+        full_row = _v2_symbol_row(conn, hit)
+        is_template = bool(full_row["is_template"]) if full_row else False
+        is_virtual = bool(full_row["is_virtual"]) if full_row else False
+        is_pure_virtual = bool(full_row["is_pure_virtual"]) if full_row else False
+
+        canon_path, line_no, end_line, body_text = _v2_symbol_body(
+            conn, hit.binding.binding_id, state_id, hit.local_key)
+
+        target_usrs = {h.raw_usr for h in result.hits if h.raw_usr}
+        bound_state_ids = _v2_state_ids_for_bindings(conn, pinned.resolved_world)
+
+        # Callers: incoming call/indirect edges to any of the symbol's USRs.
+        callers: list[dict] = []
+        seen_callers: set[tuple] = set()
+        if target_usrs:
+            ph = ",".join("?" * len(target_usrs))
+            usr_list = list(target_usrs)
+            for _bid, sid in bound_state_ids:
+                rows = conn.execute(
+                    f"""SELECT e.edge_class, s.name AS src_name,
+                               s.raw_usr AS src_usr,
+                               s.kind AS src_kind, s.local_key AS src_lk
+                        FROM semantic_edges e
+                        JOIN semantic_symbols_core s
+                          ON s.state_id=e.state_id AND s.local_key=e.local_key
+                        WHERE e.state_id=?
+                        AND e.edge_class IN ('call','indirect')
+                        AND e.to_raw_usr IN ({ph})""",
+                    (sid, *usr_list)).fetchall()
+                for r in rows:
+                    src_usr = r["src_usr"] or ""
+                    key = (sid, int(r["src_lk"]), src_usr)
+                    if key in seen_callers:
+                        continue
+                    seen_callers.add(key)
+                    callers.append({
+                        "name": r["src_name"] or "",
+                        "qualified_name": r["src_name"] or "",
+                        "file": "",
+                        "line": 0,
+                        "kind": r["src_kind"] or "",
+                        "ref_kind": r["edge_class"],
+                    })
+
+        # Callees: outgoing call/indirect edges from the symbol's row.
+        callees: list[dict] = []
+        seen_callees: set[tuple] = set()
+        edge_rows = conn.execute(
+            """SELECT e.edge_class, e.to_raw_usr, e.to_name
+                FROM semantic_edges e
+                WHERE e.state_id=? AND e.local_key=?
+                AND e.edge_class IN ('call','indirect')
+                ORDER BY e.edge_ordinal""",
+            (state_id, hit.local_key)).fetchall()
+        for r in edge_rows:
+            to_usr = r["to_raw_usr"] or ""
+            to_name = r["to_name"] or ""
+            key = (to_usr, to_name, r["edge_class"])
+            if key in seen_callees:
+                continue
+            seen_callees.add(key)
+            callee_name = to_name
+            callee_kind = ""
+            if not callee_name and to_usr:
+                meta = _v2_lookup_by_usr(conn, bound_state_ids, to_usr)
+                callee_name = meta["name"] or to_usr
+                callee_kind = meta["kind"]
+            callees.append({
+                "name": callee_name or "",
+                "qualified_name": callee_name or "",
+                "kind": callee_kind,
+                "file": "",
+                "line": 0,
+                "ref_kind": r["edge_class"],
+            })
+
+        out: dict = {
+            "name": hit.name,
+            "qualified_name": hit.name,
+            "kind": hit.kind or "",
+            "file": abs_path(root, canon_path) if canon_path else "",
+            "line": line_no,
+            "signature": hit.signature or "",
+            "is_definition": hit.is_definition,
+            "is_template": is_template,
+            "is_virtual": is_virtual,
+            "is_pure_virtual": is_pure_virtual,
+            "callers": callers,
+            "callees": callees,
+            "indirect_call_sites": [],  # v2 hot schema has no Phase-3 link table
+        }
+        if end_line:
+            out["end_line"] = end_line
+        if body_text:
+            out["source"] = _v2_number_lines(body_text, line_no)
+            out["source_origin"] = "index"
+        else:
+            out["warning"] = (
+                f"Could not read source from v2 store for {name}")
+        return out
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {name}"}
+    except TuPoisoned:
+        return {"error": f"Symbol not found: {name}"}
+    except QueryViewError as e:
+        log.debug("v2 get_symbol_context query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_explain_symbol(
@@ -1552,13 +1797,85 @@ def v2_shadow_explain_symbol(
     image: str | None = None,
     **kwargs,
 ) -> dict:
-    """v2 adapter for explain_symbol — LLM explanation of a symbol.
+    """v2 adapter for explain_symbol — symbol explanation (metadata + source).
 
-    Defer to legacy (with equivalence gate) — LLM explanation needs body text.
+    Reads v2 World-scoped symbol metadata and body text (same as
+    :func:`v2_shadow_get_source`), then derives a template ``explanation``
+    from the symbol's kind/name/location — v2 has no pre-computed LLM
+    analysis (``llm_analysis``) in the hot schema.
+
+    M3B limitations (see the Batch C module note): ``qualified_name`` :=
+    ``name``; ``explanation`` is a v2-derived template (no LLM); no
+    ``llm_analysis``; the body holds every ``#ifdef`` branch (raw file
+    bytes).  ``context_lines`` is accepted but has no effect (v2 reads
+    the full symbol extent, not a window).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 explain_symbol requires COLD payload access; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        result = v2_lookup_symbol(conn, pinned.view, name)
+        hit = None
+        for h in result.hits:
+            if h.is_definition:
+                hit = h
+                break
+        if hit is None and result.hits:
+            hit = result.hits[0]
+        if hit is None:
+            return {"error": f"Symbol not found: {name}"}
+
+        state_id_row = conn.execute(
+            "SELECT state_id FROM semantic_states WHERE "
+            "tusemantic_key=? AND parser_generation=?",
+            (hit.state.tusemantic_key,
+             hit.state.parser_generation)).fetchone()
+        if state_id_row is None:
+            return {"error": f"Symbol not found: {name}"}
+        state_id = int(state_id_row["state_id"])
+
+        canon_path, line_no, end_line, body_text = _v2_symbol_body(
+            conn, hit.binding.binding_id, state_id, hit.local_key)
+        file_abs = abs_path(root, canon_path) if canon_path else ""
+
+        kind = hit.kind or "symbol"
+        signature = hit.signature or ""
+        explanation = (
+            f"v2-native: {kind} {name} at {file_abs}:{line_no}"
+            + (f" (signature: {signature})" if signature else "")
+            + (f" — defined here." if hit.is_definition
+                else " — declaration only.")
+        )
+
+        out: dict = {
+            "name": hit.name,
+            "qualified_name": hit.name,
+            "kind": kind,
+            "file": file_abs,
+            "line": line_no,
+            "signature": signature,
+            "explanation": explanation,
+        }
+        if end_line:
+            out["end_line"] = end_line
+        if body_text:
+            out["source"] = _v2_number_lines(body_text, line_no)
+        return out
+    except SymbolNotFound:
+        return {"error": f"Symbol not found: {name}"}
+    except TuPoisoned:
+        return {"error": f"Symbol not found: {name}"}
+    except QueryViewError as e:
+        log.debug("v2 explain_symbol query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_get_file_map(
@@ -1570,11 +1887,98 @@ def v2_shadow_get_file_map(
 ) -> dict:
     """v2 adapter for get_file_map — file structure overview.
 
-    Defer to legacy (with equivalence gate) — needs file content.
+    Resolves *file_path* to a canon path, finds the world's bound
+    bindings whose file map includes it, and reads every symbol position
+    in that ``(state, file_ordinal)`` joined to ``semantic_symbols_core``
+    for name/kind/signature.  Groups by ``kind`` to match the legacy
+    member-table shape.
+
+    M3B limitations (see the Batch C/E module notes): ``qualified_name``
+    := ``name``; ``end_line`` comes from positions (omitted when 0);
+    enum constants are listed as ``enum_constant`` kind items (v2 has no
+    ``enum_value`` column in the hot schema, so ``enum_value`` is
+    omitted); ``subgroups`` grouping by parent enum is not emitted (v2
+    has no qualified_name to derive the parent); ``signatures`` is
+    honored, ``max_per_kind`` bounds the items list (default 30).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 get_file_map requires file content access; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    signatures = bool(kwargs.get("signatures", False))
+    max_per_kind = int(kwargs.get("max_per_kind", 30))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        canon_path_id = _v2_resolve_canon_path_id(conn, file_path)
+        if canon_path_id is None:
+            return {"error": (
+                f"File not found in v2 store: {file_path}. Check the path — "
+                f"use relative paths like 'src/main.cpp'.")}
+        cp_row = conn.execute(
+            "SELECT path FROM canon_paths WHERE path_id=?",
+            (canon_path_id,)).fetchone()
+        canon_path = cp_row["path"] if cp_row is not None else file_path
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, pinned.resolved_world)
+
+        groups: dict[str, dict] = {}
+        total = 0
+        seen_usrs: set[str] = set()
+        for binding_id, state_id in bound_state_ids:
+            fo_row = conn.execute(
+                "SELECT file_ordinal FROM binding_file_map "
+                "WHERE binding_id=? AND canon_path_id=?",
+                (binding_id, canon_path_id)).fetchone()
+            if fo_row is None:
+                continue
+            file_ordinal = int(fo_row["file_ordinal"])
+            rows = conn.execute(
+                """SELECT s.name, s.raw_usr, s.kind, s.signature,
+                          s.is_definition, s.local_key,
+                          p.line, p.end_line
+                   FROM semantic_state_positions p
+                   JOIN semantic_symbols_core s
+                     ON s.state_id=p.state_id
+                       AND s.local_key=p.symbol_local_key
+                   WHERE p.state_id=? AND p.file_ordinal=?
+                   ORDER BY s.kind, p.line""",
+                (state_id, file_ordinal)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                if usr and usr in seen_usrs:
+                    continue
+                if usr:
+                    seen_usrs.add(usr)
+                kind = r["kind"] or "unknown"
+                g = groups.setdefault(kind, {"count": 0, "items": []})
+                g["count"] += 1
+                total += 1
+                if max_per_kind == 0 or len(g["items"]) < max_per_kind:
+                    entry: dict = {
+                        "name": r["name"] or "",
+                        "qualified_name": r["name"] or "",
+                        "line": int(r["line"]) if r["line"] is not None else 0,
+                    }
+                    if r["end_line"]:
+                        entry["end_line"] = int(r["end_line"])
+                    if signatures and r["signature"]:
+                        entry["signature"] = r["signature"]
+                    g["items"].append(entry)
+        return {
+            "file": canon_path,
+            "total_symbols": total,
+            "symbols": groups,
+        }
+    except QueryViewError as e:
+        log.debug("v2 get_file_map query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_read_file(
@@ -1584,13 +1988,145 @@ def v2_shadow_read_file(
     image: str | None = None,
     **kwargs,
 ) -> dict:
-    """v2 adapter for read_file — ifdef-filtered file content.
+    """v2 adapter for read_file — file content.
 
-    Defer to legacy (with equivalence gate) — needs file content.
+    Resolves *file_path* to a canon path, finds a bound binding whose
+    file map includes it, and reads the content-addressed file blob
+    (``binding_file_map.blob_sha`` → ``file_blobs.content``).  Applies
+    the ``start_line`` / ``end_line`` window when given, and optionally
+    number-prefixed text when ``line_numbers=True``.
+
+    M3B limitations (see the Batch C module note): v2 ``file_blobs``
+    stores RAW file bytes (not ifdef-filtered) — ``content`` holds every
+    ``#ifdef`` branch, and ``all_lines_inactive`` / ``skeleton`` are not
+    computed; ``mtime`` is not available (set to 0.0); the ``directives``
+    mode reads ``semantic_condition_index`` for the file's state and
+    returns ``{line, kind, text}`` rows; ``stale`` / ``stale_warning``
+    are not computed.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 read_file requires file content access; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    line_numbers = bool(kwargs.get("line_numbers", False))
+    start_line = int(kwargs.get("start_line", 0) or 0)
+    end_line = int(kwargs.get("end_line", 0) or 0)
+    mode = str(kwargs.get("mode", "active") or "active")
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return {"error": "v2 store unavailable"}
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError as e:
+        return {"error": str(e)}
+
+    try:
+        canon_path_id = _v2_resolve_canon_path_id(conn, file_path)
+        if canon_path_id is None:
+            return {"error": (
+                f"File not found in v2 store: {file_path}. Check the path — "
+                f"use relative paths like 'src/main.cpp'.")}
+        cp_row = conn.execute(
+            "SELECT path FROM canon_paths WHERE path_id=?",
+            (canon_path_id,)).fetchone()
+        canon_path = cp_row["path"] if cp_row is not None else file_path
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, pinned.resolved_world)
+
+        # 'directives' mode: read semantic_condition_index for the file's
+        # state.  We need the file_ordinal to scope directives to THIS file
+        # (a state carries condition regions across all its files).
+        if mode == "directives":
+            directives: list[dict] = []
+            for binding_id, state_id in bound_state_ids:
+                fo_row = conn.execute(
+                    "SELECT file_ordinal FROM binding_file_map "
+                    "WHERE binding_id=? AND canon_path_id=?",
+                    (binding_id, canon_path_id)).fetchone()
+                if fo_row is None:
+                    continue
+                file_ordinal = int(fo_row["file_ordinal"])
+                d_rows = conn.execute(
+                    """SELECT region_ordinal, directive, condition
+                       FROM semantic_condition_index
+                       WHERE state_id=? AND file_blob_sha IN (
+                         SELECT blob_sha FROM state_file_table
+                         WHERE state_id=? AND file_ordinal=?
+                       )
+                       ORDER BY region_ordinal""",
+                    (state_id, state_id, file_ordinal)).fetchall()
+                for r in d_rows:
+                    directives.append({
+                        "line": int(r["region_ordinal"]),
+                        "kind": r["directive"] or "",
+                        "text": r["condition"] or "",
+                    })
+                break
+            return {
+                "file": canon_path,
+                "language": _v2_file_language(canon_path),
+                "lines": len(directives),
+                "directives": directives,
+                "mode": "directives",
+            }
+
+        # 'active' / 'raw' both read the raw file blob from file_blobs.
+        blob_sha: str | None = None
+        for binding_id, _state_id in bound_state_ids:
+            br = conn.execute(
+                "SELECT blob_sha FROM binding_file_map "
+                "WHERE binding_id=? AND canon_path_id=?",
+                (binding_id, canon_path_id)).fetchone()
+            if br is not None and br["blob_sha"]:
+                blob_sha = br["blob_sha"]
+                break
+        if blob_sha is None:
+            return {"error": f"File content not found in v2 store: {file_path}"}
+        blob_row = conn.execute(
+            "SELECT content, byte_size FROM file_blobs WHERE blob_sha=?",
+            (blob_sha,)).fetchone()
+        if blob_row is None or blob_row["content"] is None:
+            return {"error": f"File content not found in v2 store: {file_path}"}
+
+        text = _v2_decode_blob(blob_row["content"])
+        all_lines = text.splitlines()
+        total_lines = len(all_lines)
+
+        # Apply start_line / end_line window (1-based inclusive).
+        s_idx = max(0, start_line - 1) if start_line > 0 else 0
+        e_idx = (min(total_lines, end_line) if end_line > 0
+                 else total_lines)
+        if s_idx >= total_lines:
+            return {"error": (
+                f"start_line {start_line} is past end of file "
+                f"({total_lines} lines)")}
+        window = all_lines[s_idx:e_idx]
+
+        if line_numbers:
+            content = "\n".join(
+                f"{s_idx + i + 1:4d}  {line}" for i, line in enumerate(window))
+        else:
+            content = "\n".join(window)
+
+        out: dict = {
+            "file": abs_path(root, canon_path) if canon_path else canon_path,
+            "language": _v2_file_language(canon_path),
+            "mtime": 0.0,  # v2 hot schema has no per-file mtime
+            "lines": total_lines,
+            "content": content,
+            "mode": mode,
+        }
+        if start_line > 0 or end_line > 0:
+            out["start_line"] = s_idx + 1
+            out["end_line"] = e_idx
+        # v2 file_blobs holds raw bytes — no ifdef filtering, no skeleton.
+        out["warning"] = (
+            "v2 read_file returns raw file content from file_blobs "
+            "(not ifdef-filtered). Inactive #ifdef branches are visible.")
+        return out
+    except QueryViewError as e:
+        log.debug("v2 read_file query error: %s", e)
+        return {"error": str(e)}
 
 
 def v2_shadow_search_code(
@@ -1786,6 +2322,121 @@ def _v2_symbol_pos(conn, binding_id, state_id, local_key):
     if r is None:
         return None
     return (r["path"] or "", int(r["line"]) if r["line"] is not None else 0)
+
+
+def _v2_symbol_body(conn, binding_id, state_id, local_key):
+    """Return ``(canon_path, line, end_line, body_text)`` for a symbol.
+
+    Reads the symbol's first position row (line/end_line/file_ordinal +
+    canon path via the binding's file map, A-4), then the file content
+    from ``file_blobs.content`` via ``state_file_table``, and extracts
+    the body text (lines ``line``..``end_line``, NO line-number prefix —
+    callers add it via :func:`_v2_number_lines`).
+
+    Returns ``("", 0, 0, "")`` when the position row or file blob is
+    absent — callers report a warning.  The v2 hot schema stores RAW
+    file bytes in ``file_blobs`` (the legacy ``symbols.source`` column
+    carries the ifdef-filtered copy); this is a documented M3B
+    limitation, not a defect.
+    """
+    pos = conn.execute(
+        "SELECT p.line, p.end_line, p.file_ordinal, cp.path "
+        "FROM semantic_state_positions p "
+        "JOIN binding_file_map bfm "
+        "  ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal "
+        "JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id "
+        "WHERE p.state_id=? AND p.symbol_local_key=? "
+        "ORDER BY p.line LIMIT 1",
+        (binding_id, state_id, local_key)).fetchone()
+    if pos is None:
+        return "", 0, 0, ""
+    line = int(pos["line"]) if pos["line"] is not None else 0
+    end_line = int(pos["end_line"]) if pos["end_line"] is not None else 0
+    canon_path = pos["path"] or ""
+    file_ordinal = int(pos["file_ordinal"])
+    blob = _v2_state_file_blob(conn, state_id, file_ordinal)
+    body = ""
+    if blob is not None and line > 0:
+        body = _v2_extract_body_lines(_v2_decode_blob(blob), line, end_line)
+    return canon_path, line, end_line, body
+
+
+def _v2_state_file_blob(conn, state_id, file_ordinal):
+    """Return the raw file content (bytes/str) for a state's file_ordinal,
+    or ``None`` when the blob is absent.  Reads via ``state_file_table``
+    → ``file_blobs.content`` (content-addressed raw bytes)."""
+    r = conn.execute(
+        "SELECT b.content FROM state_file_table sft "
+        "JOIN file_blobs b ON b.blob_sha=sft.blob_sha "
+        "WHERE sft.state_id=? AND sft.file_ordinal=?",
+        (state_id, file_ordinal)).fetchone()
+    if r is None or r["content"] is None:
+        return None
+    return r["content"]
+
+
+def _v2_decode_blob(content) -> str:
+    """Decode a ``file_blobs.content`` value (bytes or str) to text."""
+    if isinstance(content, (bytes, bytearray)):
+        return bytes(content).decode("utf-8", errors="replace")
+    return str(content)
+
+
+def _v2_extract_body_lines(text, start_line, end_line):
+    """Extract lines ``[start_line, end_line]`` (1-based inclusive) from
+    *text*.  Returns the body as a ``\\n``-joined string with NO
+    line-number prefix.  ``end_line <= 0`` or ``end_line < start_line``
+    yields just the start line (a declaration with no extent)."""
+    if start_line <= 0:
+        return ""
+    lines = text.splitlines()
+    s_idx = max(0, start_line - 1)
+    if end_line <= 0 or end_line < start_line:
+        e_idx = s_idx + 1
+    else:
+        e_idx = min(len(lines), end_line)
+    return "\n".join(lines[s_idx:e_idx])
+
+
+def _v2_number_lines(text, start_line):
+    """Prefix each line with its 1-based line number, right-aligned in 4
+    columns followed by two spaces — matching the legacy ``get_source``
+    format (``"  20     bool ..."``)."""
+    out = []
+    for offset, line in enumerate(text.splitlines()):
+        out.append(f"{start_line + offset:4d}  {line}")
+    return "\n".join(out)
+
+
+def _v2_resolve_canon_path_id(conn, file_path):
+    """Resolve a user-supplied file path to a ``canon_paths.path_id``.
+
+    Exact match first, then a suffix LIKE (so ``main.cpp`` matches
+    ``src/main.cpp``), choosing the shortest matching path (least-nested
+    canonical).  Returns ``None`` when no canon path matches.
+    """
+    r = conn.execute(
+        "SELECT path_id FROM canon_paths WHERE path=? LIMIT 1",
+        (file_path,)).fetchone()
+    if r is not None:
+        return int(r["path_id"])
+    esc = (file_path.replace("\\", "\\\\")
+                    .replace("%", "\\%").replace("_", "\\_"))
+    r = conn.execute(
+        "SELECT path_id FROM canon_paths "
+        "WHERE path LIKE ? ESCAPE '\\' ORDER BY length(path) LIMIT 1",
+        (f"%{esc}",)).fetchone()
+    return int(r["path_id"]) if r is not None else None
+
+
+def _v2_file_language(file_path):
+    """Return ``"c"`` or ``"cpp"`` based on the file extension."""
+    p = file_path.lower()
+    if p.endswith((".cpp", ".cc", ".cxx", ".c++", ".hpp", ".hh", ".hxx", ".h++")):
+        return "cpp"
+    if p.endswith((".c", ".h")):
+        return "c"
+    return "cpp"
 
 
 def _v2_symbol_row(conn, hit):
