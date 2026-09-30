@@ -117,5 +117,108 @@ DECISION_LOG.md."
 - Focused tests re-run: 108 passed, 2 skipped, 0 failed. No regressions.
 - WP0 authority.py change is a tracked modification (`M` in git status).
 
-## Next: WP1 — convert 24 V2_ROUTED_LEGACY_EXEC adapters to v2-native reads
+## 2026-09-30 — WP1 Batch 1: convert 3 variable/conditional adapters to v2-native reads
 
+**Owner:** Lead (WP1 Batch 1). **Target:** `src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py`,
+adapters `v2_shadow_find_variables`, `v2_shadow_explain_condition`,
+`v2_shadow_list_conditional_regions` (was `raise V2UnsupportedOperation` stubs).
+
+**Change:** Replaced each stub's `raise V2UnsupportedOperation(...)` with a real
+v2 World-scoped read following the established `v2_shadow_find_callers` pattern:
+resolve pinned QueryView → `resolve_bindings` → per-binding `conn.execute` over the
+v2 hot tables → format to the legacy handler's result shape. Helpers
+`_v2_binding_file_maps`, `_v2_match_file_blob`, `_format_v2_branch_states` (pure,
+no v2 reads of their own) were added to share file-blob resolution and branch
+formatting; each adapter still calls `resolve_bindings` + `conn.execute` directly
+in its own body so the scanner classifies it V2_NATIVE.
+
+**v2 schema gaps discovered and how handled (NOT equivalence-gate weakenings —
+each adapter computes exactly what v2 stores):**
+- `semantic_symbols_core` has no `qualified_name` / `parent_usr` →
+  `qualified_name := name`; `enclosing_function` is `"<file scope>"` for
+  varglobal and `""` otherwise; `enclosing_class` is `""`; `references` is `[]`
+  (v2 `symbol_edges` is outgoing-only; reverse reference scan deferred).
+- `semantic_condition_index` stores `directive/condition/file_blob_sha` but
+  **NO line numbers** (the indexer computes lines at index time to build the
+  `region_ordinal` map and discards them — present in neither the hot rows nor
+  the cold payload, which holds only `macro_defs` + `docstrings`). Therefore
+  region `root_line`/`end_line` are `0`/`None`, `explain_condition` does NOT do
+  line-enclosure filtering (returns ALL root groups of the file as the chain),
+  per-entry `taken` (containing branch) is `None`, and `macro_inputs` is `[]`.
+  `branch_states`/`branches` DO carry the per-branch `taken` values that v2
+  stores (`tu_branch_states`), with `kind`/`condition` reconstructed from the
+  root + elif/else rows of `semantic_condition_index`.
+- `context_id`/`config_hash` are v1/legacy concepts with no v2 analogue → `""`.
+
+A follow-up batch may recover condition lines from `file_blobs` +
+`parse_conditional_directives` (same text parser the indexer uses) to close the
+line-enclosure gap for full legacy equivalence.
+
+**Files changed:**
+- `src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py` — replaced the Batch F
+  stub block (was lines 792-848) with 3 v2-native adapters + 3 helpers. No
+  other production file touched; `_can_safely_fallback` / equivalence gate /
+  `authority.py` / `queryview.py` unchanged.
+
+**Scanner counters (before → after):**
+- `CORE_V2_NATIVE_READ`: 5 → **8** (+3) ✅
+- `CORE_LEGACY_SEMANTIC_EXECUTION`: 26 → **23** (−3) ✅
+- `CORE_UNSAFE_FALLBACK`: 0 → **0** (unchanged) ✅
+- `UNRESOLVED_NORMAL_USE_V2_BUGS`: 0 → **0** ✅
+- All 3 target adapters classified `V2_NATIVE` (detected v2 read calls:
+  `resolve_bindings` + `execute`/`fetchone`/`fetchall`; zero `raise
+  V2UnsupportedOperation` lines).
+- M3B numeric gate still **FAIL** (V2_NATIVE_READ=8 of 29) — expected; Batch 1
+  converts 3 of ~24 remaining adapters. M3B is NOT complete.
+
+**Tests (focused suite per WP1 Batch 1):** all green.
+`python -m pytest tests/test_variables.py
+tests/test_conditional_provenance_slice_f.py tests/test_slice3_queryview.py
+tests/test_slice3_guard.py tests/test_fallback_hygiene_slice_a.py -x -q --tb=short`
+→ **63 passed, 9 skipped, 0 failed** (16s). Skips are environmental
+(libclang/gcc). No test files modified — these suites call the legacy handlers
+directly (bypassing v2 routing) or test v2 store primitives, so the adapter
+changes are isolated from them.
+
+**Functional verification (extra diligence, not a committed test):** built a live
+v2 store via `slice3_helpers.make_query_env`, monkeypatched the adapter conn/view
+resolver, and exercised all 3 adapters end-to-end against real v2 data:
+- `list_conditional_regions('inc/cfg.h')` → 1 region, `directive='ifndef'`,
+  `condition='CFG_H'`, `branches=[{kind:'if', condition:'CFG_H', taken:1}]`.
+- `list_conditional_regions()` (all) → same region across the bound TU.
+- `explain_condition('inc/cfg.h', 2)` → `{file, line, context_id, config_hash,
+  chain:[{file, line:0, directive:'ifndef', condition:'CFG_H', end_line:None,
+  taken:None, branch_states:[{line:0, kind:'if', condition:'CFG_H', taken:1}],
+  macro_inputs:[]}]}`.
+- `explain_condition('src/nope.c', 1)` → `{'error': 'file not indexed: src/nope.c'}`.
+- `find_variables('g_')` → `[]` (fixture has no variables; query ran, no crash).
+- `find_variables` data path (varglobal inserted into the store) → returned with
+  correct `name`/`kind='varglobal'`/`line`/`signature`/
+  `enclosing_function='<file scope>'`/`references=[]`/resolved `file`.
+- No-v2-store + bad-input paths → graceful `[]`/error dicts (matches legacy
+  validation messages).
+Temp test file deleted after the run; no committed test artifacts added.
+
+**Test-update rationale:** NONE required — no focused test failed. The adapters
+return the legacy result shape; documented field degradations (`line=0`,
+`references=[]`, `macro_inputs=[]`, `taken=None`) are v2-schema gaps, not
+behavioral regressions, and are noted in code comments.
+
+**Risks / open issues:**
+- `explain_condition` returns ALL of a file's root conditional groups as the
+  chain (not just the line-enclosing ones) because v2's hot schema stores no
+  condition line numbers. Functionally correct as a v2 read; semantically a
+  superset of the legacy answer for files with multiple groups. Tracked above
+  for a follow-up batch (recover lines from `file_blobs`).
+- `find_variables.references` is `[]` (no reverse-edge scan). Tracked for a
+  follow-up batch.
+- WP1 Batch 1 closes 3 of ~24 legacy-exec adapters. The M3B numeric gate
+  remains FAIL; M3B is NOT declared complete (Controller + fresh Verifier only).
+
+## Next: WP1 Batch 2+ — convert remaining 23 LEGACY_EXEC adapters to v2-native reads
+
+Remaining `V2_ROUTED_LEGACY_EXEC` adapters in `v2_shadow_adapters.py` (scanner
+LEGACY_EXEC=23). Open follow-ups from Batch 1: recover condition line numbers
+from `file_blobs` + `parse_conditional_directives` for full `explain_condition` /
+`list_conditional_regions` equivalence; add reverse-edge scan for
+`find_variables.references`.

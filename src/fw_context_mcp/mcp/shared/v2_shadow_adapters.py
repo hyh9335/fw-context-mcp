@@ -790,6 +790,116 @@ def v2_shadow_get_template_instances(
 
 
 # ── Batch F: Variables/Conditionals/Variants adapters (M3) ─────────────────
+#
+# M3B v2-native read adapters for the variable / conditional tools. Each
+# resolves the pinned QueryView, walks the World's bound bindings, and reads
+# v2 World-scoped facts directly (semantic_symbols_core / semantic_condition_index
+# / tu_branch_states / binding_file_map), formatting the result to the legacy
+# handler's shape.
+#
+# Documented M3B limitations — these are v2 hot-schema gaps, NOT weakenings of
+# the equivalence gate. Each adapter computes exactly what v2 stores:
+#
+#  * semantic_symbols_core has no qualified_name / parent_usr column ->
+#    qualified_name := name; enclosing_function is "<file scope>" for
+#    varglobal and "" otherwise; enclosing_class is "".
+#  * semantic_condition_index stores directive/condition/file_blob_sha but
+#    NO line numbers (the indexer computes lines at index time to build the
+#    region_ordinal map and then discards them — they are in neither the hot
+#    rows nor the cold payload). Region root_line/end_line are therefore 0/None
+#    and explain_condition cannot do line-enclosure filtering: it returns ALL
+#    root groups of the queried file as the chain. A follow-up batch may
+#    recover lines from file_blobs + parse_conditional_directives for full
+#    equivalence.
+#  * references for find_variables is [] (v2's symbol_edges primitive is
+#    outgoing-only; a reverse reference scan is deferred to a later batch).
+#  * macro_inputs for explain_condition is [] (v2 has no conditional_macros
+#    hot table; macro_defs live in the cold payload but are not
+#    condition-attributed).
+#  * context_id / config_hash are v1/legacy concepts with no v2 analogue;
+#    they are "" (explain_condition / list_conditional_regions) or absent.
+
+
+def _v2_binding_file_maps(conn, binding_id: int) -> tuple[dict, dict]:
+    """Per-binding file presentation: (blob_sha -> canon_path, canon_path -> blob_sha).
+
+    One read of ``binding_file_map`` joined to ``canon_paths``. Used both to
+    resolve a user file_path to its blob (for condition filtering) and to map
+    a condition's file_blob_sha back to its presentation canon_path.
+    """
+    blob_to_path: dict[str, str] = {}
+    path_to_blob: dict[str, str] = {}
+    for r in conn.execute(
+            "SELECT bfm.blob_sha, cp.path FROM binding_file_map bfm "
+            "LEFT JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id "
+            "WHERE bfm.binding_id=?", (binding_id,)).fetchall():
+        blob = r["blob_sha"]
+        if not blob:
+            continue
+        raw_path = r["path"] or ""
+        blob_to_path.setdefault(blob, raw_path)
+        norm_path = raw_path.replace("\\", "/")
+        if norm_path:
+            path_to_blob.setdefault(norm_path, blob)
+    return blob_to_path, path_to_blob
+
+
+def _v2_match_file_blob(path_to_blob: dict, norm_path: str) -> str | None:
+    """Resolve a normalized file path to its blob_sha via a binding's file map.
+
+    Mirrors the legacy two-step lookup (exact then suffix), plus a basename
+    fallback for bare-filename queries. Returns the matching blob_sha or None.
+    """
+    if not norm_path:
+        return None
+    norm = norm_path.replace("\\", "/").lstrip("./")
+    if not norm:
+        return None
+    # 1. exact canon_path match
+    if norm in path_to_blob:
+        return path_to_blob[norm]
+    # 2. suffix match (legacy: path LIKE '%<norm>')
+    for p, b in path_to_blob.items():
+        if p.endswith("/" + norm):
+            return b
+    # 3. basename match (handles a bare filename query)
+    base = norm.rsplit("/", 1)[-1]
+    if base and base != norm:
+        for p, b in path_to_blob.items():
+            if p.rsplit("/", 1)[-1] == base:
+                return b
+    return None
+
+
+def _format_v2_branch_states(group_rows: list, branch_states: list) -> list[dict]:
+    """Format v2 branch states into the legacy branch_states shape.
+
+    ``group_rows[0]`` is the conditional root (branch 1, kind 'if'); the rest
+    are its elif/else branch rows from semantic_condition_index.
+    ``branch_states`` is a list of ``(branch_ordinal, taken)`` tuples, 1-based
+    and ordered. v2 stores no per-branch source line, so ``line`` is 0
+    (documented). The branch directive/condition ARE recoverable from the
+    semantic_condition_index rows, so kind/condition are populated.
+    """
+    out: list[dict] = []
+    for idx, (bord, taken) in enumerate(branch_states):
+        row = group_rows[idx] if idx < len(group_rows) else None
+        if idx == 0:
+            # legacy: the first branch of every group is kind 'if' regardless
+            # of whether the directive is #if/#ifdef/#ifndef.
+            kind = "if"
+            cond = (row["condition"] if row is not None else None) or ""
+        else:
+            kind = (row["directive"] if row is not None else None) or ""
+            cond = (row["condition"] if row is not None else None) or ""
+        out.append({
+            "line": 0,  # v2 hot schema has no per-branch line
+            "kind": kind,
+            "condition": cond,
+            "taken": taken,
+        })
+    return out
+
 
 def v2_shadow_find_variables(
     name: str,
@@ -800,14 +910,117 @@ def v2_shadow_find_variables(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_variables — variable search + reference tracing.
+    """v2 adapter for find_variables — variable search by name prefix.
 
-    Defer to legacy — needs variable-specific data.
+    Reads v2 World-scoped symbols (``semantic_symbols_core``) filtered to the
+    variable kinds, joined to per-state positions (``semantic_state_positions``)
+    and per-world file presentation (``binding_file_map``) for line/file, and
+    formatted to the legacy result shape.
+
+    M3B limitations (see the Batch F module note): prefix match on ``name``
+    only (v2 has no qualified_name column); ``qualified_name`` := ``name``;
+    ``enclosing_function`` is ``"<file scope>"`` for varglobal and ``""
+    otherwise (v2 has no parent_usr); ``enclosing_class`` is ``""``;
+    ``references`` is ``[]`` (outgoing-edges-only primitive).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_variables requires variable reference primitive; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    if not name or not str(name).strip():
+        return [{"error": "Variable name must be non-empty."}]
+    if kind is not None and kind not in ("varglobal", "varlocal",
+                                        "variable", "field"):
+        return [{"error": f"Invalid kind: {kind!r}. Expected 'varglobal', "
+                          f"'varlocal', 'field', or None."}]
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        kinds = ([kind] if kind else
+                 ["varglobal", "varlocal", "variable", "field"])
+        # 'variable' (legacy pre-split) is included harmlessly — v2 stores
+        # only varglobal/varlocal/field, so it matches no row.
+        esc = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"{esc}%"  # prefix match — v2 has no qualified_name
+        kind_ph = ",".join("?" * len(kinds))
+
+        results: list[dict] = []
+        seen: set = set()
+        for b in resolve_bindings(conn, resolved):
+            if b.binding_status != "bound" or not b.state_key or \
+                    not b.state_generation:
+                continue
+            state_row = conn.execute(
+                "SELECT state_id FROM semantic_states WHERE "
+                "tusemantic_key=? AND parser_generation=?",
+                (b.state_key, b.state_generation)).fetchone()
+            if state_row is None:
+                continue
+            state_id = int(state_row["state_id"])
+            # One row per symbol: line via MIN over positions, canon_path via
+            # the binding's file map. Correlated subqueries keep the result
+            # one-row-per-symbol so LIMIT is exact.
+            rows = conn.execute(
+                f"""SELECT s.name, s.raw_usr, s.kind, s.signature, s.local_key,
+                           (SELECT MIN(p.line) FROM semantic_state_positions p
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key) AS line,
+                           (SELECT cp.path FROM semantic_state_positions p
+                            JOIN binding_file_map bfm
+                              ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                            JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key
+                            ORDER BY p.line LIMIT 1) AS canon_path
+                    FROM semantic_symbols_core s
+                    WHERE s.state_id=? AND s.kind IN ({kind_ph})
+                      AND s.name LIKE ? ESCAPE '\\'
+                      AND s.is_definition=1
+                    ORDER BY CASE s.kind WHEN 'varglobal' THEN 0 ELSE 1 END,
+                             s.name, line
+                    LIMIT ?""",
+                (b.binding_id, state_id, *kinds, pattern,
+                 max(1, limit))).fetchall()
+            for r in rows:
+                rname = r["name"] or ""
+                usr = r["raw_usr"] or ""
+                line = r["line"]
+                canon = r["canon_path"] or ""
+                key = usr if usr else (rname, canon, line)
+                if key in seen:
+                    continue
+                seen.add(key)
+                knd = r["kind"] or ""
+                results.append({
+                    "name": rname,
+                    "qualified_name": rname,  # v2 has no qualified_name
+                    "kind": knd,
+                    "file": abs_path(root, canon),
+                    "line": int(line) if line is not None else 0,
+                    "signature": r["signature"] or "",
+                    "enclosing_function": ("<file scope>"
+                                           if knd == "varglobal" else ""),
+                    "enclosing_class": "",  # v2 hot schema has no parent_usr
+                    "references": [],  # v2 edges are outgoing-only (M3B)
+                })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_variables query error: %s", e)
+        return []
 
 
 def v2_shadow_explain_condition(
@@ -820,13 +1033,117 @@ def v2_shadow_explain_condition(
 ) -> dict:
     """v2 adapter for explain_condition — conditional branch explanation.
 
-    v2 has tu_conditions primitive, but it's per-TU, not per-line.
-    Defer to legacy (with equivalence gate).
+    Reads v2 World-scoped conditional regions (``semantic_condition_index``)
+    for the queried file, annotated with the binding's per-world branch states
+    (``tu_branch_states``), and returns the legacy chain shape.
+
+    M3B limitations (see the Batch F module note): v2's hot schema stores NO
+    condition line numbers, so line-enclosure filtering is NOT performed —
+    ALL root groups of the file are returned as the chain; each entry's
+    ``line``/``end_line`` are 0/None, ``taken`` (the containing branch) is
+    None, and ``macro_inputs`` is ``[]``. ``branch_states`` carries the
+    per-branch ``taken`` values that v2 DOES store.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 explain_condition needs per-line conditional mapping; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root
+
+    if not file_path or not str(file_path).strip():
+        return {"error": "file_path must be non-empty."}
+    try:
+        target_line = int(line)
+    except (TypeError, ValueError):
+        return {"error": f"line must be an integer, got {line!r}"}
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        norm = str(file_path).replace("\\", "/")
+        chain: list[dict] = []
+        seen_regions: set = set()
+        file_seen = False
+        for b in resolve_bindings(conn, resolved):
+            if b.binding_status != "bound" or not b.state_key or \
+                    not b.state_generation:
+                continue
+            blob_to_path, path_to_blob = _v2_binding_file_maps(
+                conn, b.binding_id)
+            blob = _v2_match_file_blob(path_to_blob, norm)
+            if blob is None:
+                continue  # file not in this TU's closure
+            file_seen = True
+            state_row = conn.execute(
+                "SELECT state_id FROM semantic_states WHERE "
+                "tusemantic_key=? AND parser_generation=?",
+                (b.state_key, b.state_generation)).fetchone()
+            if state_row is None:
+                continue
+            state_id = int(state_row["state_id"])
+            canon = blob_to_path.get(blob, "")
+            # Root regions (if/ifdef/ifndef) for this file in this state.
+            roots = conn.execute(
+                "SELECT region_ordinal, directive, condition, file_blob_sha "
+                "FROM semantic_condition_index WHERE state_id=? "
+                "AND parent_region_ordinal IS NULL AND file_blob_sha=? "
+                "ORDER BY region_ordinal",
+                (state_id, blob)).fetchall()
+            if not roots:
+                continue
+            # Branch rows (elif/else) under these roots.
+            branch_rows = conn.execute(
+                "SELECT region_ordinal, parent_region_ordinal, directive, "
+                "condition FROM semantic_condition_index WHERE state_id=? "
+                "AND parent_region_ordinal IS NOT NULL AND file_blob_sha=? "
+                "ORDER BY parent_region_ordinal, region_ordinal",
+                (state_id, blob)).fetchall()
+            branches_by_parent: dict[int, list] = {}
+            for br in branch_rows:
+                p = int(br["parent_region_ordinal"])
+                branches_by_parent.setdefault(p, []).append(br)
+            # Per-world branch states for this binding.
+            bs_by_region: dict[int, list[tuple[int, int]]] = {}
+            for bsr in conn.execute(
+                    "SELECT region_ordinal, branch_ordinal, taken FROM "
+                    "tu_branch_states WHERE binding_id=? "
+                    "ORDER BY region_ordinal, branch_ordinal",
+                    (b.binding_id,)).fetchall():
+                bs_by_region.setdefault(int(bsr["region_ordinal"]), []).append(
+                    (int(bsr["branch_ordinal"]), int(bsr["taken"])))
+            for rt in roots:
+                ro = int(rt["region_ordinal"])
+                if (state_id, ro) in seen_regions:
+                    continue
+                seen_regions.add((state_id, ro))
+                group_rows = [rt] + branches_by_parent.get(ro, [])
+                bstates = bs_by_region.get(ro, [])
+                chain.append({
+                    "file": canon,
+                    "line": 0,  # v2 hot schema has no condition line
+                    "directive": rt["directive"] or "",
+                    "condition": rt["condition"] or "",
+                    "end_line": None,  # v2 stores no #endif line
+                    "taken": None,  # containing branch undeterminable w/o lines
+                    "branch_states": _format_v2_branch_states(
+                        group_rows, bstates),
+                    "macro_inputs": [],  # v2 has no conditional_macros hot table
+                })
+            if len(chain) >= 1000:
+                break
+        if not file_seen:
+            return {"error": f"file not indexed: {file_path}"}
+        return {"file": str(file_path), "line": target_line,
+                "context_id": "", "config_hash": "", "chain": chain}
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 explain_condition query error: %s", e)
+        return []
 
 
 def v2_shadow_list_conditional_regions(
@@ -839,10 +1156,119 @@ def v2_shadow_list_conditional_regions(
 ) -> dict:
     """v2 adapter for list_conditional_regions — conditional region listing.
 
-    v2 has tu_conditions primitive. Could be adapted but needs per-file mapping.
-    Defer to legacy for now.
+    Reads v2 World-scoped root conditional regions
+    (``semantic_condition_index`` where ``parent_region_ordinal IS NULL``),
+    optionally filtered to one file, annotated with per-world branch states
+    (``tu_branch_states``), and returns the legacy ``{regions, count}`` shape.
+
+    M3B limitations (see the Batch F module note): region ``root_line``/
+    ``end_line`` are 0/None (v2 stores no condition lines); ``context_id`` is
+    ``""`` (no v2 analogue); per-branch ``line`` is 0.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 list_conditional_regions needs per-file condition mapping; "
-        f"deferring to legacy")
+    from ...utils import resolve_project_root
+
+    limit = max(1, min(int(limit), 1000))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        norm = str(file_path).replace("\\", "/") if file_path else None
+        regions: list[dict] = []
+        seen_regions: set = set()
+        for b in resolve_bindings(conn, resolved):
+            if b.binding_status != "bound" or not b.state_key or \
+                    not b.state_generation:
+                continue
+            blob_to_path, path_to_blob = _v2_binding_file_maps(
+                conn, b.binding_id)
+            filter_blob: str | None = None
+            filter_canon = ""
+            if norm:
+                filter_blob = _v2_match_file_blob(path_to_blob, norm)
+                if filter_blob is None:
+                    continue  # file not in this binding's closure
+                filter_canon = blob_to_path.get(filter_blob, "")
+            state_row = conn.execute(
+                "SELECT state_id FROM semantic_states WHERE "
+                "tusemantic_key=? AND parser_generation=?",
+                (b.state_key, b.state_generation)).fetchone()
+            if state_row is None:
+                continue
+            state_id = int(state_row["state_id"])
+            remaining = limit - len(regions)
+            if remaining <= 0:
+                break
+            if filter_blob is not None:
+                roots = conn.execute(
+                    "SELECT region_ordinal, directive, condition, "
+                    "file_blob_sha FROM semantic_condition_index "
+                    "WHERE state_id=? AND parent_region_ordinal IS NULL "
+                    "AND file_blob_sha=? ORDER BY region_ordinal LIMIT ?",
+                    (state_id, filter_blob, remaining)).fetchall()
+            else:
+                roots = conn.execute(
+                    "SELECT region_ordinal, directive, condition, "
+                    "file_blob_sha FROM semantic_condition_index "
+                    "WHERE state_id=? AND parent_region_ordinal IS NULL "
+                    "ORDER BY region_ordinal LIMIT ?",
+                    (state_id, remaining)).fetchall()
+            if not roots:
+                continue
+            root_ords = [int(r["region_ordinal"]) for r in roots]
+            ph = ",".join("?" * len(root_ords))
+            branch_rows = conn.execute(
+                f"SELECT region_ordinal, parent_region_ordinal, directive, "
+                f"condition FROM semantic_condition_index WHERE state_id=? "
+                f"AND parent_region_ordinal IN ({ph}) "
+                f"ORDER BY parent_region_ordinal, region_ordinal",
+                (state_id, *root_ords)).fetchall()
+            branches_by_parent: dict[int, list] = {}
+            for br in branch_rows:
+                p = int(br["parent_region_ordinal"])
+                branches_by_parent.setdefault(p, []).append(br)
+            bs_by_region: dict[int, list[tuple[int, int]]] = {}
+            for bsr in conn.execute(
+                    "SELECT region_ordinal, branch_ordinal, taken FROM "
+                    "tu_branch_states WHERE binding_id=? "
+                    "ORDER BY region_ordinal, branch_ordinal",
+                    (b.binding_id,)).fetchall():
+                bs_by_region.setdefault(int(bsr["region_ordinal"]), []).append(
+                    (int(bsr["branch_ordinal"]), int(bsr["taken"])))
+            for rt in roots:
+                ro = int(rt["region_ordinal"])
+                if (state_id, ro) in seen_regions:
+                    continue
+                seen_regions.add((state_id, ro))
+                rt_blob = rt["file_blob_sha"]
+                canon = (filter_canon if filter_blob is not None
+                         else blob_to_path.get(rt_blob, ""))
+                group_rows = [rt] + branches_by_parent.get(ro, [])
+                bstates = bs_by_region.get(ro, [])
+                regions.append({
+                    "file": canon,
+                    "root_line": 0,  # v2 hot schema has no condition line
+                    "directive": rt["directive"] or "",
+                    "condition": rt["condition"] or "",
+                    "end_line": None,  # v2 stores no #endif line
+                    "context_id": "",  # v2 has no legacy context_id
+                    "branches": _format_v2_branch_states(
+                        group_rows, bstates),
+                })
+                if len(regions) >= limit:
+                    break
+            if len(regions) >= limit:
+                break
+        return {"regions": regions, "count": len(regions)}
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 list_conditional_regions query error: %s", e)
+        return []
