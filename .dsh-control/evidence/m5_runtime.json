@@ -6,7 +6,7 @@
   "gc_dry_run": "PASS",
   "gc_apply": "PASS",
   "gc_restart_integrity": "PASS",
-  "_head": "4212469",
+  "_head": "bbaa6d3",
   "_passed": 7,
   "_total": 7
 }
