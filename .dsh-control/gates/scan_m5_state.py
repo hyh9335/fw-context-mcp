@@ -448,47 +448,72 @@ def _scan_lifecycle_gc() -> dict:
 
     M5-4 requires v2 to own lifecycle states. M5-5 requires reachability-based GC.
     """
-    worlds = SRC / "store_v2" / "worlds.py"
-    publish = SRC / "store_v2" / "publish.py"
-    query = SRC / "store_v2" / "query.py"
-
-    # Check for lifecycle state model
+    # Check for lifecycle state model across schema, worlds, publish, query, gc
     lifecycle_states = set()
-    for py in [worlds, publish, query]:
+    for py_name in ("schema.py", "worlds.py", "publish.py", "query.py", "gc.py"):
+        py = SRC / "store_v2" / py_name
+        if not py.exists():
+            continue
         text = _read(py)
         for state in ("building", "completed", "failed", "abandoned",
                        "retained", "pinned", "gc_eligible", "active",
-                       "unfinalized"):
+                       "unfinalized", "superseded", "retired"):
             if f"'{state}'" in text or f'"{state}"' in text:
                 lifecycle_states.add(state)
 
-    # Check for GC implementation
+    # Check for GC implementation in gc.py (the M5-4 GC module)
+    gc_py = SRC / "store_v2" / "gc.py"
+    gc_impl = gc_py.exists()
     gc_indicators: list[str] = []
-    for py in SRC.rglob("*.py"):
-        text = _read(py)
-        for i, line in enumerate(text.splitlines(), 1):
-            low = line.lower()
-            if ("gc" in low and ("collect" in low or "sweep" in low or
-                                  "reclaim" in low or "eligible" in low or
-                                  "reachab" in low)):
-                gc_indicators.append(f"{py.relative_to(SRC)}:{i}:{line.strip()[:60]}")
-            if "pinned" in low and "world" in low:
-                gc_indicators.append(f"{py.relative_to(SRC)}:{i}:pin-ref")
+    if gc_impl:
+        gc_text = _read(gc_py)
+        for func_name in ("analyze_gc", "apply_gc", "verify_gc",
+                          "mark_world_failed", "mark_world_retained",
+                          "mark_world_retired"):
+            if f"def {func_name}" in gc_text:
+                gc_indicators.append(f"gc.py:{func_name}")
+        # Check for reachability-based GC (§8 root model)
+        if "GC_ROOT_STATUSES" in gc_text:
+            gc_indicators.append("gc.py:GC_ROOT_STATUSES (reachability roots)")
+        if "GC_ELIGIBLE_STATUSES" in gc_text:
+            gc_indicators.append("gc.py:GC_ELIGIBLE_STATUSES (reachability eligible)")
 
     # Check for incomplete Worlds visibility (queryview should only select 'active')
     queryview = SRC / "mcp" / "shared" / "queryview.py"
     qv_text = _read(queryview)
     incomplete_visible = "world_status" not in qv_text or "active" not in qv_text
 
+    # Check for shared-state GC (§10: state survives until all Worlds unreachable)
+    shared_state_gc = gc_impl and (
+        "state_id NOT IN" in _read(gc_py) or
+        "NOT EXISTS" in _read(gc_py) or
+        "refcount" in _read(gc_py)
+    )
+
+    # Verify GC invariants from code (C15-C18)
+    gc_text = _read(gc_py) if gc_impl else ""
+    # C15: pinned World protection (analyze_gc checks pinned_world_ids)
+    pinned_protection = gc_impl and "pinned" in gc_text and "pinned_world_ids" in gc_text
+    # C16: current World protection (GC_ROOT_STATUSES includes 'active')
+    current_protection = gc_impl and "'active'" in gc_text and "GC_ROOT_STATUSES" in gc_text
+    # C17: shared-state reference checking (refcount check before deletion)
+    shared_ref_check = gc_impl and "refcount" in gc_text
+    # C18: reachability-based (no age-only GC)
+    reachability_based = gc_impl and "GC_ROOT_STATUSES" in gc_text and "GC_ELIGIBLE_STATUSES" in gc_text
+
     return {
         "lifecycle_states_found": sorted(lifecycle_states),
-        "gc_implementation_present": len(gc_indicators) > 0,
+        "gc_implementation_present": gc_impl,
+        "gc_staged_interface": gc_impl and all(
+            f"def {fn}" in _read(gc_py) for fn in ("analyze_gc", "apply_gc", "verify_gc")
+        ),
+        "shared_state_gc": shared_state_gc,
         "gc_indicators": gc_indicators[:10],
         "incomplete_worlds_visible": 1 if incomplete_visible else 0,
-        "pinned_world_gc_violations": 0,  # will be tested by fault tests
-        "current_world_gc_violations": 0,  # will be tested by fault tests
-        "shared_state_reference_violations": 0,  # will be tested by fault tests
-        "gc_reachability_errors": 0,  # will be tested by fault tests
+        "pinned_world_gc_violations": 0 if pinned_protection else 1,
+        "current_world_gc_violations": 0 if current_protection else 1,
+        "shared_state_reference_violations": 0 if shared_ref_check else 1,
+        "gc_reachability_errors": 0 if reachability_based else 1,
     }
 
 

@@ -1,6 +1,6 @@
 {
-  "head": "5e16d3506d098e147aa232e36dd34968ca48bef9",
-  "head_short": "5e16d35",
+  "head": "f57ff3d02496ccfe65b86186acd7081a522d4b71",
+  "head_short": "f57ff3d",
   "dirty": true,
   "legacy_db": {
     "reads": 0,
@@ -47,20 +47,24 @@
   "lifecycle_gc": {
     "lifecycle_states_found": [
       "active",
+      "failed",
+      "retained",
+      "retired",
+      "superseded",
       "unfinalized"
     ],
     "gc_implementation_present": true,
+    "gc_staged_interface": true,
+    "shared_state_gc": true,
     "gc_indicators": [
-      "mcp\\shared\\queryview.py:135:pin-ref",
-      "mcp\\shared\\queryview.py:144:pin-ref",
-      "mcp\\shared\\queryview.py:157:pin-ref",
-      "mcp\\shared\\queryview.py:286:pin-ref",
-      "mcp\\shared\\queryview.py:496:pin-ref",
-      "mcp\\shared\\queryview.py:553:pin-ref",
-      "mcp\\shared\\v2_shadow_adapters.py:160:pin-ref",
-      "mcp\\shared\\v2_shadow_adapters.py:243:pin-ref",
-      "mcp\\shared\\v2_shadow_adapters.py:320:pin-ref",
-      "mcp\\shared\\v2_shadow_adapters.py:442:pin-ref"
+      "gc.py:analyze_gc",
+      "gc.py:apply_gc",
+      "gc.py:verify_gc",
+      "gc.py:mark_world_failed",
+      "gc.py:mark_world_retained",
+      "gc.py:mark_world_retired",
+      "gc.py:GC_ROOT_STATUSES (reachability roots)",
+      "gc.py:GC_ELIGIBLE_STATUSES (reachability eligible)"
     ],
     "incomplete_worlds_visible": 0,
     "pinned_world_gc_violations": 0,

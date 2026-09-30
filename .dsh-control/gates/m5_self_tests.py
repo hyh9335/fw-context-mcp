@@ -215,36 +215,126 @@ def test_s4_legacy_postprocess(head: str) -> bool:
 def test_s5_shared_state_premature_deletion(head: str) -> bool:
     """W1 and W2 both reference SemanticState X. GC W1. If X disappears: FAIL.
 
-    This test checks whether the GC implementation is reachability-based.
-    We inspect the code for proper reachability logic.
+    M5-4: exercises REAL GC. Creates a temp v2 store, inserts two Worlds
+    sharing a SemanticState, GCs one, verifies the state survives.
     """
-    # Check if GC implementation exists and uses reachability
-    gc_code = ""
-    for py in (ROOT / "src" / "fw_context_mcp" / "store_v2").rglob("*.py"):
-        text = py.read_text(encoding="utf-8")
-        low = text.lower()
-        if "gc" in low and ("reachab" in low or "referenced" in low or
-                            "in_use" in low or "ref_count" in low):
-            gc_code += text
+    import tempfile, sqlite3
+    gc_py = ROOT / "src" / "fw_context_mcp" / "store_v2" / "gc.py"
+    schema_py = ROOT / "src" / "fw_context_mcp" / "store_v2" / "schema.py"
+    if not gc_py.exists():
+        _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                       "gc.py not found — M5-4 GC not implemented")
+        return False
 
-    if gc_code and ("reachab" in gc_code.lower() or "referenced" in gc_code.lower()):
-        _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "PASS", head,
-                       "GC implementation uses reachability/referenced checks "
-                       "for shared state")
-        return True
-    if not gc_code:
-        # No GC yet — this is expected at baseline. The test PASSES because
-        # it detects that the invariant (no premature deletion) holds — there
-        # is no GC to delete anything.
-        _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "PASS", head,
-                       "No GC implementation yet — shared states are never "
-                       "deleted, so premature deletion cannot occur. "
-                       "Invariant holds vacuously.")
-        return True
-    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
-                   "GC exists but lacks reachability checks — shared state "
-                   "could be prematurely deleted")
-    return False
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "test-v2.db"
+            conn = sqlite3.connect(str(db))
+            conn.row_factory = sqlite3.Row
+            try:
+                # Create minimal schema
+                schema_text = schema_py.read_text(encoding="utf-8")
+                # Extract DDL statements
+                import re
+                ddls = re.findall(r'CREATE TABLE\s+\w+\s*\([^)]+\)', schema_text, re.DOTALL)
+                # Just create the tables we need
+                conn.executescript("""
+                    CREATE TABLE snapshot_builds (
+                        world_id INTEGER PRIMARY KEY,
+                        namespace_id TEXT NOT NULL,
+                        snapshot_id TEXT NOT NULL,
+                        build_identity_sha TEXT NOT NULL,
+                        world_status TEXT NOT NULL,
+                        run_provenance TEXT,
+                        created_at TEXT,
+                        UNIQUE(namespace_id, snapshot_id, build_identity_sha)
+                    );
+                    CREATE TABLE tu_bindings (
+                        world_id INTEGER NOT NULL,
+                        tu_context_id TEXT NOT NULL,
+                        binding_status TEXT,
+                        state_id INTEGER,
+                        FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE semantic_states (
+                        state_id INTEGER PRIMARY KEY,
+                        tusemantic_key TEXT NOT NULL,
+                        parser_generation INTEGER NOT NULL,
+                        key_format TEXT, l0_source_blob_sha TEXT,
+                        l1_ncc_digest_sha TEXT, l2_closure_digest_sha TEXT,
+                        l3_env_digest_sha TEXT, publication TEXT,
+                        completeness_sha TEXT, digest_algorithm TEXT,
+                        fact_row_count INTEGER, fact_schema_version INTEGER,
+                        payload_format TEXT, payload_ref TEXT, payload_digest_sha TEXT,
+                        owner_lease TEXT, path_spelling_sensitive INTEGER DEFAULT 0,
+                        created_at TEXT, created_by_run TEXT,
+                        last_unreferenced_at TEXT, quarantine_note TEXT,
+                        UNIQUE(tusemantic_key, parser_generation)
+                    );
+                    CREATE TABLE build_rollups (
+                        world_id INTEGER NOT NULL,
+                        FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
+                    );
+                """)
+                # Insert two Worlds sharing state X
+                conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
+                conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
+                conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'key100',1)")
+                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (1,'tu1','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (2,'tu2','bound',100)")
+                conn.commit()
+
+                # Import gc module via sys.path
+                import sys as _sys
+                _src = str(ROOT / "src")
+                if _src not in _sys.path:
+                    _sys.path.insert(0, _src)
+                from fw_context_mcp.store_v2 import gc as gc_mod
+
+                class FakeStore:
+                    def __init__(self, c): self._conn = c
+                store = FakeStore(conn)
+
+                # ANALYZE: W1 is superseded (eligible), W2 is active (root)
+                analysis = gc_mod.analyze_gc(store, pinned_world_ids=[], active_build_world_ids=[])
+                if 1 not in analysis.eligible_world_ids:
+                    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                                   f"W1 (superseded) not in eligible set: {analysis.eligible_world_ids}")
+                    return False
+                if 2 in analysis.eligible_world_ids:
+                    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                                   "W2 (active) should NOT be eligible")
+                    return False
+                # State 100 should NOT be eligible (W2 still references it)
+                if 100 in analysis.eligible_state_ids:
+                    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                                   f"State 100 should NOT be eligible (W2 references it): {analysis.eligible_state_ids}")
+                    return False
+
+                # APPLY: delete W1
+                result = gc_mod.apply_gc(store, analysis)
+                if not result.transaction_committed:
+                    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                                   f"APPLY failed: {result.error}")
+                    return False
+
+                # VERIFY: state 100 must still exist
+                row = conn.execute("SELECT state_id FROM semantic_states WHERE state_id=100").fetchone()
+                if row is None:
+                    _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                                   "State 100 was deleted despite W2 referencing it — PREMATURE DELETION")
+                    return False
+
+                _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "PASS", head,
+                               "REAL GC exercised: W1 deleted, shared state 100 survives "
+                               "(W2 references it). Reachability-based shared-state GC works.")
+                return True
+            finally:
+                conn.close()
+    except Exception as exc:
+        _write_verdict("S5_SHARED_STATE_PREMATURE_DELETION_TEST", "FAIL", head,
+                       f"Exception: {exc}")
+        return False
 
 
 # ── S6: pinned World deletion ──────────────────────────────────────────────
@@ -252,41 +342,102 @@ def test_s5_shared_state_premature_deletion(head: str) -> bool:
 def test_s6_pinned_world_deletion(head: str) -> bool:
     """Pin W1. GC. If W1 is collected: FAIL.
 
-    Checks that GC respects pin protection. At baseline (no GC), pinned
-    Worlds are never deleted, so the invariant holds vacuously.
+    M5-4: exercises REAL GC. Creates a temp v2 store, inserts a superseded
+    World, pins it, runs GC, verifies it survives.
     """
-    # Look for pin protection in the code
-    pin_code = ""
-    gc_code = ""
-    for py in (ROOT / "src" / "fw_context_mcp" / "store_v2").rglob("*.py"):
-        text = py.read_text(encoding="utf-8")
-        if "pin" in text.lower():
-            pin_code += text
-        low = text.lower()
-        if "gc" in low and ("collect" in low or "sweep" in low or "delete" in low):
-            gc_code += text
+    import tempfile, sqlite3
+    gc_py = ROOT / "src" / "fw_context_mcp" / "store_v2" / "gc.py"
+    if not gc_py.exists():
+        _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                       "gc.py not found — M5-4 GC not implemented")
+        return False
 
-    if not gc_code:
-        # No GC implementation yet — pinned Worlds are never deleted.
-        _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "PASS", head,
-                       "No GC implementation yet — pinned Worlds are "
-                       "never deleted. Invariant holds vacuously.")
-        return True
-    # GC exists — check for explicit pin/root protection
-    low_gc = gc_code.lower()
-    # Exclude GCC compiler-flag references (not garbage collection)
-    if "gcc" in low_gc and "garbage" not in low_gc and "gc_eligible" not in low_gc:
-        _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "PASS", head,
-                       "No real GC implementation (matches are compiler flags) "
-                       "— pinned Worlds are never deleted. Invariant holds.")
-        return True
-    if "pinned" in low_gc and ("root" in low_gc or "protected" in low_gc):
-        _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "PASS", head,
-                       "Pin protection present in GC root model")
-        return True
-    _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
-                   "GC exists but may not protect pinned Worlds")
-    return False
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "test-v2.db"
+            conn = sqlite3.connect(str(db))
+            conn.row_factory = sqlite3.Row
+            try:
+                conn.executescript("""
+                    CREATE TABLE snapshot_builds (
+                        world_id INTEGER PRIMARY KEY,
+                        namespace_id TEXT NOT NULL,
+                        snapshot_id TEXT NOT NULL,
+                        build_identity_sha TEXT NOT NULL,
+                        world_status TEXT NOT NULL,
+                        run_provenance TEXT,
+                        created_at TEXT,
+                        UNIQUE(namespace_id, snapshot_id, build_identity_sha)
+                    );
+                    CREATE TABLE tu_bindings (
+                        world_id INTEGER NOT NULL,
+                        tu_context_id TEXT NOT NULL,
+                        binding_status TEXT,
+                        state_id INTEGER,
+                        FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE semantic_states (
+                        state_id INTEGER PRIMARY KEY,
+                        tusemantic_key TEXT NOT NULL,
+                        parser_generation INTEGER NOT NULL
+                    );
+                    CREATE TABLE build_rollups (
+                        world_id INTEGER NOT NULL,
+                        FOREIGN KEY(world_id) REFERENCES snapshot_builds(world_id) ON DELETE CASCADE
+                    );
+                """)
+                # W1 is superseded (would be eligible), W2 is active (root)
+                conn.execute("INSERT INTO snapshot_builds VALUES (1,'ns','s1','sha1','superseded',NULL,NULL)")
+                conn.execute("INSERT INTO snapshot_builds VALUES (2,'ns','s2','sha2','active',NULL,NULL)")
+                conn.execute("INSERT INTO semantic_states(state_id,tusemantic_key,parser_generation) VALUES (100,'k',1)")
+                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (1,'tu1','bound',100)")
+                conn.execute("INSERT INTO tu_bindings(world_id,tu_context_id,binding_status,state_id) VALUES (2,'tu2','bound',100)")
+                conn.commit()
+
+                import sys as _sys
+                _src = str(ROOT / "src")
+                if _src not in _sys.path:
+                    _sys.path.insert(0, _src)
+                from fw_context_mcp.store_v2 import gc as gc_mod
+
+                class FakeStore:
+                    def __init__(self, c): self._conn = c
+                store = FakeStore(conn)
+
+                # ANALYZE with W1 PINNED
+                analysis = gc_mod.analyze_gc(store, pinned_world_ids=[1])
+                if 1 in analysis.eligible_world_ids:
+                    _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                                   "W1 is pinned but appeared in eligible set — PIN PROTECTION VIOLATED")
+                    return False
+                if 1 not in analysis.protected_world_ids:
+                    _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                                   "W1 is pinned but not in protected set")
+                    return False
+
+                # APPLY (should not delete W1)
+                result = gc_mod.apply_gc(store, analysis)
+                if not result.transaction_committed:
+                    _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                                   f"APPLY failed: {result.error}")
+                    return False
+
+                # VERIFY: W1 must still exist
+                row = conn.execute("SELECT world_id FROM snapshot_builds WHERE world_id=1").fetchone()
+                if row is None:
+                    _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                                   "W1 was deleted despite being pinned — PIN VIOLATION")
+                    return False
+
+                _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "PASS", head,
+                               "REAL GC exercised: pinned W1 survives GC. Pin protection works.")
+                return True
+            finally:
+                conn.close()
+    except Exception as exc:
+        _write_verdict("S6_PINNED_WORLD_DELETION_TEST", "FAIL", head,
+                       f"Exception: {exc}")
+        return False
 
 
 # ── S7: current World deletion ──────────────────────────────────────────────

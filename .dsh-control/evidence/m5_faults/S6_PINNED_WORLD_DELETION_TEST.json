@@ -1,6 +1,6 @@
 {
   "test": "S6_PINNED_WORLD_DELETION_TEST",
   "verdict": "PASS",
-  "head": "5e16d3506d098e147aa232e36dd34968ca48bef9",
-  "detail": "No real GC implementation (matches are compiler flags) \u2014 pinned Worlds are never deleted. Invariant holds."
+  "head": "f57ff3d02496ccfe65b86186acd7081a522d4b71",
+  "detail": "REAL GC exercised: pinned W1 survives GC. Pin protection works."
 }

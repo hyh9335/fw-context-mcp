@@ -126,8 +126,11 @@ DDL_STATEMENTS: tuple[str, ...] = (
       snapshot_id        TEXT NOT NULL,
       build_identity_sha TEXT NOT NULL,
       world_status       TEXT NOT NULL
-                         CHECK(world_status IN ('unfinalized','active','superseded','retired')),
+                         CHECK(world_status IN ('unfinalized','active','superseded','retired',
+                                                'failed','retained')),
                                          -- DECISION G2 amendment: explicit 'unfinalized' state
+                                         -- M5-4: 'failed' for incomplete/abandoned Worlds (§13);
+                                         --        'retained' for explicitly retained Worlds (§8)
       run_provenance     TEXT,             -- JSON, world-local; absolute paths allowed HERE (R-BD4)
       created_at         TEXT,
       UNIQUE(namespace_id, snapshot_id, build_identity_sha)   -- world identity triple (INV-3)
