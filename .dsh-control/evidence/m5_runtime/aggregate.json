@@ -1,5 +1,5 @@
 {
-  "head": "cd24d21",
+  "head": "d458244",
   "passed": 7,
   "total": 7,
   "results": [
@@ -16,7 +16,7 @@
     {
       "name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS",
       "result": "PASS",
-      "detail": "runner.run() completed in default v2-only mode (ch=59343d4e0373ae078d0fc346637b880d80f37e12778f2553d59c80198d2e0780); no legacy index.db created"
+      "detail": "runner.run() completed in default v2-only mode (ch=b51c0bda02145bce44d2f95e8c8a3e50ee4d554280ad017f5e925653e911175c); no legacy index.db created"
     },
     {
       "name": "C33_UPGRADE_EXISTING_PROJECT_PASS",
