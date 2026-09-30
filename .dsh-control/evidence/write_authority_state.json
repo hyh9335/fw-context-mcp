@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-09-30T07:11:24Z",
+  "generated_at_utc": "2026-09-30T07:13:04Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "a54238839b56d029db07adc2cae563533c62f1d6",
-    "short": "a542388",
+    "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+    "short": "f30e7cf",
     "branch": "m3b-native-v2",
     "dirty": true
   },
   "counters": {
     "NORMAL_INDEX_ENTRYPOINTS": 4,
-    "V2_PRIMARY_INDEX_ENTRYPOINTS": 0,
-    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 4,
+    "V2_PRIMARY_INDEX_ENTRYPOINTS": 4,
+    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 0,
     "LEGACY_WRITE_REQUIRED_FOR_SUCCESS": 0,
-    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 1,
+    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 0,
     "LEGACY_DB_REQUIRED_FOR_V2_INDEX": 0,
-    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": false,
+    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": true,
     "INCOMPLETE_WORLD_EXPOSURE_PATHS": 0,
     "UNSAFE_PARTIAL_FINALIZATION_PATHS": 0,
     "EXPECTED_TU_ACCOUNTING_VIOLATIONS": 0,
     "V2_FAILURE_MASKED_BY_LEGACY_PATHS": 0,
-    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 1,
-    "CURRENT_WRITE_MODE": "LEGACY_PRIMARY",
+    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 0,
+    "CURRENT_WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
     "DEFAULT_WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
     "ROLLBACK_MODE_AVAILABLE": true,
     "M3B_READ_AUTHORITY_REGRESSION": "PASS",
@@ -173,16 +173,16 @@
     }
   ],
   "write_mode": {
-    "current_write_mode": "LEGACY_PRIMARY",
+    "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "default_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "env_flags": {
-      "FW_CONTEXT_V2_WRITE_AUTHORITY": "0",
-      "FW_CONTEXT_V2_PRIMARY": null,
       "FW_CONTEXT_V2_WRITE": null,
-      "FW_CONTEXT_DUAL_WRITE": null
+      "FW_CONTEXT_DUAL_WRITE": null,
+      "FW_CONTEXT_V2_WRITE_AUTHORITY": null,
+      "FW_CONTEXT_V2_PRIMARY": null
     },
     "code_default_v2_write_authority": true,
-    "env_explicitly_set": true,
+    "env_explicitly_set": false,
     "rollback_mode_available": true
   },
   "fault_tests": {
@@ -230,8 +230,8 @@
     }
   },
   "bug_register": [],
-  "numeric_gate_pass": false,
+  "numeric_gate_pass": true,
   "m3b_regression_pass": true,
   "fault_gate_pass": true,
-  "machine_gate_pass": false
+  "machine_gate_pass": true
 }

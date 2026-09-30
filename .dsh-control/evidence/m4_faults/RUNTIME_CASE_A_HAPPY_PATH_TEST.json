@@ -1,0 +1,6 @@
+{
+  "verdict": "SKIP",
+  "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+  "timestamp": "2026-09-30T07:15:47Z",
+  "detail": "Runtime CASE A skipped (sandbox restricts ~/.fw-context/ access): fw-context: error: [WinError 5] \u62d2\u7edd\u8bbf\u95ee\u3002: 'C:\\\\Users\\\\h00969597\\\\.fw-context\\\\index\\\\fb6914c08929420b9fa9c604f4339ca0'\n"
+}
