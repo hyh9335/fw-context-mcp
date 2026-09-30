@@ -1,6 +1,6 @@
 {
   "test": "S8_STALE_VERIFIER_GUARDIAN_TEST",
   "verdict": "PASS",
-  "head": "8d4849e9459214fef6ceef5379828e6a84f3e036",
+  "head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
   "detail": "Stale-artifact rejection verified: gate uses head==current comparison, stale (wrong-HEAD) artifacts are correctly rejected for both C37 and C38. Real fresh artifacts on current HEAD are unaffected."
 }

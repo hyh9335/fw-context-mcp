@@ -1,0 +1,116 @@
+{
+  "guardian": "M5 Guardian G6 (final independent stage reviewer, fresh one-shot)",
+  "checkpoint": "G6",
+  "verdict": "ACCEPT_COMPLETION",
+  "head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
+  "head_short": "cd24d21",
+  "head_dirty": false,
+  "contract": ".dsh-control/contracts/IMMUTABLE_M5_GOAL_CONTRACT.md",
+  "gate_contract": ".dsh-control/contracts/M5_GATE.json",
+  "timestamp_utc": "2026-09-30T09:23:25Z",
+  "gate_result": "PASS",
+  "gate_exit_code_note": "run_m5_stage_gate.py exits 1 only because C38 (this guardian's own verdict) is unmet until this artifact is written; C1-C37 and C39 all PASS. Per the 'C38 cannot block itself' rule, C38 cannot block ACCEPT_COMPLETION.",
+  "gate_failed_clauses": ["C38"],
+  "gate_passing_clauses": "C1-C37, C39 (38 clauses PASS; C38 is this guardian's own post-hoc verdict)",
+  "verifier_verdict": "PASS",
+  "verifier_artifact": ".dsh-control/evidence/m5_verifier_20260930T092124Z_cd24d21.json",
+  "verifier_head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
+  "verifier_must_fix": [],
+  "scanner_counters": {
+    "NORMAL_MODE_LEGACY_DB_READS": 0,
+    "NORMAL_MODE_LEGACY_DB_WRITES": 0,
+    "NORMAL_MODE_LEGACY_DB_CREATIONS": 0,
+    "NORMAL_MODE_LEGACY_POSTPROCESS_CALLS": 0,
+    "NORMAL_MODE_LEGACY_FALLBACKS": 0,
+    "NORMAL_MODE_LEGACY_MIRROR_RUNS": 0,
+    "NORMAL_MODE_LEGACY_ACTIVE_CONFIG_DEPENDENCIES": 0,
+    "NORMAL_MODE_LEGACY_LIFECYCLE_DEPENDENCIES": 0,
+    "SHADOW_DUAL_READ_PATHS": 0,
+    "TEMPORARY_AUTHORITY_FLAGS": 0,
+    "OBSOLETE_LEGACY_GATE_CLAUSES": 0,
+    "INCOMPLETE_WORLDS_VISIBLE": 0,
+    "PINNED_WORLD_GC_VIOLATIONS": 0,
+    "CURRENT_WORLD_GC_VIOLATIONS": 0,
+    "SHARED_STATE_REFERENCE_VIOLATIONS": 0,
+    "GC_REACHABILITY_ERRORS": 0,
+    "UNRESOLVED_NORMAL_USE_V2_BUGS": "0/0",
+    "SCAFFOLDING_shadow_dual_read": 0,
+    "SCAFFOLDING_temp_flags": 0,
+    "SCAFFOLDING_comparators": 0,
+    "SCAFFOLDING_dual_write": 0,
+    "LIFECYCLE_states": ["active", "failed", "retained", "retired", "superseded", "unfinalized"],
+    "LIFECYCLE_gc_impl": true,
+    "REGRESSION_m3b": "PASS",
+    "REGRESSION_m4": "PASS",
+    "numeric_gate": "PASS"
+  },
+  "self_tests": "8/8 PASS (S1-S8)",
+  "runtime_tests": "7/7 PASS (C30-C36)",
+  "scope_shrink_detected": false,
+  "acceptance_criteria_check": {
+    "machine_gate_C1_C37_C39_PASS": true,
+    "C38_self_exclusion_rule_applies": true,
+    "fresh_verifier_PASS_must_fix_empty": true,
+    "self_tests_8_of_8_PASS": true,
+    "runtime_tests_7_of_7_PASS": true,
+    "no_scope_shrink_detected": true,
+    "all_criteria_hold": true
+  },
+  "m5_specific_checks": {
+    "normal_default_mode_v2_only": {
+      "holds": true,
+      "evidence": "_legacy_compat_on()=False, v2_write_authority=True, _v2_shadow_flag_on()=True, v2_shadow_enabled()=True in default mode. runner.py opens legacy DB (open_db) ONLY inside `if _legacy_compat:` guard (line 509); in default mode conn=None and all legacy writes (upsert_project/build_config, upsert_build_context, get_file_hashes_by_context, FTS trigger maintenance, _store_linker_scripts, _store_asm, _run_postprocess) are gated and never execute. _unit_processor.py early-returns before any legacy DB write (line 554). Verified via verifier code_reconstruction + empirical double-index probe (no legacy index.db created)."
+    },
+    "legacy_compat_island_isolated_default_off": {
+      "holds": true,
+      "evidence": "settings.py: legacy_compatibility_mode: bool = False (default OFF, M5-1 explicit compat island). Activated only via FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 env or config opt-in. Isolated, explicitly selected, unable to affect normal v2 success (all legacy paths gated behind _legacy_compat)."
+    },
+    "migration_scaffolding_removed": {
+      "holds": true,
+      "evidence": "Scanner SCAFFOLDING counters all 0: shadow_dual_read=0, temp_flags=0, comparators=0, dual_write=0. No dual-write, no shadow comparators in normal operation."
+    },
+    "v2_lifecycle_authority": {
+      "holds": true,
+      "evidence": "v2 owns World lifecycle: unfinalized (BUILDING) -> active (COMPLETED) via finalize_world; failed/retained/retired/superseded via gc.py helpers; PINNED modeled via PinnedQueryView (pinned_world_ids in GC). Scanner confirms states=['active','failed','retained','retired','superseded','unfinalized'], incomplete_visible=0."
+    },
+    "reachability_based_gc_pin_protection_shared_state_refcount": {
+      "holds": true,
+      "evidence": "gc.py: GC_ROOT_STATUSES={active,retained} (§8 roots), GC_ELIGIBLE_STATUSES={failed,superseded,retired} (§13). analyze_gc accepts pinned_world_ids (§9 pin protection) and active_build_world_ids (current World protection). Shared-state eligibility: state eligible ONLY if no protected World references it (NOT EXISTS query, §10); apply_gc double-checks refcount==0 before deletion. ANALYZE/APPLY/VERIFY phases (§11). Crash safety via BEGIN IMMEDIATE + rollback (§12). Self-tests S5 (shared state survives) and S6 (pinned World survives) exercised REAL GC."
+    },
+    "scanner_derives_counters_from_code": {
+      "holds": true,
+      "evidence": "scan_m5_state.py header: 'Derives current production truth from CODE, not ledgers. Measures execution paths, not file names.' Uses ast.parse + ast.walk for AST-based code analysis. _in_compat_guard() function checks whether each call site is inside an `if _legacy_compat:` guard — only counts UNGUARDED legacy calls in normal mode. Not ledger-derived."
+    },
+    "no_clause_weakened": {
+      "holds": true,
+      "evidence": "M5_GATE.json defines all 39 clauses (C1-C39) consistent with IMMUTABLE_M5_GOAL_CONTRACT.md §16 required counters. All numeric clauses (C3-C19) require value==0 or PASS. Regression clauses C20/C21 require M3B/M4 PASS. Fault clauses C22-C29 require S1-S8 PASS. Runtime clauses C30-C36 require PASS. Acceptance clauses C37-C39 require fresh verifier/guardian on current HEAD + durable checkpoint. No clause softened, no denominator shrunk, no threshold lowered."
+    },
+    "fresh_verifier_PASS_must_fix_empty": {
+      "holds": true,
+      "evidence": "m5_verifier_20260930T092124Z_cd24d21.json: verdict=PASS, head=cd24d21c5b2521f1588a6980446a89772586dd2f (full 40-char, matches current HEAD), must_fix=[]. Verifier independently reconstructed runtime authority from code (code_reconstruction + empirical_probe sections), not from ledgers."
+    },
+    "S8_adversarial_test_genuine": {
+      "holds": true,
+      "evidence": "S8 (test_s8_stale_verifier_guardian) is a genuine adversarial stale-artifact rejection test: injects a stale verifier+guardian artifact with WRONG head (stale_head='0'*40, impossible hash), verifies the gate uses v.get('head')==head and g.get('head')==head comparison (C37/C38), and confirms the stale artifact is REJECTED (v_matches/g_matches must be False). Cleans up injected artifacts. NOT inverted logic — PASS means the gate correctly rejects stale artifacts. This was the defect found and fixed by previous Guardian G6 runs."
+    }
+  },
+  "findings": [
+    "HEAD verified: cd24d21c5b2521f1588a6980446a89772586dd2f (full 40-char), dirty=False. Matches expected checkpoint.",
+    "Fresh verifier artifact (m5_verifier_20260930T092124Z_cd24d21.json): verdict=PASS, head matches current HEAD (full 40-char), must_fix=[]. Previous G6 fix (short hash -> full 40-char hash) is in place.",
+    "Machine gate (run_m5_stage_gate.py): C1-C37 and C39 all PASS. Only C38 (this guardian's own verdict) is unmet — it cannot block itself per the 'C38 cannot block itself' rule. C37 (fresh verifier on current HEAD) PASSes with full-head comparison.",
+    "Self-tests: 8/8 PASS (S1-S8). S8 is now a genuine adversarial stale-artifact rejection test (injects wrong-HEAD artifact, verifies gate rejects via head==current comparison). Previous G6 fix (inverted-logic redesign) is in place and working.",
+    "Runtime tests: 7/7 PASS (C30-C36) — production default lane, clean-project v2-only, legacy-unavailable normal mode, upgrade existing project, GC dry-run/apply/restart-integrity.",
+    "Scanner (scan_m5_state.py): all counters 0. Derives truth from CODE via AST analysis (ast.walk, _in_compat_guard), not ledgers. Confirms normal/default operation touches no legacy semantic storage.",
+    "Default mode is v2-only: _legacy_compat_on()=False, v2_write_authority=True, v2_shadow_flag_on()=True, v2_shadow_enabled()=True. runner.py gates ALL legacy DB access behind `if _legacy_compat:`; in default mode conn=None and no legacy path executes. settings.py defaults: shadow_v2_enabled=False, v2_write_authority=True, legacy_compatibility_mode=False.",
+    "Legacy compatibility island is isolated and default-OFF: legacy_compatibility_mode=False default; activated only via explicit env/config opt-in. Cannot affect normal v2 success, World selection, reuse, lifecycle, or GC.",
+    "Migration scaffolding removed: SCAFFOLDING shadow_dual_read=0, temp_flags=0, comparators=0, dual_write=0. No dual-write, no shadow comparators in normal operation.",
+    "V2 lifecycle authority: 6 lifecycle states (active, failed, retained, retired, superseded, unfinalized) + gc_impl=True. v2 owns World retention/pin/finalization. incomplete_visible=0 (M4 guarantee intact).",
+    "GC is reachability-based with pin protection and shared-state refcount: GC_ROOT_STATUSES={active,retained}, GC_ELIGIBLE_STATUSES={failed,superseded,retired}. Pin protection via pinned_world_ids. Shared-state eligibility via NOT EXISTS query + refcount==0 double-check in apply_gc. ANALYZE/APPLY/VERIFY phases. Crash safety via BEGIN IMMEDIATE + rollback. No age-only GC.",
+    "No scope shrink detected: M5_GATE.json defines all 39 clauses consistent with IMMUTABLE_M5_GOAL_CONTRACT.md §16. No clause weakened, no denominator shrunk, no threshold lowered, no legacy-exec path reclassified as native. The contract's required counters all hold at 0/PASS.",
+    "M3B regression PASS (CORE=29 V2_ROUTED=29 V2_NATIVE_READ=29 LEGACY_EXEC=0). M4 regression PASS (V2_PRIMARY=4 LEGACY_PRIMARY=0, V2_FINALIZATION_IS_AUTHORITY=True, all 7 fault tests PASS). Prior authority guarantees intact.",
+    "Verifier independently reconstructed runtime authority from current code (code_reconstruction section covers runner.py, _unit_processor.py, settings.py, gc.py, certify.py, admission.py, worlds.py) and ran an empirical double-index probe in default mode (no legacy index.db created, v2 active world present). Not ledger-derived.",
+    "All five ACCEPT_COMPLETION criteria hold: (1) machine gate C1-C37+C39 PASS, (2) fresh verifier PASS with must_fix=[], (3) 8/8 self-tests PASS, (4) 7/7 runtime tests PASS, (5) no scope shrink detected."
+  ],
+  "must_fix": [],
+  "notes": "Verdict ACCEPT_COMPLETION. Fresh independent reconstruction (read cold, no inherited Lead reasoning) confirms M5 is complete: normal/default fw-context operation is fully v2-native across semantic reads, indexing/write/finalization, and semantic lifecycle. Legacy semantic storage is never touched in default mode (all paths gated behind _legacy_compat, which defaults OFF). The legacy compatibility island is isolated, explicit, and default-OFF per §5. GC is reachability-based with pin protection and shared-state refcount semantics per §8/§9/§10/§11/§12. Both previous Guardian G6 findings are fixed and verified: (1) verifier artifact uses full 40-char head hash, (2) S8 is a genuine adversarial stale-artifact rejection test. The §41 stop boundary applies: do NOT begin physical deletion of legacy modules or start new features. M5 is semantic/operational retirement, complete."
+}
