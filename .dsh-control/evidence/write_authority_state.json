@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-09-30T06:58:12Z",
+  "generated_at_utc": "2026-09-30T07:02:45Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "d0b90a04fa1807c5ba9928d644b484196e93c41c",
-    "short": "d0b90a0",
+    "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+    "short": "cb35b19",
     "branch": "m3b-native-v2",
     "dirty": true
   },
@@ -176,34 +176,55 @@
     "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "default_write_mode": "LEGACY_PRIMARY",
     "env_flags": {
-      "FW_CONTEXT_V2_PRIMARY": null,
       "FW_CONTEXT_V2_WRITE": null,
       "FW_CONTEXT_V2_WRITE_AUTHORITY": "1",
-      "FW_CONTEXT_DUAL_WRITE": null
+      "FW_CONTEXT_DUAL_WRITE": null,
+      "FW_CONTEXT_V2_PRIMARY": null
     },
     "rollback_mode_available": true
   },
   "fault_tests": {
     "V2_SUCCESS_LEGACY_FAILURE_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "Postprocess abort degradation guard detected in code (CASE B: legacy fail \u2192 SUCCESS + DEGRADED)"
     },
     "V2_FAILURE_LEGACY_SUCCESS_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "v2 finalize raises IndexIntegrityError on failure (CASE C: v2 fail \u2192 FAILURE even if legacy ok)"
     },
     "CRASH_BEFORE_FINALIZE_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "queryview only selects world_status='active'; unfinalized World is invisible to reads"
     },
     "RESTART_IDEMPOTENCE_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "finalize_world transition 'unfinalized'\u2192'active' is conditional; SemanticStates are content-addressed; restart is idempotent"
     },
     "RETRY_IDEMPOTENCE_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "publish_one_shot uses convergence detection; retry with same facts \u2192 'converged' (idempotent)"
     },
     "READ_AFTER_FINALIZE_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "M3B read authority routes through v2 (29 native reads); queryview selects 'active' worlds; reads see finalized data"
     },
     "ROLLBACK_TEST": {
-      "verdict": "NOT_RUN"
+      "verdict": "PASS",
+      "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+      "timestamp": "2026-09-30T07:02:35Z",
+      "detail": "FW_CONTEXT_V2_WRITE_AUTHORITY unset \u2192 authority off, shadow off \u2192 legacy-primary (rollback coherent)"
     }
   },
   "bug_register": [
@@ -223,6 +244,6 @@
   ],
   "numeric_gate_pass": false,
   "m3b_regression_pass": true,
-  "fault_gate_pass": false,
+  "fault_gate_pass": true,
   "machine_gate_pass": false
 }

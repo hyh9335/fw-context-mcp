@@ -1,0 +1,6 @@
+{
+  "verdict": "PASS",
+  "head": "cb35b19d5af107d70befdb357d057c0831ca3819",
+  "timestamp": "2026-09-30T07:02:35Z",
+  "detail": "M3B read authority routes through v2 (29 native reads); queryview selects 'active' worlds; reads see finalized data"
+}

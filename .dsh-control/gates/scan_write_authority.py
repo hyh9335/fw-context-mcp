@@ -416,16 +416,46 @@ def _check_postprocess_abort_degraded(root: Path) -> bool:
 def _detect_write_mode(root: Path) -> dict:
     """Detect the active write mode from env flags + code defaults."""
     env = {k: os.environ.get(k) for k in V2_WRITE_FLAG_NAMES}
-    # Default mode: if no v2-write-authority flag is set, the code uses
-    # legacy-primary (the historical default). v2 shadow may run inertly.
     v2_write_authority_on = env.get("FW_CONTEXT_V2_WRITE_AUTHORITY") in {"1", "true", "True"}
+    # Read the CODE DEFAULT from settings.py: if v2_write_authority defaults
+    # to True, the default write mode is V2_PRIMARY_LEGACY_MIRROR.
+    code_default_on = _code_default_v2_write_authority(root)
     current_mode = "V2_PRIMARY_LEGACY_MIRROR" if v2_write_authority_on else "LEGACY_PRIMARY"
+    default_mode = "V2_PRIMARY_LEGACY_MIRROR" if code_default_on else "LEGACY_PRIMARY"
     return {
         "current_write_mode": current_mode,
-        "default_write_mode": "LEGACY_PRIMARY",  # code default absent explicit flag
+        "default_write_mode": default_mode,
         "env_flags": env,
+        "code_default_v2_write_authority": code_default_on,
         "rollback_mode_available": True,  # legacy-primary is the rollback mode
     }
+
+
+def _code_default_v2_write_authority(root: Path) -> bool:
+    """Read the default value of v2_write_authority from settings.py.
+
+    Parses the IndexConfig dataclass field default.  Returns True if the
+    default is True (M4-7 state), False if False (pre-M4-7 state).
+    """
+    path = root / "src" / "fw_context_mcp" / "config" / "settings.py"
+    if not path.exists():
+        return False
+    try:
+        tree = _parse(path)
+        if tree is None:
+            return False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if node.target.id == "v2_write_authority":
+                    if node.value is None:
+                        return False
+                    if isinstance(node.value, ast.Constant):
+                        return bool(node.value.value)
+                    if isinstance(node.value, ast.NameConstant):
+                        return bool(node.value.value)
+        return False
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
