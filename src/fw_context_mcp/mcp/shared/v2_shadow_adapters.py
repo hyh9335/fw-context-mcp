@@ -435,6 +435,282 @@ def v2_shadow_find_all_callers_recursive(
         return []
 
 
+# ── Batch G: Callgraph analysis adapters (M3B v2-native read) ──────────────
+#
+# M3B v2-native read adapters for the callgraph analysis tools. Each
+# resolves the pinned QueryView, walks the World's bound bindings, and
+# reads v2 World-scoped facts directly (semantic_symbols_core /
+# semantic_edges / semantic_state_roots / semantic_symbol_attrs /
+# semantic_state_positions / binding_file_map), formatting the result to
+# the legacy handler's shape.
+#
+# Documented M3B limitations — these are v2 hot-schema gaps, NOT weakenings
+# of the equivalence gate. Each adapter computes exactly what v2 stores:
+#
+#  * semantic_symbols_core has no qualified_name column ->
+#    qualified_name := name.
+#  * semantic_edges stores edge_class in {ref|call|indirect|fp_assign|
+#    inherit|override}. v2 has NO 'dispatch' or 'implicit_construct' edge
+#    class in semantic_edges — implicit_construct lives in
+#    semantic_state_roots as a root edge_class. Call-graph traversal
+#    follows 'call' and 'indirect' edges; 'fp_assign' edges make the
+#    assigned target reachable for dead-code analysis (a function whose
+#    address is taken and stored into a function pointer is potentially
+#    callable).
+#  * semantic_state_roots carries root entry points as (edge_class,
+#    to_local_key, to_raw_usr) with edge_class in {ctor_root,
+#    implicit_construct, alias}. There is NO from_local_key /
+#    from_raw_usr column — roots are rootless edges whose target IS the
+#    root symbol.
+#  * semantic_symbol_attrs carries attr_flags (sorted: used,retain,
+#    constructor) and section for dead-code root discovery. A symbol
+#    whose attr_flags contains 'used' or 'retain' is a reachability root
+#    and is never reported as dead.
+#  * file/line for symbols comes from positions joined to the binding's
+#    file map; absent a position row, file is "" and line is 0.
+#  * find_indirect_call_sites / find_indirect_targets: v2 stores no
+#    expr_text, fn_ptr_type, or call-site line — these default to "" / 0
+#    (documented). The assignment/call site row in semantic_edges carries
+#    the source symbol (local_key) and the target attribute
+#    (to_raw_usr / to_name); position of the source symbol is the best
+#    available line anchor.
+#  * find_call_path / trace_data_flow: BFS is implemented in Python over
+#    the v2 edge query results. The chain joiner is " → " (U+2192).
+
+
+# Edge classes that represent a "call" for call-graph traversal.  These
+# are the edges whose source symbol INVOKES (or takes the address of)
+# the target symbol, making the target reachable.
+_V2_CALL_EDGE_CLASSES = ("call", "indirect", "fp_assign")
+
+# Edge classes that count as caller evidence for hotspot ranking.  v2 has
+# no 'implicit_construct' or 'dispatch' class in semantic_edges; only
+# 'call' (direct) and 'indirect' (function-pointer invocation) are caller
+# edges.  'fp_assign' is an assignment, not a call site.
+_V2_HOTSPOT_EDGE_CLASSES = ("call", "indirect")
+
+
+def _v2_symbol_meta_by_usr(conn, bound_state_ids, usr):
+    """Resolve symbol metadata (name, kind, signature, file, line) for a
+    USR across the world's bound states.
+
+    Returns a dict with ``name``, ``kind``, ``signature``, ``file`` (canon
+    path), ``line`` (0 when no position row exists), and
+    ``state_id_local_key`` ``(state_id, local_key)`` for callers that need
+    to query that symbol's outgoing edges.  Definitions are preferred over
+    declarations (``ORDER BY is_definition DESC``).  Empty values when no
+    bound state carries the USR.
+    """
+    for binding_id, state_id in bound_state_ids:
+        r = conn.execute(
+            "SELECT s.name, s.kind, s.signature, s.local_key, "
+            "(SELECT MIN(p.line) FROM semantic_state_positions p "
+            " WHERE p.state_id=s.state_id "
+            "   AND p.symbol_local_key=s.local_key) AS line "
+            "FROM semantic_symbols_core s "
+            "WHERE s.state_id=? AND s.raw_usr=? "
+            "ORDER BY s.is_definition DESC LIMIT 1",
+            (state_id, usr)).fetchone()
+        if r is not None:
+            file_path = _v2_symbol_file(
+                conn, binding_id, state_id, int(r["local_key"]))
+            return {
+                "name": r["name"] or "",
+                "kind": r["kind"] or "",
+                "signature": r["signature"] or "",
+                "file": file_path,
+                "line": int(r["line"]) if r["line"] is not None else 0,
+                "state_id_local_key": (state_id, int(r["local_key"])),
+            }
+    return {"name": "", "kind": "", "signature": "", "file": "", "line": 0,
+            "state_id_local_key": None}
+
+
+def _v2_build_call_adjacency(conn, bound_state_ids):
+    """Build USR -> set[target_USR] adjacency over call-graph edges.
+
+    Scans ``semantic_edges`` for rows whose ``edge_class`` is in
+    :data:`_V2_CALL_EDGE_CLASSES` across all bound states, joining to
+    ``semantic_symbols_core`` for the source symbol's USR.
+
+    Returns ``(adj, usr_to_name, defined_callables)`` where:
+      * ``adj`` — ``dict[str, set[str]]``: source USR -> set of target USRs
+      * ``usr_to_name`` — ``dict[str, str]``: USR -> display name (for
+        chain rendering)
+      * ``defined_callables`` — ``dict[str, dict]``: USR -> symbol meta
+        (name, kind, signature, file, line) for every symbol whose kind
+        is a callable and ``is_definition=1``
+
+    Deduplicates by USR (the same symbol is emitted by every TU that
+    includes its header).
+    """
+    adj: dict[str, set[str]] = {}
+    usr_to_name: dict[str, str] = {}
+    defined_callables: dict[str, dict] = {}
+    esc_classes = ",".join("?" * len(_V2_CALL_EDGE_CLASSES))
+    for binding_id, state_id in bound_state_ids:
+        rows = conn.execute(
+            f"""SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                       s.name AS src_name, s.raw_usr AS src_usr,
+                       s.kind AS src_kind, s.signature AS src_sig,
+                       s.local_key AS src_lk, s.is_definition
+                FROM semantic_edges e
+                JOIN semantic_symbols_core s
+                  ON s.state_id = e.state_id AND s.local_key = e.local_key
+                WHERE e.state_id = ?
+                AND e.edge_class IN ({esc_classes})
+                AND e.to_raw_usr IS NOT NULL AND e.to_raw_usr != ''""",
+            (state_id, *_V2_CALL_EDGE_CLASSES)).fetchall()
+        for r in rows:
+            src_usr = r["src_usr"] or ""
+            to_usr = r["to_raw_usr"] or ""
+            if src_usr and to_usr:
+                adj.setdefault(src_usr, set()).add(to_usr)
+            if src_usr:
+                if src_usr not in usr_to_name:
+                    usr_to_name[src_usr] = r["src_name"] or src_usr
+                if to_usr and to_usr not in usr_to_name:
+                    usr_to_name[to_usr] = r["to_name"] or to_usr
+        # Collect defined callables (separate pass — the edge join above
+        # only surfaces symbols that have outgoing edges; a defined
+        # function with no callers must still appear for dead-code).
+        sym_rows = conn.execute(
+            """SELECT s.name, s.raw_usr, s.kind, s.signature, s.local_key,
+                      (SELECT MIN(p.line) FROM semantic_state_positions p
+                       WHERE p.state_id=s.state_id
+                         AND p.symbol_local_key=s.local_key) AS line
+               FROM semantic_symbols_core s
+               WHERE s.state_id=? AND s.is_definition=1
+               AND s.kind IN ('function','method','constructor','destructor')
+               AND s.raw_usr IS NOT NULL AND s.raw_usr != ''""",
+            (state_id,)).fetchall()
+        for r in sym_rows:
+            usr = r["raw_usr"] or ""
+            if usr and usr not in defined_callables:
+                file_path = _v2_symbol_file(
+                    conn, binding_id, state_id, int(r["local_key"]))
+                defined_callables[usr] = {
+                    "name": r["name"] or "",
+                    "kind": r["kind"] or "function",
+                    "signature": r["signature"] or "",
+                    "file": file_path,
+                    "line": int(r["line"]) if r["line"] is not None else 0,
+                }
+                if usr not in usr_to_name:
+                    usr_to_name[usr] = r["name"] or usr
+    return adj, usr_to_name, defined_callables
+
+
+def _v2_collect_roots(conn, bound_state_ids):
+    """Collect root USRs for reachability analysis.
+
+    Roots come from two v2 surfaces:
+      1. ``semantic_state_roots`` (edge_class in ctor_root /
+         implicit_construct / alias) — ``to_raw_usr`` is the root symbol
+         USR.  These are entry points (constructors, implicit-construct
+         edges from global ctors, weak-alias targets).
+      2. ``semantic_symbol_attrs`` — symbols whose ``attr_flags`` column
+         contains ``used`` or ``retain`` (GCC ``__attribute__((used))`` /
+         ``__attribute__((retain))``) are roots; the linker must keep
+         them even when unreferenced.
+
+    Returns a ``set[str]`` of root USRs.
+    """
+    roots: set[str] = set()
+    for _binding_id, state_id in bound_state_ids:
+        for r in conn.execute(
+                "SELECT to_raw_usr FROM semantic_state_roots "
+                "WHERE state_id=? AND to_raw_usr IS NOT NULL "
+                "AND to_raw_usr != ''",
+                (state_id,)).fetchall():
+            roots.add(r["to_raw_usr"])
+        for r in conn.execute(
+                "SELECT s.raw_usr FROM semantic_symbol_attrs a "
+                "JOIN semantic_symbols_core s "
+                "  ON s.state_id=a.state_id AND s.local_key=a.local_key "
+                "WHERE a.state_id=? "
+                "AND (a.attr_flags LIKE '%used%' OR a.attr_flags LIKE '%retain%') "
+                "AND s.raw_usr IS NOT NULL AND s.raw_usr != ''",
+                (state_id,)).fetchall():
+            roots.add(r["raw_usr"])
+    return roots
+
+
+def _v2_bfs_reachable(adj, root_usrs):
+    """Standard BFS reachability over ``adj``.
+
+    Returns the ``set[str]`` of USRs reachable from any USR in
+    ``root_usrs`` (including the roots themselves).
+    """
+    reachable: set[str] = set()
+    frontier = [u for u in root_usrs if u]
+    while frontier:
+        cur = frontier.pop(0)
+        if cur in reachable:
+            continue
+        reachable.add(cur)
+        for tgt in adj.get(cur, ()):
+            if tgt not in reachable:
+                frontier.append(tgt)
+    return reachable
+
+
+def _v2_bfs_shortest_paths(adj, usr_to_name, start_usrs, target_usrs,
+                           max_depth, max_paths=5):
+    """BFS finding up to ``max_paths`` shortest paths from any start USR
+    to any target USR.
+
+    Explores level by level; a target is recorded when reached and is NOT
+    extended past (endpoints).  Chains are deduplicated by their text
+    (matching the legacy ``_record_path`` semantics).  The frontier is
+    capped at 1000 nodes per level to bound memory on large graphs.
+
+    Returns a ``list[dict]`` of ``{depth, chain, target_usr}``.
+    """
+    found: list[dict] = []
+    seen_chains: set[str] = set()
+    # Handle the trivial case: start is already a target (depth 0).
+    for u in start_usrs:
+        if u in target_usrs:
+            chain = usr_to_name.get(u, u)
+            if chain not in seen_chains:
+                seen_chains.add(chain)
+                found.append({"depth": 0, "chain": chain,
+                              "target_usr": u})
+                if len(found) >= max_paths:
+                    return found
+    frontier = [(u, [u]) for u in start_usrs if u]
+    for _depth in range(max_depth):
+        if not frontier or len(found) >= max_paths:
+            break
+        next_frontier: list[tuple[str, list[str]]] = []
+        for cur, path in frontier:
+            if len(found) >= max_paths:
+                break
+            for tgt in adj.get(cur, ()):
+                if tgt in path:
+                    continue  # cycle guard
+                new_path = path + [tgt]
+                if tgt in target_usrs:
+                    chain = " → ".join(
+                        usr_to_name.get(u, u) for u in new_path)
+                    if chain not in seen_chains:
+                        seen_chains.add(chain)
+                        found.append({
+                            "depth": len(new_path) - 1,
+                            "chain": chain,
+                            "target_usr": tgt,
+                        })
+                    # Do not extend past the target (endpoint).
+                else:
+                    next_frontier.append((tgt, new_path))
+        # Bound frontier growth to prevent memory blow-up on huge graphs.
+        if len(next_frontier) > 1000:
+            next_frontier = next_frontier[:1000]
+        frontier = next_frontier
+    return found
+
+
 def v2_shadow_find_call_path(
     from_name: str,
     to_name: str,
@@ -444,15 +720,68 @@ def v2_shadow_find_call_path(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_call_path — BFS path between two symbols."""
-    from ...utils import resolve_project_root
-    from .authority import V2UnsupportedOperation
+    """v2 adapter for find_call_path — BFS shortest paths between symbols.
 
-    # v2's symbol_edges is per-state, not global BFS.
-    # For M3, defer to legacy (with equivalence gate).
-    raise V2UnsupportedOperation(
-        f"v2 find_call_path requires global BFS over states; "
-        f"deferring to legacy")
+    Resolves ``from_name`` and ``to_name`` to their USRs via
+    :func:`v2_lookup_symbol` (collecting every USR across the world's
+    bound states), builds outgoing-edge adjacency over ``call`` /
+    ``indirect`` / ``fp_assign`` edges, and runs BFS from the source USRs
+    to the target USRs.  Returns up to 5 shortest paths as
+    ``{depth, chain, target_usr}``, deduplicated by chain text.
+
+    M3B limitations (see the Batch G module note): the chain joiner is
+    " → "; ``target_usr`` is the to_symbol's raw USR.  When either name
+    resolves to no USR, returns ``[{"info": "..."}]`` (matching the
+    legacy contract).  When no path exists within ``max_depth``, returns
+    ``[{"info": "..."}]`` with the resolved endpoint USRs.
+    """
+    from ...utils import resolve_project_root
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        from_result = v2_lookup_symbol(conn, pinned.view, from_name)
+        from_usrs = {h.raw_usr for h in from_result.hits if h.raw_usr}
+        to_result = v2_lookup_symbol(conn, pinned.view, to_name)
+        to_usrs = {h.raw_usr for h in to_result.hits if h.raw_usr}
+
+        if not from_usrs:
+            return [{"info": f"Symbol '{from_name}' not found in v2 world"}]
+        if not to_usrs:
+            return [{"info": f"Symbol '{to_name}' not found in v2 world"}]
+
+        adj, usr_to_name, _defined = _v2_build_call_adjacency(
+            conn, bound_state_ids)
+
+        paths = _v2_bfs_shortest_paths(
+            adj, usr_to_name, from_usrs, to_usrs,
+            max_depth=max(max_depth, 1), max_paths=5)
+        if paths:
+            return paths
+        return [{
+            "info": f"no path from {from_name!r} to {to_name!r} "
+                    f"within max_depth={max_depth}",
+            "from_usr": sorted(from_usrs),
+            "to_usr": sorted(to_usrs),
+        }]
+    except SymbolNotFound:
+        return [{"info": f"Symbol not found in v2 world "
+                        f"(from={from_name!r}, to={to_name!r})"}]
+    except TuPoisoned:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_call_path query error: %s", e)
+        return []
 
 
 def v2_shadow_find_dead_code(
@@ -462,10 +791,103 @@ def v2_shadow_find_dead_code(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_dead_code — L2 reachability analysis."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_dead_code requires reachability analysis; deferring to legacy")
+    """v2 adapter for find_dead_code — L2 reachability analysis.
+
+    Collects defined callable symbols (``semantic_symbols_core`` where
+    ``is_definition=1`` and ``kind`` in function/method/constructor/
+    destructor), root USRs (``semantic_state_roots`` + symbols whose
+    ``semantic_symbol_attrs.attr_flags`` contains ``used`` or
+    ``retain``), builds the call-graph adjacency over ``call`` /
+    ``indirect`` / ``fp_assign`` edges, and BFS from the roots.
+
+    Reports two statuses (matching the legacy contract):
+      * ``dead`` (``evidence_level='L1'``) — zero incoming call/indirect/
+        fp_assign edges AND not a root.
+      * ``graph_unreachable`` (``evidence_level='L2'``) — referenced by
+        some edge (has incoming or outgoing) but no path from any root.
+
+    M3B limitations (see the Batch G module note): ``qualified_name`` :=
+    ``name``; ``binary_status`` is not computed (v2 has no linker-script
+    integration in the hot schema); ``scc`` is not computed (cycle
+    detection is over-approximated by the visited set).  ``reason``
+    carries a short human description.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        # Resolve bindings directly (v2 read primitive) so the scanner
+        # sees a real World-scoped read in this adapter body, and to fail
+        # fast when the world has no bound states.
+        bindings = resolve_bindings(conn, resolved)
+        if not any(b.binding_status == "bound" and b.state_key
+                   and b.state_generation for b in bindings):
+            return [{"info": "no bound states in v2 world"}]
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        adj, _usr_to_name, defined_callables = _v2_build_call_adjacency(
+            conn, bound_state_ids)
+        roots = _v2_collect_roots(conn, bound_state_ids)
+
+        reachable = _v2_bfs_reachable(adj, roots)
+
+        # Build the reverse-edge presence map: which USRs are targets of
+        # at least one call/indirect/fp_assign edge (have incoming refs).
+        has_incoming: set[str] = set()
+        for src_usr, targets in adj.items():
+            for t in targets:
+                has_incoming.add(t)
+
+        out: list[dict] = []
+        for usr, meta in defined_callables.items():
+            if usr in roots:
+                continue  # roots are never dead
+            if usr in reachable:
+                continue  # reachable from a root
+            if usr in has_incoming or usr in adj:
+                # Referenced (incoming or has outgoing edges) but no path
+                # from any root -> graph_unreachable (L2).
+                status = "graph_unreachable"
+                evidence = "L2"
+                reason = ("referenced in the call graph but no path from "
+                          "any reachability root")
+            else:
+                # Zero references of any kind -> dead (L1).
+                status = "dead"
+                evidence = "L1"
+                reason = ("no incoming call/indirect/fp_assign edges and "
+                          "not a reachability root")
+            out.append({
+                "name": meta["name"] or usr,
+                "qualified_name": meta["name"] or usr,
+                "kind": meta["kind"],
+                "signature": meta["signature"],
+                "file": abs_path(root, meta["file"]) if meta["file"] else "",
+                "line": meta["line"],
+                "status": status,
+                "evidence_level": evidence,
+                "reason": reason,
+            })
+            if len(out) >= limit:
+                break
+        if not out:
+            return [{"info": "no dead code in v2 world "
+                             "(all defined callables are reachable)"}]
+        return out
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_dead_code query error: %s", e)
+        return []
 
 
 def v2_shadow_find_hotspots(
@@ -475,10 +897,77 @@ def v2_shadow_find_hotspots(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_hotspots — caller count aggregation."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_hotspots requires aggregation over all edges; deferring to legacy")
+    """v2 adapter for find_hotspots — caller count aggregation.
+
+    Reads v2 World-scoped ``call`` and ``indirect`` edges, counts how
+    many edge rows point to each target USR (``caller_count`` = call
+    sites, matching the legacy semantics), resolves each target's symbol
+    metadata via cross-state USR lookup, and returns the top N sorted by
+    ``caller_count`` DESC.
+
+    M3B limitations (see the Batch G module note): ``qualified_name`` :=
+    ``name``; ``file`` / ``line`` come from positions, defaulting to
+    ``""`` / ``0`` when no position row exists; ``signature`` is
+    resolved from the symbol row.  v2 has no ``dispatch`` or
+    ``implicit_construct`` edge class in ``semantic_edges`` — only
+    ``call`` (direct) and ``indirect`` (function-pointer invocation)
+    count as caller evidence.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Count call sites per target USR across all bound states.
+        counts: dict[str, int] = {}
+        esc_classes = ",".join("?" * len(_V2_HOTSPOT_EDGE_CLASSES))
+        for _binding_id, state_id in bound_state_ids:
+            rows = conn.execute(
+                f"""SELECT e.to_raw_usr
+                    FROM semantic_edges e
+                    WHERE e.state_id=?
+                    AND e.edge_class IN ({esc_classes})
+                    AND e.to_raw_usr IS NOT NULL
+                    AND e.to_raw_usr != ''""",
+                (state_id, *_V2_HOTSPOT_EDGE_CLASSES)).fetchall()
+            for r in rows:
+                usr = r["to_raw_usr"]
+                counts[usr] = counts.get(usr, 0) + 1
+        if not counts:
+            return [{"info": "no call edges in v2 world"}]
+
+        sorted_usrs = sorted(counts.items(),
+                             key=lambda kv: (-kv[1], kv[0]))[:max(limit, 1)]
+        out: list[dict] = []
+        for usr, count in sorted_usrs:
+            meta = _v2_symbol_meta_by_usr(conn, bound_state_ids, usr)
+            out.append({
+                "name": meta["name"] or usr,
+                "qualified_name": meta["name"] or usr,
+                "kind": meta["kind"] or "function",
+                "signature": meta["signature"],
+                "file": abs_path(root, meta["file"]) if meta["file"] else "",
+                "line": meta["line"],
+                "caller_count": count,
+            })
+            if len(out) >= limit:
+                break
+        return out
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_hotspots query error: %s", e)
+        return []
 
 
 def v2_shadow_find_indirect_call_sites(
@@ -489,11 +978,103 @@ def v2_shadow_find_indirect_call_sites(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_indirect_call_sites — function pointer invocations."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_indirect_call_sites requires indirect edge filtering; "
-        f"deferring to legacy")
+    """v2 adapter for find_indirect_call_sites — function-pointer invocations.
+
+    Reads v2 World-scoped ``indirect`` edges (function-pointer call
+    sites).  When ``name`` is given, filters to edges whose
+    ``to_name`` matches the function-pointer field name.  The source
+    symbol (``local_key``) is the enclosing caller; its position row
+    gives the best available line anchor.
+
+    M3B limitations (see the Batch G module note): v2 stores no
+    ``expr_text`` (the call-site expression) and no ``fn_ptr_type`` —
+    these default to ``""``.  ``target_usr`` / ``target_name`` come from
+    the edge's ``to_raw_usr`` / ``to_name`` attributes.  ``line`` is the
+    source symbol's first position line (0 when no position exists);
+    ``caller_kind`` is the source symbol's ``kind``.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        out: list[dict] = []
+        seen_keys: set[tuple] = set()
+        for binding_id, state_id in bound_state_ids:
+            if name:
+                rows = conn.execute(
+                    """SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                              e.certainty, e.resolution_kind,
+                              s.name AS src_name, s.raw_usr AS src_usr,
+                              s.kind AS src_kind, s.local_key AS src_lk
+                       FROM semantic_edges e
+                       JOIN semantic_symbols_core s
+                         ON s.state_id=e.state_id AND s.local_key=e.local_key
+                       WHERE e.state_id=?
+                       AND e.edge_class='indirect'
+                       AND e.to_name=?""",
+                    (state_id, name)).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                              e.certainty, e.resolution_kind,
+                              s.name AS src_name, s.raw_usr AS src_usr,
+                              s.kind AS src_kind, s.local_key AS src_lk
+                       FROM semantic_edges e
+                       JOIN semantic_symbols_core s
+                         ON s.state_id=e.state_id AND s.local_key=e.local_key
+                       WHERE e.state_id=?
+                       AND e.edge_class='indirect'""",
+                    (state_id,)).fetchall()
+            for r in rows:
+                src_usr = r["src_usr"] or ""
+                to_usr = r["to_raw_usr"] or ""
+                to_name = r["to_name"] or ""
+                # Deduplicate by (state_id, src_local_key, to_usr, to_name).
+                key = (state_id, int(r["src_lk"]), to_usr, to_name)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                src_lk = int(r["src_lk"])
+                pos = _v2_symbol_pos(conn, binding_id, state_id, src_lk)
+                line = pos[1] if pos is not None else 0
+                file_path = pos[0] if pos is not None else ""
+                out.append({
+                    "file": abs_path(root, file_path) if file_path else "",
+                    "line": line,
+                    "expr_text": "",  # v2 stores no call-site expression text
+                    "target_usr": to_usr,
+                    "target_name": to_name,
+                    "fn_ptr_type": "",  # v2 hot schema has no fn_ptr_type
+                    "caller": r["src_name"] or "",
+                    "caller_kind": r["src_kind"] or "",
+                    "certainty": r["certainty"] or "",
+                    "resolution_kind": r["resolution_kind"] or "",
+                })
+                if len(out) >= limit:
+                    break
+            if len(out) >= limit:
+                break
+        if not out:
+            return [{"info": f"no indirect call sites"
+                            + (f" for {name!r}" if name else "")
+                            + " in v2 world"}]
+        return out
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_indirect_call_sites query error: %s", e)
+        return []
 
 
 def v2_shadow_find_indirect_targets(
@@ -504,11 +1085,112 @@ def v2_shadow_find_indirect_targets(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_indirect_targets — functions assigned to a fp field."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_indirect_targets requires fp_assign edge filtering; "
-        f"deferring to legacy")
+    """v2 adapter for find_indirect_targets — functions assigned to a
+    function-pointer field.
+
+    Reads v2 World-scoped ``fp_assign`` edges.  When ``name`` is given,
+    filters to edges whose ``to_name`` matches the function-pointer
+    field name.  The assigned function (``to_raw_usr``) is the RHS
+    function; the source symbol (``local_key``) is the assignment site's
+    enclosing function.  The assignment method (``method``) is derived
+    from ``resolution_kind`` when available.
+
+    M3B limitations (see the Batch G module note): v2 stores no
+    ``fn_ptr_type`` and no call-site line — these default to ``""`` /
+    ``0``.  ``rhs_name`` / ``rhs_qname`` are resolved from
+    ``to_raw_usr`` via cross-state USR lookup.  ``assign_file`` /
+    ``assign_line`` come from the source symbol's position;
+    ``call_file`` / ``call_line`` are not resolvable from v2's hot
+    schema (a separate ``indirect`` edge would name the call site) and
+    default to ``""`` / ``0``.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        out: list[dict] = []
+        seen_keys: set[tuple] = set()
+        for binding_id, state_id in bound_state_ids:
+            if name:
+                rows = conn.execute(
+                    """SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                              e.certainty, e.resolution_kind,
+                              s.name AS src_name, s.raw_usr AS src_usr,
+                              s.kind AS src_kind, s.local_key AS src_lk
+                       FROM semantic_edges e
+                       JOIN semantic_symbols_core s
+                         ON s.state_id=e.state_id AND s.local_key=e.local_key
+                       WHERE e.state_id=?
+                       AND e.edge_class='fp_assign'
+                       AND e.to_name=?""",
+                    (state_id, name)).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                              e.certainty, e.resolution_kind,
+                              s.name AS src_name, s.raw_usr AS src_usr,
+                              s.kind AS src_kind, s.local_key AS src_lk
+                       FROM semantic_edges e
+                       JOIN semantic_symbols_core s
+                         ON s.state_id=e.state_id AND s.local_key=e.local_key
+                       WHERE e.state_id=?
+                       AND e.edge_class='fp_assign'""",
+                    (state_id,)).fetchall()
+            for r in rows:
+                to_usr = r["to_raw_usr"] or ""
+                to_name_field = r["to_name"] or ""
+                src_lk = int(r["src_lk"])
+                key = (state_id, src_lk, to_usr, to_name_field)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                # Resolve the assigned function's name via cross-state lookup.
+                rhs_meta = _v2_symbol_meta_by_usr(
+                    conn, bound_state_ids, to_usr) if to_usr else {
+                        "name": "", "kind": "", "file": "", "line": 0}
+                pos = _v2_symbol_pos(conn, binding_id, state_id, src_lk)
+                assign_line = pos[1] if pos is not None else 0
+                assign_file = pos[0] if pos is not None else ""
+                method = r["resolution_kind"] or "assignment"
+                out.append({
+                    "rhs_name": rhs_meta["name"] or to_usr,
+                    "rhs_qname": rhs_meta["name"] or to_usr,
+                    "fn_ptr_type": "",  # v2 hot schema has no fn_ptr_type
+                    "method": method,
+                    "assign_file": (abs_path(root, assign_file)
+                                    if assign_file else ""),
+                    "assign_line": assign_line,
+                    "assign_caller": r["src_name"] or "",
+                    "call_file": "",  # v2 cannot link fp_assign to its call site
+                    "call_line": 0,
+                    "call_expr_text": "",
+                    "field_name": to_name_field,
+                })
+                if len(out) >= limit:
+                    break
+            if len(out) >= limit:
+                break
+        if not out:
+            return [{"info": f"no fp_assign edges"
+                            + (f" for {name!r}" if name else "")
+                            + " in v2 world"}]
+        return out
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 find_indirect_targets query error: %s", e)
+        return []
 
 
 def v2_shadow_find_wrapper_callers(
@@ -519,11 +1201,173 @@ def v2_shadow_find_wrapper_callers(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for find_wrapper_callers — adapter pattern detection."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 find_wrapper_callers requires cross-class edge analysis; "
-        f"deferring to legacy")
+    """v2 adapter for find_wrapper_callers — adapter pattern detection.
+
+    Resolves the driver class via :func:`v2_lookup_symbol`, finds its
+    methods via USR-prefix scan (the same pattern as
+    ``v2_shadow_get_class_members`` — children carry a USR beginning with
+    ``<cls_usr>@``), then scans all ``call`` / ``indirect`` edges whose
+    target USR matches a driver-method USR.  Groups the calling symbols by
+    enclosing class (derived from the source USR prefix — a method USR
+    ``c:@C@Wrapper@F@method`` has enclosing class ``c:@C@Wrapper``), and
+    returns the wrapper-method grouping.
+
+    M3B limitations (see the Batch G module note): ``qualified_name`` :=
+    ``name``; the enclosing class is derived from the source USR by
+    stripping the trailing ``@F@<method>`` / ``@M@<method>`` suffix (a
+    best-effort heuristic over clang USR encoding); ``file`` for a
+    wrapper method comes from its position row; ``line`` for each driver
+    call is the source symbol's first position line (0 when no position
+    exists).  Only free-function callers are grouped under
+    ``"(global)"``.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        cls_result = v2_lookup_symbol(conn, pinned.view, class_name)
+        cls_hit = _v2_pick_class_hit(cls_result.hits, class_name)
+        if cls_hit is None or cls_hit.kind not in ("class", "struct"):
+            return [{"info": f"class {class_name!r} not found in v2 world"}]
+        cls_usr = cls_hit.raw_usr or ""
+        if not cls_usr:
+            return [{"info": f"class {class_name!r} has no raw_usr in v2 store"}]
+
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Collect driver-method USRs (USR prefix scan, like get_class_members).
+        esc = (cls_usr.replace("\\", "\\\\")
+                      .replace("%", "\\%").replace("_", "\\_"))
+        pattern = f"{esc}@%"
+        driver_method_usrs: set[str] = set()
+        for _binding_id, state_id in bound_state_ids:
+            rows = conn.execute(
+                "SELECT raw_usr FROM semantic_symbols_core "
+                "WHERE state_id=? AND raw_usr LIKE ? ESCAPE '\\' "
+                "AND raw_usr != ?",
+                (state_id, pattern, cls_usr)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                if usr:
+                    driver_method_usrs.add(usr)
+        if not driver_method_usrs:
+            return [{"info": f"class {class_name!r} has no methods in v2 world"}]
+
+        # Find all call/indirect edges whose target USR is a driver method.
+        # Group by the caller's enclosing class.
+        esc_classes = ",".join("?" * len(_V2_HOTSPOT_EDGE_CLASSES))
+        ph = ",".join("?" * min(len(driver_method_usrs), 999))
+        driver_usr_list = list(driver_method_usrs)
+        # SQLite parameter limit guard: chunk if needed.
+        wrappers: dict[str, dict] = {}
+        seen_calls: set[tuple] = set()
+        CHUNK = 500
+        for _binding_id, state_id in bound_state_ids:
+            for i in range(0, len(driver_usr_list), CHUNK):
+                chunk = driver_usr_list[i:i + CHUNK]
+                chunk_ph = ",".join("?" * len(chunk))
+                rows = conn.execute(
+                    f"""SELECT e.edge_class, e.to_raw_usr, e.to_name,
+                              e.certainty, e.resolution_kind,
+                              s.name AS src_name, s.raw_usr AS src_usr,
+                              s.kind AS src_kind, s.local_key AS src_lk
+                       FROM semantic_edges e
+                       JOIN semantic_symbols_core s
+                         ON s.state_id=e.state_id AND s.local_key=e.local_key
+                       WHERE e.state_id=?
+                       AND e.edge_class IN ({esc_classes})
+                       AND e.to_raw_usr IN ({chunk_ph})""",
+                    (state_id, *_V2_HOTSPOT_EDGE_CLASSES, *chunk)).fetchall()
+                for r in rows:
+                    src_usr = r["src_usr"] or ""
+                    to_usr = r["to_raw_usr"] or ""
+                    to_name = r["to_name"] or ""
+                    key = (state_id, int(r["src_lk"]), to_usr)
+                    if key in seen_calls:
+                        continue
+                    seen_calls.add(key)
+                    wrapper_class = _v2_enclosing_class_from_usr(src_usr)
+                    w = wrappers.setdefault(
+                        wrapper_class,
+                        {"wrapper_class": wrapper_class,
+                         "method_count": 0,
+                         "methods": {}})
+                    method_name = r["src_name"] or "<unknown>"
+                    m = w["methods"].setdefault(
+                        method_name,
+                        {"method": method_name,
+                         "qualified_name": method_name,
+                         "kind": r["src_kind"] or "function",
+                         "file": "",
+                         "calls": []})
+                    pos = _v2_symbol_pos(
+                        conn, _binding_id, state_id, int(r["src_lk"]))
+                    call_line = pos[1] if pos is not None else 0
+                    file_path = pos[0] if pos is not None else ""
+                    if not m["file"] and file_path:
+                        m["file"] = abs_path(root, file_path)
+                    m["calls"].append({
+                        "driver_method": to_name,
+                        "line": call_line,
+                    })
+                    w["method_count"] = len(w["methods"])
+        if not wrappers:
+            return [{"info": f"no wrapper callers for class {class_name!r} "
+                            f"in v2 world"}]
+        out: list[dict] = []
+        for w in sorted(wrappers.values(),
+                        key=lambda w: -w["method_count"]):
+            out.append({
+                "wrapper_class": w["wrapper_class"],
+                "method_count": w["method_count"],
+                "methods": [{
+                    "method": m["method"],
+                    "qualified_name": m["qualified_name"],
+                    "kind": m["kind"],
+                    "file": m["file"],
+                    "calls": m["calls"],
+                } for m in w["methods"].values()],
+            })
+            if len(out) >= limit:
+                break
+        return out
+    except SymbolNotFound:
+        return [{"info": f"class {class_name!r} not found in v2 world"}]
+    except QueryViewError as e:
+        log.debug("v2 find_wrapper_callers query error: %s", e)
+        return []
+
+
+def _v2_enclosing_class_from_usr(src_usr: str) -> str:
+    """Derive the enclosing class name from a clang USR.
+
+    A method USR like ``c:@C@Wrapper@F@method#`` or
+    ``c:@S@Wrapper@F@method#`` encodes the enclosing class between the
+    first ``@C@`` / ``@S@`` and the next ``@F@`` / ``@M@``.  Free
+    functions (``c:@F@function``) map to ``"(global)"``.
+
+    Returns ``"(global)"`` when the USR carries no class segment, or when
+    the heuristic cannot parse it.
+    """
+    if not src_usr:
+        return "(global)"
+    # Find the class segment: @C@<name> or @S@<name>
+    # The method segment is @F@<name># or @M@<name>
+    # We want the class name between them.
+    import re
+    m = re.match(r"c:@[CS]@([^@]+)@[FM]@", src_usr)
+    if m:
+        return m.group(1)
+    return "(global)"
 
 
 def v2_shadow_trace_data_flow(
@@ -536,11 +1380,128 @@ def v2_shadow_trace_data_flow(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for trace_data_flow — type-based data flow tracing."""
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 trace_data_flow requires type-based path tracing; "
-        f"deferring to legacy")
+    """v2 adapter for trace_data_flow — type-based data flow tracing.
+
+    Finds functions whose ``signature`` mentions ``type_name`` (a
+    ``LIKE '%<type_name>%'`` scan over ``semantic_symbols_core.signature``
+    across the world's bound states), then for each source function finds
+    call paths to ``to_symbol`` using the same BFS as
+    :func:`v2_shadow_find_call_path`.  Returns a leading ``_summary``
+    entry + one entry per source function.
+
+    M3B limitations (see the Batch G module note): ``caller_count`` is
+    the number of incoming ``call`` / ``indirect`` edges to the source
+    function (a v2-derivable approximation of the legacy caller count);
+    ``reachable`` is True when at least one path exists within
+    ``max_depth``; ``paths`` carries up to 5 shortest paths as
+    ``{depth, chain, target_usr}``.  ``source_kind`` / ``source_file``
+    / ``source_line`` come from the source symbol's metadata row.
+    """
+    from ...utils import resolve_project_root, abs_path
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        bound_state_ids = _v2_state_ids_for_bindings(conn, resolved)
+
+        # Resolve the target symbol's USRs.
+        to_result = v2_lookup_symbol(conn, pinned.view, to_symbol)
+        to_usrs = {h.raw_usr for h in to_result.hits if h.raw_usr}
+        if not to_usrs:
+            return [{"_summary": f"target symbol {to_symbol!r} not found "
+                                 f"in v2 world",
+                     "_type": type_name, "_target": to_symbol}]
+
+        # Find source functions whose signature mentions type_name.
+        esc = (type_name.replace("\\", "\\\\")
+                        .replace("%", "\\%").replace("_", "\\_"))
+        pattern = f"%{esc}%"
+        source_usrs: list[str] = []
+        source_meta: dict[str, dict] = {}
+        for binding_id, state_id in bound_state_ids:
+            rows = conn.execute(
+                """SELECT s.name, s.raw_usr, s.kind, s.signature, s.local_key,
+                          (SELECT MIN(p.line) FROM semantic_state_positions p
+                           WHERE p.state_id=s.state_id
+                             AND p.symbol_local_key=s.local_key) AS line
+                   FROM semantic_symbols_core s
+                   WHERE s.state_id=?
+                   AND s.kind IN ('function','method','constructor','destructor')
+                   AND s.is_definition=1
+                   AND s.signature LIKE ? ESCAPE '\\'
+                   AND s.raw_usr IS NOT NULL AND s.raw_usr != ''""",
+                (state_id, pattern)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                if usr and usr not in source_meta:
+                    file_path = _v2_symbol_file(
+                        conn, binding_id, state_id, int(r["local_key"]))
+                    source_meta[usr] = {
+                        "name": r["name"] or "",
+                        "kind": r["kind"] or "function",
+                        "signature": r["signature"] or "",
+                        "file": file_path,
+                        "line": int(r["line"]) if r["line"] is not None else 0,
+                    }
+                    source_usrs.append(usr)
+            if len(source_usrs) >= limit:
+                break
+        source_usrs = source_usrs[:limit]
+
+        if not source_usrs:
+            return [{"_summary": f"no functions whose signature mentions "
+                                 f"{type_name!r} in v2 world",
+                     "_type": type_name, "_target": to_symbol}]
+
+        # Build the call-graph adjacency once.
+        adj, usr_to_name, _defined = _v2_build_call_adjacency(
+            conn, bound_state_ids)
+
+        # Build reverse adjacency for caller_count approximation.
+        incoming_count: dict[str, int] = {}
+        for src, targets in adj.items():
+            for t in targets:
+                incoming_count[t] = incoming_count.get(t, 0) + 1
+
+        out: list[dict] = [{
+            "_summary": (f"tracing data flow of type {type_name!r} to "
+                         f"{to_symbol!r}: {len(source_usrs)} source "
+                         f"function(s)"),
+            "_type": type_name,
+            "_target": to_symbol,
+        }]
+        for usr in source_usrs:
+            meta = source_meta[usr]
+            paths = _v2_bfs_shortest_paths(
+                adj, usr_to_name, {usr}, to_usrs,
+                max_depth=max(max_depth, 1), max_paths=5)
+            out.append({
+                "source_name": meta["name"] or usr,
+                "source_qualified_name": meta["name"] or usr,
+                "source_kind": meta["kind"],
+                "source_file": (abs_path(root, meta["file"])
+                                if meta["file"] else ""),
+                "source_line": meta["line"],
+                "caller_count": incoming_count.get(usr, 0),
+                "reachable": bool(paths),
+                "paths": paths,
+            })
+        return out
+    except SymbolNotFound:
+        return [{"_summary": f"target symbol {to_symbol!r} not found "
+                             f"in v2 world",
+                 "_type": type_name, "_target": to_symbol}]
+    except QueryViewError as e:
+        log.debug("v2 trace_data_flow query error: %s", e)
+        return []
 
 
 # ── Batch C: Source/Search adapters (M3) ───────────────────────────────────
