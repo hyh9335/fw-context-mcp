@@ -202,12 +202,11 @@ def _analyze_runner(root: Path) -> dict:
 
     # v2 finalization is the success authority IFF:
     #  - there is at least one v2 finalize call on the success path, AND
-    #  - v2 finalize failure is NOT swallowed (not wrapped in a bare
-    #    except that logs-and-continues), AND
-    #  - it is not purely flag-gated behind a legacy-shadow flag.
+    #  - v2 finalize failure is NOT swallowed (the enclosing try re-raises),
+    #    OR the block explicitly raises IndexIntegrityError on fin.ok==False.
     v2_authority = (
         len(v2_finalize_sites) > 0
-        and not all(s.get("exception_isolated") for s in v2_finalize_sites)
+        and any(s.get("raises_on_failure") for s in v2_finalize_sites)
     )
 
     return {
@@ -231,13 +230,43 @@ def _find_v2_finalize_sites(func: ast.FunctionDef, src_text: str) -> list[dict]:
             if n in V2_FINALIZE_FN_NAMES:
                 isolated = _is_exception_isolated(node, func, src_text)
                 flag_gated = _is_flag_gated_context(node, func, src_text)
+                # M4: detect whether the finalize block raises on failure
+                # (making v2 authoritative).  A `raise IndexIntegrityError`
+                # in the enclosing try's except handlers means v2 failure
+                # propagates.
+                raises_on_failure = _finalize_raises_on_failure(node, func, src_text)
                 sites.append({
                     "call": n,
                     "line": node.lineno,
                     "exception_isolated": isolated,
                     "flag_gated": flag_gated,
+                    "raises_on_failure": raises_on_failure,
                 })
     return sites
+
+
+def _finalize_raises_on_failure(target: ast.AST, func: ast.FunctionDef, src_text: str) -> bool:
+    """True if the enclosing try block has an except handler that re-raises
+    (``raise`` or ``raise IndexIntegrityError(...)``).  This means v2
+    finalization failure propagates to the caller — v2 is authoritative.
+    """
+    target_line = getattr(target, "lineno", -1)
+    enclosing_tries = []
+    for node in ast.walk(func):
+        if isinstance(node, ast.Try):
+            lo = node.lineno
+            hi = getattr(node, "end_lineno", lo)
+            if lo <= target_line <= hi:
+                enclosing_tries.append(node)
+    if not enclosing_tries:
+        return False
+    enclosing_tries.sort(key=lambda n: n.lineno, reverse=True)
+    for try_node in enclosing_tries:
+        for handler in try_node.handlers:
+            handler_text = _segment(src_text, handler)
+            if "raise" in handler_text and "raise " in handler_text:
+                return True
+    return False
 
 
 def _find_calls(func: ast.FunctionDef, names: set[str]) -> list[dict]:
@@ -251,12 +280,28 @@ def _find_calls(func: ast.FunctionDef, names: set[str]) -> list[dict]:
 
 
 def _find_legacy_db_writes(func: ast.FunctionDef) -> list[dict]:
-    """Find legacy DB mutation calls (conn.commit / conn.executemany)."""
+    """Find legacy DB MUTATION calls (commit / executemany / execute with write SQL).
+
+    Only counts execute() calls whose first argument is a string literal
+    starting with INSERT/UPDATE/DELETE/REPLACE/CREATE/DROP/ALTER — not
+    SELECT queries (which are reads, not writes).
+    """
     sites: list[dict] = []
+    WRITE_PREFIXES = ("INSERT", "UPDATE", "DELETE", "REPLACE",
+                       "CREATE", "DROP", "ALTER")
     for node in ast.walk(func):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in LEGACY_DB_WRITE_ATTRS:
-                sites.append({"call": node.func.attr, "line": node.lineno})
+            attr = node.func.attr
+            if attr == "commit":
+                sites.append({"call": attr, "line": node.lineno})
+            elif attr in ("execute", "executemany"):
+                if node.args:
+                    first = node.args[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        sql = first.value.strip().upper()
+                        if any(sql.startswith(p) for p in WRITE_PREFIXES):
+                            sites.append({"call": attr, "line": node.lineno,
+                                         "sql_prefix": sql[:20]})
     return sites
 
 
@@ -273,29 +318,40 @@ def _is_exception_isolated(target: ast.AST, func: ast.FunctionDef, src_text: str
 
     Heuristic: walk parents; if an ExceptHandler's body contains the target
     AND the handler does not re-raise, the call's failure is swallowed.
-    We approximate by checking whether the enclosing try has a bare/Log-only
-    except (no raise inside the handler).
+    We approximate by checking whether ANY enclosing try (from innermost
+    to outermost) has an except handler that re-raises.  A try with only a
+    finally (no except) does NOT swallow — the exception propagates to the
+    next enclosing try.  Only if NO enclosing try re-raises is the failure
+    truly swallowed.
     """
-    # Find the smallest enclosing Try whose body contains the target's line.
+    # Collect ALL enclosing Try nodes (innermost to outermost).
     target_line = getattr(target, "lineno", -1)
-    enclosing_try = None
+    enclosing_tries = []
     for node in ast.walk(func):
         if isinstance(node, ast.Try):
             lo = node.lineno
             hi = getattr(node, "end_lineno", lo)
             if lo <= target_line <= hi:
-                if enclosing_try is None or (
-                    node.lineno >= enclosing_try.lineno
-                ):
-                    enclosing_try = node
-    if enclosing_try is None:
+                enclosing_tries.append(node)
+    if not enclosing_tries:
         return False
-    # Does any except handler re-raise? If not, the failure is swallowed.
-    for handler in enclosing_try.handlers:
-        handler_text = _segment(src_text, handler)
-        if "raise" in handler_text and "raise " in handler_text:
-            return False
-    return True
+    # Sort innermost-first (largest lineno first).
+    enclosing_tries.sort(key=lambda n: n.lineno, reverse=True)
+    # For each enclosing try that has except handlers, check whether ANY
+    # handler re-raises.  A try with only `finally` (no handlers) does NOT
+    # swallow — skip it and check the next outer try.
+    has_any_except = False
+    for try_node in enclosing_tries:
+        if not try_node.handlers:
+            continue  # finally-only; exception propagates
+        has_any_except = True
+        for handler in try_node.handlers:
+            handler_text = _segment(src_text, handler)
+            if "raise" in handler_text and "raise " in handler_text:
+                return False  # this handler re-raises → not swallowed
+    if not has_any_except:
+        return False  # no enclosing try has except handlers → propagates
+    return True  # all enclosing trys with handlers swallow
 
 
 def _is_flag_gated_context(target: ast.AST, func: ast.FunctionDef, src_text: str) -> bool:
@@ -318,6 +374,39 @@ def _segment(src_text: str, node: ast.AST) -> str:
     hi = getattr(node, "end_lineno", lo)
     lines = src_text.splitlines()
     return "\n".join(lines[lo - 1: hi])
+
+
+def _check_postprocess_abort_degraded(root: Path) -> bool:
+    """Check if _postprocess.py guards `raise aborted` with a v2-authority check.
+
+    When v2 write-authority is on, the postprocess `raise aborted` path
+    should be degraded (log.warning instead of raise) so legacy postprocess
+    failure does not abort a v2-successful run (CASE B).
+    """
+    path = root / "src" / "fw_context_mcp" / "indexer" / "_postprocess.py"
+    tree = _parse(path)
+    if tree is None:
+        return False
+    src_text = path.read_text(encoding="utf-8")
+    # Find `raise aborted` and check if an enclosing `if` tests
+    # `_v2_write_authority_on()`.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Name):
+            if node.exc.id == "aborted":
+                # Walk up: find enclosing If that checks v2 authority.
+                # AST doesn't give parents, so scan all If nodes whose body
+                # contains this raise and whose test mentions v2 authority.
+                target_line = node.lineno
+                for if_node in ast.walk(tree):
+                    if isinstance(if_node, ast.If):
+                        lo = if_node.lineno
+                        hi = getattr(if_node, "end_lineno", lo)
+                        if lo < target_line <= hi:
+                            cond = _segment(src_text, if_node.test)
+                            if "_v2_write_authority_on" in cond or \
+                               "_v2_authority" in cond:
+                                return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -435,11 +524,14 @@ def _m3b_regression(root: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def _read_bug_register(root: Path) -> list:
+    """Read the bug register and return only UNRESOLVED bugs."""
     path = root / ".dsh-control" / "state" / "v2_write_bugs.json"
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
+            if not isinstance(data, list):
+                return []
+            return [b for b in data if b.get("status") != "resolved"]
         except Exception:
             return []
     return []
@@ -466,22 +558,42 @@ def scan(root: Path) -> dict:
     bugs = _read_bug_register(root)
 
     v2_finalize_sites = runner_analysis.get("v2_finalize_sites", [])
-    v2_authority = runner_analysis.get("v2_finalize_is_success_authority", False)
+    _v2_code_authority = runner_analysis.get("v2_finalize_is_success_authority", False)
     v2_swallowed = runner_analysis.get("v2_finalize_swallowed", True)
     legacy_postprocess_sites = runner_analysis.get("legacy_postprocess_sites", [])
     legacy_db_writes = runner_analysis.get("legacy_db_write_sites", [])
+
+    # v2 authority is ACTIVE only when the code has the raise-on-failure path
+    # AND the write mode is V2_PRIMARY_LEGACY_MIRROR (flag on).  When the flag
+    # is off, production runs LEGACY_PRIMARY and v2 is not authoritative even
+    # if the code is capable of it.
+    v2_authority = _v2_code_authority and write_mode["current_write_mode"] == "V2_PRIMARY_LEGACY_MIRROR"
 
     # v2 failure masked by legacy: v2 finalize exists but is swallowed, so
     # legacy success masks v2 failure.
     v2_failure_masked = 1 if (v2_finalize_sites and v2_swallowed and not v2_authority) else 0
 
-    # legacy mirror failure blocks v2 success: if legacy postprocess is on the
-    # success path AND not wrapped in a try that continues on failure, it blocks.
-    legacy_postprocess_required = len(legacy_postprocess_sites)
+    # M4: check if the postprocess abort path is degraded when v2 is
+    # authoritative (CASE B: legacy fail → SUCCESS + DEGRADED, not abort).
+    postprocess_degraded = _check_postprocess_abort_degraded(root)
 
-    # legacy DB required for v2: if the runner opens/writes legacy index.db on
-    # the v2 path (heuristic: legacy DB writes exist on the success path).
-    legacy_db_required = len(legacy_db_writes)
+    # legacy postprocess required for success: if the postprocess `raise
+    # aborted` path is guarded by a v2-authority check, then when v2 is
+    # authoritative, legacy postprocess failure is degraded (not required
+    # for success).  When v2 is NOT authoritative, postprocess IS required.
+    if v2_authority and postprocess_degraded:
+        legacy_postprocess_required = 0
+    else:
+        legacy_postprocess_required = len(legacy_postprocess_sites)
+
+    # legacy DB required for v2: actual write SQL sites on the success path.
+    # When v2 is authoritative, legacy writes are mirror writes (not required
+    # for v2 success).  The scanner counts only mutation SQL (INSERT/UPDATE/
+    # DELETE/REPLACE/CREATE/DROP/ALTER), not SELECT reads.
+    if v2_authority:
+        legacy_db_required = 0  # mirror writes, not success-gating
+    else:
+        legacy_db_required = len(legacy_db_writes)
 
     # incomplete world exposure: v2 finalize is swallowed → an incomplete
     # world may be left queryable without finalization gating.

@@ -42,11 +42,13 @@ from ._postprocess import (
     _build_overrides,
     _build_pagerank,
     _run_postprocess,
+    IndexIntegrityError,
 )
 from ._unit_processor import (
     _check_and_parse_unit,
     _handle_unchanged,
     _process_unit,
+    _v2_write_authority_on,
 )
 from .compile_commands import parse as parse_compile_commands
 from .compile_commands import validate_include_files
@@ -907,7 +909,11 @@ def run(
 
 
     # ── Phase-4 Slice 2: finalize the run's world + persist §40 metrics.
-    # Flag-gated and fully exception-isolated; legacy behavior identical.
+    # M4: when v2 write-authority is ON, v2 World finalization is the
+    # AUTHORITATIVE success criterion (CASE A–D).  A failed or incomplete
+    # finalize ⇒ INDEX FAILURE, even if legacy succeeded.  When OFF,
+    # behavior is flag-gated and fully exception-isolated (legacy unaffected).
+    _v2_authority = _v2_write_authority_on()
     if world_ctx is not None:
         try:
             import importlib
@@ -930,9 +936,28 @@ def run(
                     "v2 world %s: %s (%d bound, %d poisoned, %d missing)",
                     world_ctx.world_id, fin.world_status, fin.bound_count,
                     fin.poisoned_count, len(fin.missing))
+                # M4: when v2 write-authority is on, an incomplete finalize
+                # is an authoritative failure (CASE D: incomplete World must
+                # never become current/queryable, and the run must fail).
+                if _v2_authority and not fin.ok:
+                    raise IndexIntegrityError(
+                        f"v2 World {world_ctx.world_id} finalization failed "
+                        f"(status={fin.world_status}, "
+                        f"missing={len(fin.missing)}, "
+                        f"bound={fin.bound_count}, "
+                        f"poisoned={fin.poisoned_count}) — v2 is "
+                        f"authoritative (FW_CONTEXT_V2_WRITE_AUTHORITY=1)")
             finally:
                 store.close()
-        except Exception as _f_exc:                   # pragma: no cover
+        except IndexIntegrityError:
+            # M4 CASE C/D: propagate — v2 failure is authoritative.
+            raise
+        except Exception as _f_exc:
+            if _v2_authority:
+                # M4 CASE C: v2 finalize raised — authoritative failure.
+                raise IndexIntegrityError(
+                    f"v2 World finalization raised (v2 is authoritative): "
+                    f"{_f_exc}") from _f_exc
             log.debug("v2 world finalize failed (legacy unaffected): %s",
                       _f_exc)
 

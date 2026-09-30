@@ -67,7 +67,11 @@ _V2_FLAG_CACHE: bool | None = None
 
 
 def _v2_shadow_flag_on() -> bool:
-    """``FW_CONTEXT_SHADOW_V2=1`` env override, else ``cfg.index`` flag."""
+    """``FW_CONTEXT_SHADOW_V2=1`` env override, else ``cfg.index`` flag.
+
+    Also returns True when v2 write-authority is on (M4): write-authority
+    requires the v2 write path to be active, so it implies the shadow flag.
+    """
     global _V2_FLAG_CACHE
     if _V2_FLAG_CACHE is not None:
         return _V2_FLAG_CACHE
@@ -80,6 +84,9 @@ def _v2_shadow_flag_on() -> bool:
             enabled = bool(load().index.shadow_v2_enabled)
         except Exception:
             enabled = False
+    # M4: write-authority implies shadow (v2 write path must be active).
+    if not enabled:
+        enabled = _v2_write_authority_on()
     _V2_FLAG_CACHE = enabled
     return enabled
 
@@ -88,6 +95,47 @@ def _reset_v2_flag_cache() -> None:
     """Test seam: forget the cached flag decision."""
     global _V2_FLAG_CACHE
     _V2_FLAG_CACHE = None
+
+
+# ── M4: v2 write authority ──
+# Distinct from the shadow flag: when write-authority is ON, v2 World
+# finalization is the AUTHORITATIVE success criterion for an indexing run
+# (CASE A–D of the M4 success matrix).  A failed or incomplete v2 finalize
+# ⇒ INDEX FAILURE, even if legacy succeeded.  Legacy postprocess failure ⇒
+# INDEX SUCCESS + LEGACY_COMPATIBILITY_DEGRADED (not abort).
+#
+# Write-authority implies the shadow flag: setting FW_CONTEXT_V2_WRITE_AUTHORITY=1
+# automatically enables the v2 shadow write path as well.
+_V2_WRITE_AUTHORITY_CACHE: bool | None = None
+
+
+def _v2_write_authority_on() -> bool:
+    """``FW_CONTEXT_V2_WRITE_AUTHORITY=1`` env override, else ``cfg.index`` flag.
+
+    When True, v2 World finalization gates the indexing run's success.
+    Implies ``_v2_shadow_flag_on()`` is also True (write-authority requires
+    the v2 write path to be active).
+    """
+    global _V2_WRITE_AUTHORITY_CACHE
+    if _V2_WRITE_AUTHORITY_CACHE is not None:
+        return _V2_WRITE_AUTHORITY_CACHE
+    env = os.environ.get("FW_CONTEXT_V2_WRITE_AUTHORITY")
+    if env is not None:
+        enabled = env == "1"
+    else:
+        try:
+            from fw_context_mcp.config import load
+            enabled = bool(getattr(load().index, "v2_write_authority", False))
+        except Exception:
+            enabled = False
+    _V2_WRITE_AUTHORITY_CACHE = enabled
+    return enabled
+
+
+def _reset_v2_write_authority_cache() -> None:
+    """Test seam: forget the cached write-authority decision."""
+    global _V2_WRITE_AUTHORITY_CACHE
+    _V2_WRITE_AUTHORITY_CACHE = None
 
 from ..utils import MTIME_TOLERANCE_S, SAFE_EXCEPT, compute_source_hash, is_fatal
 from .config_hash import compute_flags_hash, compute_tu_content_hash

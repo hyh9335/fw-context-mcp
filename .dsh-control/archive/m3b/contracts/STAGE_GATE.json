@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "milestone": "M3B_NATIVE_V2_READ_ENGINE_COMPLETE",
+  "contract": ".dsh-control/contracts/IMMUTABLE_GOAL_CONTRACT.md",
+  "scanner": "python .dsh-control/gates/scan_authority_state.py",
+  "scanner_output": ".dsh-control/evidence/authority_state.json",
+  "hard_gate": "python .dsh-control/gates/run_stage_gate.py",
+  "verifier_artifact_glob": ".dsh-control/evidence/verifier_*.json",
+  "guardian_artifact_glob": ".dsh-control/evidence/guardian_*.json",
+  "regression_marker": ".dsh-control/evidence/regression.json",
+  "numeric_clauses": {
+    "CORE_NORMAL_USE_SEMANTIC_TOOLS_gt_0": true,
+    "CORE_V2_ROUTED_eq_CORE": true,
+    "CORE_V2_NATIVE_READ_eq_CORE": true,
+    "CORE_LEGACY_SEMANTIC_EXECUTION_eq_0": true,
+    "CORE_UNSAFE_FALLBACK_eq_0": true,
+    "UNRESOLVED_NORMAL_USE_V2_BUGS_eq_0": true
+  },
+  "acceptance_clauses": {
+    "fresh_verifier_names_current_head": true,
+    "fresh_guardian_names_current_head": true,
+    "regression_pass": true,
+    "durable_checkpoint_commit_exists": true,
+    "head_clean_or_checkpointed": true
+  },
+  "no_warning_pass": true,
+  "exit_nonzero_on_any_failed_clause": true
+}

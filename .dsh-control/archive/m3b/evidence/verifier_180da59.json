@@ -1,0 +1,22 @@
+{
+  "verifier": "fresh_one_shot",
+  "head": "180da5918dc8ab5a65e174ff24d613e8246d7fb5",
+  "head_short": "180da59",
+  "branch": "m3b-native-v2",
+  "timestamp": "2026-09-30T06:34:53Z",
+  "verdict": "PASS",
+  "denominator_reconstructed": 29,
+  "scanner_counters": {
+    "CORE": 29,
+    "V2_ROUTED": 29,
+    "V2_NATIVE_READ": 29,
+    "LEGACY_EXEC": 0,
+    "UNSAFE_FALLBACK": 0,
+    "BUGS": 0
+  },
+  "regression_pass": true,
+  "self_test_pass": true,
+  "findings": [],
+  "gaming_detected": "none",
+  "rationale": "Fresh one-shot Verifier attempted to DISPROVE M3B read-authority completion at HEAD 180da5918dc8ab5a65e174ff24d613e8246d7fb5 (branch m3b-native-v2). (1) HEAD stable: `git rev-parse HEAD` x3 returned the identical SHA 180da5918dc8ab5a65e174ff24d613e8246d7fb5. (2) src tracked at HEAD: `git cat-file -t HEAD:src/fw_context_mcp/mcp/server.py` -> blob. (3) Denominator reconstructed INDEPENDENTLY from code (not ledger): `git cat-file -p HEAD:src/fw_context_mcp/mcp/server.py | Select-String 'v2_authority_route(' | Measure` -> 29 matches at server.py lines 1218-1327. (4) Scanner `python .dsh-control/gates/scan_authority_state.py` -> CORE=29 V2_ROUTED=29 V2_NATIVE_READ=29 LEGACY_EXEC=0 UNSAFE_FALLBACK=0 UNRESOLVED_BUGS=0; M3B numeric gate PASS. (5) Working-tree key files byte-verified IDENTICAL to HEAD via `git hash-object` vs `git rev-parse HEAD:<path>`: server.py (d5e74003...), v2_shadow_adapters.py (b40e6d7a...), authority.py (a3fa99bb...) all MATCH — the 'dirty' git flag is purely staged-deletions + untracked files, NOT content drift; the scanner therefore read HEAD-identical production code. (6) Adapter audit: `grep 'raise V2UnsupportedOperation' src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py` -> 0 matches; all 29 v2_shadow_* adapters carry real v2 read primitives on return paths (v2_lookup_symbol / v2_symbol_edges / resolve_bindings / open_query_connection + execute/fetchone/fetchall), or delegate v2-to-v2 (find_references -> v2_shadow_find_callers). No hidden legacy DB helper calls computing the semantic answer. (7) Authority audit: authority.py route_authority guards ALL THREE except-branches (V2UnsupportedOperation@143, QueryViewResolutionError@160, generic Exception@177) behind `_can_safely_fallback(...)`; when equivalence cannot be established the v2 error is re-raised (RISK B fix intact). The v2_authority_route wrapper's QueryViewResolutionError@307 site is structurally guarded by `_can_safely_fallback(None, None, project_root)`@325 which always returns False (pinned_view=None) — explicit guarded, not weakened. `_can_safely_fallback` (L196-229) remains strict: requires pinned_view + legacy_config_hash + project_root + verify_legacy_equivalence. No unsafe fallback. (8) Regression: `python -m pytest tests/ -x -q -k 'v2 or authority or shadow or adapter or queryview or world' --no-header --tb=short` -> 94 passed, 3 skipped, 0 failed, exit 0. (9) Self-tests: `python .dsh-control/gates/self_test.py` -> 6/6 PASS (A-F; anti-gaming property holds in both directions: TEST B proves scanner ignores fake PROJECT_STATUS, TEST C/D prove guardian/verifier ACCEPT cannot override a failing machine gate, TEST E proves stale-HEAD artifacts are rejected). No gaming detected: no weakened clauses, no hardcoded counters in scanner (code-derived), no fake reads, no V2UnsupportedOperation reclassification-by-deletion. PASS is valid — EXECUTION AUTHORITY (v2 reads compute the answer) confirmed, not merely ROUTING."
+}

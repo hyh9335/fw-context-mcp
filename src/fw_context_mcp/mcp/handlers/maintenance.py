@@ -1533,6 +1533,73 @@ def _reindex_parse_and_store(
                         )
                         total_symbols += syms_added
 
+                # Phase 2.5 (M4): v2 certify/publish/bind for each re-parsed TU.
+                # When v2 write-authority (or shadow) is on, publish the
+                # updated SemanticState to v2 and bind the TU into the v2
+                # World.  This closes M4-BUG-002 (reindex_file_impl bypassed
+                # v2, leaving the v2 World stale and the M3B read authority
+                # returning stale data).
+                from ...indexer._unit_processor import _v2_shadow_flag_on
+                if _v2_shadow_flag_on():
+                    try:
+                        import importlib as _imp
+                        _worlds_mod = _imp.import_module(
+                            "fw_context_mcp.store_v2.worlds")
+                        _cert_mod = _imp.import_module(
+                            "fw_context_mcp.store_v2.certify")
+                        _publish_mod = _imp.import_module(
+                            "fw_context_mcp.store_v2.publish")
+                        _v2_world_ctx = _worlds_mod.build_world_context(
+                            project_root=root,
+                            build_system=cfg_data.get("build_system")
+                            if isinstance(cfg_data, dict)
+                            else (cfg_data["build_system"]
+                                  if "build_system" in cfg_data.keys()
+                                  else None),
+                            project_id=cfg_data.get("project_id")
+                            if isinstance(cfg_data, dict)
+                            else (cfg_data["project_id"]
+                                  if "project_id" in cfg_data.keys()
+                                  else None),
+                        )
+                        if _v2_world_ctx is not None:
+                            for unit, parsed in parsed_units:
+                                _ctx_id = unit_identity_fields(
+                                    unit, config_hash, root, entry_index=0
+                                )["context_id"]
+                                _cert_mod.certify_and_publish_for_unit(
+                                    unit=unit, parsed=parsed,
+                                    project_root=root,
+                                    config_hash=config_hash,
+                                    context_id=_ctx_id,
+                                    db_path=db_path, world=_v2_world_ctx)
+                            # Finalize the v2 World for this reindex run.
+                            _v2_path = db_path.parent.parent / \
+                                db_path.parent.name / "index-v2.db"
+                            _v2_store = _publish_mod.open_v2_store_for_write(
+                                _v2_path)
+                            try:
+                                _fin = _worlds_mod.finalize_world(
+                                    _v2_store, _v2_world_ctx)
+                                _worlds_mod.record_run_metrics(
+                                    _v2_store, _v2_world_ctx)
+                                log.info(
+                                    "v2 reindex world %s: %s "
+                                    "(%d bound, %d poisoned, %d missing)",
+                                    _v2_world_ctx.world_id,
+                                    _fin.world_status, _fin.bound_count,
+                                    _fin.poisoned_count, len(_fin.missing))
+                            finally:
+                                _v2_store.close()
+                    except Exception as _v2_re_exc:
+                        from ...indexer._unit_processor import \
+                            _v2_write_authority_on
+                        if _v2_write_authority_on():
+                            raise
+                        log.debug(
+                            "v2 reindex leg failed (legacy unaffected): %s",
+                            _v2_re_exc)
+
                 # Phase 3: resolve macro definitions after all TUs are stored.
                 # Macro resolution needs the clang flags from one TU (they
                 # are identical for TUs of the same file) and runs a

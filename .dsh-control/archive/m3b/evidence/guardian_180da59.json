@@ -1,0 +1,24 @@
+{
+  "guardian": "fresh_one_shot",
+  "head": "180da5918dc8ab5a65e174ff24d613e8246d7fb5",
+  "head_short": "180da59",
+  "branch": "m3b-native-v2",
+  "timestamp": "2026-09-30T06:34:53Z",
+  "verdict": "ACCEPT_COMPLETION",
+  "scope_shrink_detected": false,
+  "denominator_reconstructed": 29,
+  "scanner_counters": {
+    "CORE": 29,
+    "V2_ROUTED": 29,
+    "V2_NATIVE_READ": 29,
+    "LEGACY_EXEC": 0,
+    "UNSAFE_FALLBACK": 0,
+    "BUGS": 0
+  },
+  "verifier_verified": true,
+  "regression_pass": true,
+  "self_test_pass": true,
+  "gaming_detected": "none",
+  "blockers": [],
+  "rationale": "Fresh one-shot Guardian reviewed M3B completion at HEAD 180da5918dc8ab5a65e174ff24d613e8246d7fb5 (branch m3b-native-v2), reading inputs cold with no inherited Lead reasoning. (1) Scope shrink: IMMUTABLE_GOAL_CONTRACT.md read in full (102 lines); working-tree contract byte-verified IDENTICAL to HEAD via `git hash-object` vs `git rev-parse HEAD:.dsh-control/contracts/IMMUTABLE_GOAL_CONTRACT.md` -> both c999d82155fb5a7c8d424555c3748c3b06bece3b (MATCH, unmodified). M3B formula in section 3 intact: all six numeric clauses present and unmodified (CORE_NORMAL_USE_SEMANTIC_TOOLS>0; CORE_V2_ROUTED==CORE; CORE_V2_NATIVE_READ==CORE; CORE_LEGACY_SEMANTIC_EXECUTION==0; CORE_UNSAFE_FALLBACK==0; UNRESOLVED_NORMAL_USE_V2_BUGS==0). Section 2 counter definitions, section 4 additional gates, section 5 agent authority rules, section 6 milestone name (M3B_NATIVE_V2_READ_ENGINE_COMPLETE) all unchanged. No clause weakened, no denominator silently lowered. (2) Denominator: independently reconstructed from CODE by enumerating v2_authority_route( calls in HEAD:src/fw_context_mcp/mcp/server.py via `git cat-file -p HEAD:.../server.py | Select-String` -> 29 (NOT from any ledger; AUTHORITY_LEDGER.md/PROJECT_STATUS.md are caches per AGENTS.local.md). (3) Counters: scanner `python .dsh-control/gates/scan_authority_state.py` produced 29/29/29/0/0/0, code-derived. Self-test B proves the scanner ignores a fake PROJECT_STATUS claiming native=29 and derives the real counts from code — anti-gaming property holds. Working-tree production code byte-verified IDENTICAL to HEAD for server.py / v2_shadow_adapters.py / authority.py (git hash-object == git rev-parse HEAD:<path> for all three) — the 'dirty' git flag is staged-deletions + untracked files, not content drift, so the scanner read HEAD-identical code. (4) Verifier verified: read .dsh-control/evidence/verifier_180da59.json (freshly written by this same fresh one-shot run); head matches current HEAD exactly (180da5918dc8ab5a65e174ff24d613e8246d7fb5), verdict=PASS, denominator_reconstructed=29, scanner_counters 29/29/29/0/0/0, regression_pass=true, self_test_pass=true, gaming_detected=none. (5) Gaming check: (a) no weakened clauses — contract byte-identical to HEAD; (b) no hardcoded counters in scanner — code-derived (self-test B); (c) no fake v2 reads — `grep 'raise V2UnsupportedOperation' v2_shadow_adapters.py` -> 0 matches, all 29 v2_shadow_* adapter bodies carry real v2 read primitives (v2_lookup_symbol / v2_symbol_edges / resolve_bindings / open_query_connection + execute/fetchone/fetchall) or delegate v2-to-v2 (find_references -> v2_shadow_find_callers, NOT to legacy); (d) _can_safely_fallback NOT weakened — defined L196-229 strict (requires pinned_view + legacy_config_hash + project_root + verify_legacy_equivalence), guards ALL THREE fallback branches in route_authority (V2UnsupportedOperation@146, QueryViewResolutionError@163, generic Exception@180) AND the v2_authority_route wrapper QueryViewResolutionError@307 site (structurally guarded, always-False pinned_view=None); no adapter reclassified V2_NATIVE by deleting a raise without adding a real v2 read. (6) Regression: 94 passed / 3 skipped / 0 failed (exit 0). (7) Self-tests: 6/6 PASS. No blockers. The machine gate is engineering-green on the current HEAD and a fresh verifier accepted this exact HEAD. Verdict ACCEPT_COMPLETION."
+}

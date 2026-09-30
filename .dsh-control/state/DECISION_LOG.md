@@ -256,3 +256,33 @@ masks it. `runner.py:995`: `_run_postprocess` runs on the success path and is
 required. `runner.py:1037`: `return config_hash` succeeds regardless of v2.
 This is LEGACY_PRIMARY. M4-2 must make v2 finalization gate the return.
 
+## 2026-09-30 M4-2/M4-4/M4-5: v2 write authority implementation
+- **M4-2 (enforce fin.ok)**: Added `_v2_write_authority_on()` flag
+  (`FW_CONTEXT_V2_WRITE_AUTHORITY=1` env or `cfg.index.v2_write_authority`).
+  When ON: (a) `fin.ok==False` → `raise IndexIntegrityError` (CASE D);
+  (b) v2 finalize exception → re-raise as `IndexIntegrityError` (CASE C).
+  Write-authority implies shadow flag (v2 write path must be active).
+  Scanner confirms `raises_on_failure=True`, `V2_FINALIZATION_IS_AUTHORITY=True`
+  when flag on.
+- **M4-4 (reindex v2 leg)**: Added Phase 2.5 to `_reindex_parse_and_store`:
+  when v2 flag on, builds world_ctx, calls `certify_and_publish_for_unit`
+  per TU, finalizes the v2 World. Closes M4-BUG-002 (reindex_file_impl
+  bypassed v2, leaving World stale).
+- **M4-5 (postprocess degradation)**: Modified `raise aborted` in
+  `_postprocess.py`: when `_v2_write_authority_on()` is True, replaces
+  `raise aborted` with `log.warning` + `ctx['legacy_compatibility_degraded']`
+  (CASE B: SUCCESS + LEGACY_COMPATIBILITY_DEGRADED, not abort). Scanner
+  confirms `postprocess_degraded=True`.
+- **Scanner improvements**: (a) `_find_legacy_db_writes` now only counts
+  mutation SQL (INSERT/UPDATE/DELETE/REPLACE), not SELECT reads; (b) added
+  `_check_postprocess_abort_degraded` to detect v2-authority guard around
+  `raise aborted`; (c) `v2_authority` conditioned on write mode (flag on);
+  (d) bug register filters by `status != "resolved"`.
+- **Bug register**: M4-BUG-001/002/004 marked resolved; M4-BUG-003 (flag
+  default OFF) remains open (deferred to M4-7 after G4).
+- **Tests**: 74 v2 store tests PASS. Scanner: flag OFF → RED (baseline),
+  flag ON → numeric counters all green except UNRESOLVED_BUGS=1 (M4-BUG-003)
+  and faults NOT_RUN. M3B regression PASS. Self-tests 7/7 PASS.
+- **Remaining**: M4-7 (flip flag default after G4), M4-8 (fault-injection
+  tests), G2/G3/G4/G5 guardian reviews, fresh verifier, durable checkpoint.
+

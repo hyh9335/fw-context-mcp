@@ -514,6 +514,7 @@ class IndexConfig:
     purge_max_missing_percent: int = 20
     shadow_v2_enabled: bool = False  # Phase-4 Slice-0 shadow v2 flag (inert by default)
     shadow_v2_db: Path | None = None  # None = M-C default <db_dir>/<project_id>/index-v2.db
+    v2_write_authority: bool = False  # M4: v2 World finalization is the authoritative success criterion
     """Abort the automatic ghost-file purge when more than this percent of
     indexed files are missing from disk — guards against an offline network
     mount or a misconfigured project root deleting the whole vendor index."""
@@ -860,6 +861,7 @@ _INDEX_FIELDS: list[tuple[str, str, str]] = [
     ("purge_max_missing_percent", "purge_max_missing_percent", "int(20)"),
     ("shadow_v2_enabled", "shadow_v2_enabled", "bool"),
     ("shadow_v2_db", "shadow_v2_db", "path"),
+    ("v2_write_authority", "v2_write_authority", "bool"),
 ]
 
 _LLM_FIELDS: list[tuple[str, str, str]] = [

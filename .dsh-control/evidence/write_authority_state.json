@@ -1,32 +1,32 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-09-30T06:44:30Z",
+  "generated_at_utc": "2026-09-30T06:58:12Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "180da5918dc8ab5a65e174ff24d613e8246d7fb5",
-    "short": "180da59",
+    "head": "d0b90a04fa1807c5ba9928d644b484196e93c41c",
+    "short": "d0b90a0",
     "branch": "m3b-native-v2",
     "dirty": true
   },
   "counters": {
     "NORMAL_INDEX_ENTRYPOINTS": 4,
-    "V2_PRIMARY_INDEX_ENTRYPOINTS": 0,
-    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 4,
-    "LEGACY_WRITE_REQUIRED_FOR_SUCCESS": 3,
-    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 1,
-    "LEGACY_DB_REQUIRED_FOR_V2_INDEX": 3,
-    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": false,
-    "INCOMPLETE_WORLD_EXPOSURE_PATHS": 1,
+    "V2_PRIMARY_INDEX_ENTRYPOINTS": 4,
+    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 0,
+    "LEGACY_WRITE_REQUIRED_FOR_SUCCESS": 0,
+    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 0,
+    "LEGACY_DB_REQUIRED_FOR_V2_INDEX": 0,
+    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": true,
+    "INCOMPLETE_WORLD_EXPOSURE_PATHS": 0,
     "UNSAFE_PARTIAL_FINALIZATION_PATHS": 0,
     "EXPECTED_TU_ACCOUNTING_VIOLATIONS": 0,
-    "V2_FAILURE_MASKED_BY_LEGACY_PATHS": 1,
-    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 1,
-    "CURRENT_WRITE_MODE": "LEGACY_PRIMARY",
+    "V2_FAILURE_MASKED_BY_LEGACY_PATHS": 0,
+    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 0,
+    "CURRENT_WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
     "DEFAULT_WRITE_MODE": "LEGACY_PRIMARY",
     "ROLLBACK_MODE_AVAILABLE": true,
     "M3B_READ_AUTHORITY_REGRESSION": "PASS",
-    "UNRESOLVED_NORMAL_USE_V2_WRITE_BUGS": 0
+    "UNRESOLVED_NORMAL_USE_V2_WRITE_BUGS": 1
   },
   "entry_points": [
     {
@@ -44,13 +44,13 @@
     {
       "name": "reindex_file_impl",
       "file": "mcp/handlers/maintenance.py",
-      "line": 2002,
+      "line": 2069,
       "reaches_runner_run": false
     },
     {
       "name": "reindex_file",
       "file": "mcp/handlers/maintenance.py",
-      "line": 2351,
+      "line": 2418,
       "reaches_runner_run": false
     }
   ],
@@ -58,34 +58,22 @@
     "v2_finalize_sites": [
       {
         "call": "finalize_world",
-        "line": 921,
-        "exception_isolated": true,
-        "flag_gated": false
+        "line": 927,
+        "exception_isolated": false,
+        "flag_gated": false,
+        "raises_on_failure": true
       }
     ],
     "legacy_postprocess_sites": [
       {
         "call": "_run_postprocess",
-        "line": 995
+        "line": 1020
       }
     ],
-    "legacy_db_write_sites": [
-      {
-        "call": "execute",
-        "line": 645
-      },
-      {
-        "call": "execute",
-        "line": 502
-      },
-      {
-        "call": "execute",
-        "line": 689
-      }
-    ],
+    "legacy_db_write_sites": [],
     "success_return_count": 1,
-    "v2_finalize_is_success_authority": false,
-    "v2_finalize_swallowed": true
+    "v2_finalize_is_success_authority": true,
+    "v2_finalize_swallowed": false
   },
   "postprocess_steps": [
     {
@@ -185,13 +173,13 @@
     }
   ],
   "write_mode": {
-    "current_write_mode": "LEGACY_PRIMARY",
+    "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "default_write_mode": "LEGACY_PRIMARY",
     "env_flags": {
-      "FW_CONTEXT_V2_WRITE": null,
-      "FW_CONTEXT_DUAL_WRITE": null,
       "FW_CONTEXT_V2_PRIMARY": null,
-      "FW_CONTEXT_V2_WRITE_AUTHORITY": null
+      "FW_CONTEXT_V2_WRITE": null,
+      "FW_CONTEXT_V2_WRITE_AUTHORITY": "1",
+      "FW_CONTEXT_DUAL_WRITE": null
     },
     "rollback_mode_available": true
   },
@@ -218,7 +206,21 @@
       "verdict": "NOT_RUN"
     }
   },
-  "bug_register": [],
+  "bug_register": [
+    {
+      "id": "M4-BUG-003",
+      "title": "v2 master flag defaults OFF \u2014 production runs LEGACY_PRIMARY",
+      "severity": "high",
+      "file": "src/fw_context_mcp/config/settings.py",
+      "lines": "516",
+      "description": "shadow_v2_enabled defaults False (env FW_CONTEXT_SHADOW_V2). Production today runs LEGACY_PRIMARY. V2_PRIMARY_LEGACY_MIRROR must become the default write mode.",
+      "case": "infra",
+      "status": "open",
+      "resolution": "M4-7: flip the default after G4 guardian approval. Intentionally deferred \u2014 the flag should default OFF until M4 engineering is complete and verified.",
+      "m4_work_package": "M4-7",
+      "introduced_at": "180da59 (baseline)"
+    }
+  ],
   "numeric_gate_pass": false,
   "m3b_regression_pass": true,
   "fault_gate_pass": false,

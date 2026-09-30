@@ -1878,5 +1878,23 @@ def _run_postprocess(
                           "the build may stay 'indexing'")
 
     if aborted is not None:
-        raise aborted
+        # M4: when v2 write-authority is ON and v2 has already finalized
+        # successfully, a legacy postprocess abort is a COMPATIBILITY
+        # DEGRADATION, not an INDEX FAILURE (CASE B).  The v2 World is the
+        # authoritative semantic store; legacy is a mirror.  Log and continue
+        # so the run returns success with a degraded-legacy marker.
+        try:
+            from ._unit_processor import _v2_write_authority_on
+            _v2_authority = _v2_write_authority_on()
+        except Exception:
+            _v2_authority = False
+        if _v2_authority:
+            log.warning(
+                "Legacy postprocess aborted (v2 authoritative — "
+                "LEGACY_COMPATIBILITY_DEGRADED, not index failure): %s",
+                aborted)
+            ctx["legacy_compatibility_degraded"] = True
+            ctx["legacy_postprocess_abort"] = str(aborted)[:200]
+        else:
+            raise aborted
 
