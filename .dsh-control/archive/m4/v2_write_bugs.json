@@ -1,0 +1,58 @@
+[
+  {
+    "id": "M4-BUG-001",
+    "title": "v2 finalization failure is swallowed by legacy success",
+    "severity": "critical",
+    "file": "src/fw_context_mcp/indexer/runner.py",
+    "lines": "909-955",
+    "description": "runner.run calls finalize_world but logs the FinalizeResult without checking fin.ok, and swallows v2 finalize exceptions. run() returns config_hash on every non-exception path.",
+    "case": "C/D",
+    "status": "resolved",
+    "resolution": "M4-2: when FW_CONTEXT_V2_WRITE_AUTHORITY=1, fin.ok==False raises IndexIntegrityError (CASE D); v2 finalize exceptions re-raise as IndexIntegrityError (CASE C). Scanner confirms raises_on_failure=True.",
+    "m4_work_package": "M4-2",
+    "introduced_at": "180da59 (baseline)",
+    "resolved_at": "M4-2 (uncommitted)"
+  },
+  {
+    "id": "M4-BUG-002",
+    "title": "reindex_file_impl bypasses v2 entirely",
+    "severity": "critical",
+    "file": "src/fw_context_mcp/mcp/handlers/maintenance.py",
+    "lines": "1536-1582",
+    "description": "reindex_file_impl wrote legacy semantic data via store_symbols_for_unit with NO certify_and_publish_for_unit, NO bind_tu, NO finalize_world.",
+    "case": "D",
+    "status": "resolved",
+    "resolution": "M4-4: added Phase 2.5 v2 leg to _reindex_parse_and_store — builds world_ctx, calls certify_and_publish_for_unit per TU, finalizes the v2 World. When v2 write-authority is on, v2 failure propagates.",
+    "m4_work_package": "M4-4",
+    "introduced_at": "180da59 (baseline)",
+    "resolved_at": "M4-4 (uncommitted)"
+  },
+  {
+    "id": "M4-BUG-003",
+    "title": "v2 master flag defaults OFF — production runs LEGACY_PRIMARY",
+    "severity": "high",
+    "file": "src/fw_context_mcp/config/settings.py",
+    "lines": "517",
+    "description": "shadow_v2_enabled defaults False (env FW_CONTEXT_SHADOW_V2). Production today runs LEGACY_PRIMARY. V2_PRIMARY_LEGACY_MIRROR must become the default write mode.",
+    "case": "infra",
+    "status": "resolved",
+    "resolution": "M4-7: flipped v2_write_authority default from False to True. Scanner confirms DEFAULT_WRITE_MODE=V2_PRIMARY_LEGACY_MIRROR. Production now runs v2-primary by default.",
+    "m4_work_package": "M4-7",
+    "introduced_at": "180da59 (baseline)",
+    "resolved_at": "M4-7 (uncommitted)"
+  },
+  {
+    "id": "M4-BUG-004",
+    "title": "Legacy postprocess can abort a v2-successful run",
+    "severity": "high",
+    "file": "src/fw_context_mcp/indexer/_postprocess.py",
+    "lines": "1880-1900",
+    "description": "_step_verify_integrity raises IndexIntegrityError after v2 finalization; 'raise aborted' propagates and aborts the run (CASE B violation).",
+    "case": "B",
+    "status": "resolved",
+    "resolution": "M4-5: when _v2_write_authority_on() is True, 'raise aborted' is replaced with log.warning + ctx['legacy_compatibility_degraded']=True (SUCCESS + LEGACY_COMPATIBILITY_DEGRADED). Scanner confirms postprocess_degraded=True.",
+    "m4_work_package": "M4-5",
+    "introduced_at": "180da59 (baseline)",
+    "resolved_at": "M4-5 (uncommitted)"
+  }
+]
