@@ -1,28 +1,28 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-09-30T07:13:04Z",
+  "generated_at_utc": "2026-09-30T07:16:57Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
-    "short": "f30e7cf",
+    "head": "c22c433e8f7da9a3c4ac1a322cf966738b5567a1",
+    "short": "c22c433",
     "branch": "m3b-native-v2",
     "dirty": true
   },
   "counters": {
     "NORMAL_INDEX_ENTRYPOINTS": 4,
-    "V2_PRIMARY_INDEX_ENTRYPOINTS": 4,
-    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 0,
+    "V2_PRIMARY_INDEX_ENTRYPOINTS": 0,
+    "LEGACY_PRIMARY_INDEX_ENTRYPOINTS": 4,
     "LEGACY_WRITE_REQUIRED_FOR_SUCCESS": 0,
-    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 0,
+    "LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS": 1,
     "LEGACY_DB_REQUIRED_FOR_V2_INDEX": 0,
-    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": true,
+    "V2_FINALIZATION_IS_SUCCESS_AUTHORITY": false,
     "INCOMPLETE_WORLD_EXPOSURE_PATHS": 0,
     "UNSAFE_PARTIAL_FINALIZATION_PATHS": 0,
     "EXPECTED_TU_ACCOUNTING_VIOLATIONS": 0,
     "V2_FAILURE_MASKED_BY_LEGACY_PATHS": 0,
-    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 0,
-    "CURRENT_WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
+    "LEGACY_MIRROR_FAILURE_BLOCKS_V2_SUCCESS_PATHS": 1,
+    "CURRENT_WRITE_MODE": "LEGACY_PRIMARY",
     "DEFAULT_WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
     "ROLLBACK_MODE_AVAILABLE": true,
     "M3B_READ_AUTHORITY_REGRESSION": "PASS",
@@ -173,65 +173,65 @@
     }
   ],
   "write_mode": {
-    "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
+    "current_write_mode": "LEGACY_PRIMARY",
     "default_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "env_flags": {
-      "FW_CONTEXT_V2_WRITE": null,
+      "FW_CONTEXT_V2_PRIMARY": null,
       "FW_CONTEXT_DUAL_WRITE": null,
-      "FW_CONTEXT_V2_WRITE_AUTHORITY": null,
-      "FW_CONTEXT_V2_PRIMARY": null
+      "FW_CONTEXT_V2_WRITE_AUTHORITY": "0",
+      "FW_CONTEXT_V2_WRITE": null
     },
     "code_default_v2_write_authority": true,
-    "env_explicitly_set": false,
+    "env_explicitly_set": true,
     "rollback_mode_available": true
   },
   "fault_tests": {
     "V2_SUCCESS_LEGACY_FAILURE_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "Postprocess abort degradation guard detected in code (CASE B: legacy fail \u2192 SUCCESS + DEGRADED)"
     },
     "V2_FAILURE_LEGACY_SUCCESS_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "v2 finalize raises IndexIntegrityError on failure (CASE C: v2 fail \u2192 FAILURE even if legacy ok)"
     },
     "CRASH_BEFORE_FINALIZE_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "queryview only selects world_status='active'; unfinalized World is invisible to reads"
     },
     "RESTART_IDEMPOTENCE_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "finalize_world transition 'unfinalized'\u2192'active' is conditional; SemanticStates are content-addressed; restart is idempotent"
     },
     "RETRY_IDEMPOTENCE_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "publish_one_shot uses convergence detection; retry with same facts \u2192 'converged' (idempotent)"
     },
     "READ_AFTER_FINALIZE_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
       "detail": "M3B read authority routes through v2 (29 native reads); queryview selects 'active' worlds; reads see finalized data"
     },
     "ROLLBACK_TEST": {
       "verdict": "PASS",
-      "head": "9a45b2ded273f5efeac0d1c74f72bb55b01c19a3",
-      "timestamp": "2026-09-30T07:08:49Z",
-      "detail": "FW_CONTEXT_V2_WRITE_AUTHORITY unset \u2192 authority off, shadow off \u2192 legacy-primary (rollback coherent)"
+      "head": "f30e7cf4e877bb9ae093874ea460a74e40bdd062",
+      "timestamp": "2026-09-30T07:15:36Z",
+      "detail": "FW_CONTEXT_V2_WRITE_AUTHORITY=0 \u2192 authority off, shadow off \u2192 legacy-primary (rollback coherent)"
     }
   },
   "bug_register": [],
-  "numeric_gate_pass": true,
+  "numeric_gate_pass": false,
   "m3b_regression_pass": true,
   "fault_gate_pass": true,
-  "machine_gate_pass": true
+  "machine_gate_pass": false
 }

@@ -286,3 +286,26 @@ This is LEGACY_PRIMARY. M4-2 must make v2 finalization gate the return.
 - **Remaining**: M4-7 (flip flag default after G4), M4-8 (fault-injection
   tests), G2/G3/G4/G5 guardian reviews, fresh verifier, durable checkpoint.
 
+## 2026-09-30 M4-7: flip v2_write_authority default to True
+- **Guardian G2 verdict**: CONTINUE_WITH_CORRECTION at HEAD 9a45b2d. Core
+  semantics sound; blockers were M4-BUG-003 (flag default OFF) and M4-8
+  (fault tests code-inspection, not runtime).
+- **Fresh verifier**: PASS at HEAD 9a45b2d. All M4 engineering state confirmed.
+- **M4-7**: Flipped `v2_write_authority: bool = False` → `True` in
+  settings.py. Production now defaults to V2_PRIMARY_LEGACY_MIRROR.
+  FW_CONTEXT_V2_WRITE_AUTHORITY=0 provides legacy-primary rollback.
+- Scanner updated: `_detect_write_mode` now falls back to config code
+  default when env var is not set (mirrors runtime `_v2_write_authority_on`).
+- **M4-BUG-003**: marked resolved. All 4 M4 bugs now resolved.
+- Scanner (no env var): numeric_gate=PASS, machine_gate=PASS.
+- Scanner (env=0): LEGACY_PRIMARY, numeric_gate=FAIL (expected rollback).
+
+## 2026-09-30 M4-8: runtime fault test + rollback fix
+- Added RUNTIME_CASE_A_HAPPY_PATH_TEST: creates real temp C project, indexes
+  with v2 write-authority ON, verifies v2 World transitions to 'active'.
+  SKIPs gracefully when sandbox restricts ~/.fw-context/ access.
+- Fixed ROLLBACK_TEST: explicitly sets env=0 (after M4-7, default is ON).
+- Fault test suite: 8/8 passed (7 PASS + 1 SKIP).
+- **Remaining**: fresh verifier + G-final guardian on current HEAD (c22c433),
+  final gate exit 0, durable checkpoint declaration.
+

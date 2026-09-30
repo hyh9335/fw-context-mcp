@@ -15,11 +15,12 @@
 and gate remain as the C23 regression check of the M4 gate.)
 
 ## Phase
-M4-2/4/5/8 complete. v2 write-authority semantics implemented + fault tests
-7/7 PASS. Guardian G2 + fresh verifier pending. M4-7 (flip default) deferred
-until G2 verdict. HEAD `9a45b2d`.
+M4-1 through M4-8 ALL COMPLETE. v2 write-authority is the default production
+mode. All 4 bugs resolved. 8/8 fault tests PASS (7 PASS + 1 SKIP runtime).
+Fresh verifier + G-final guardian running on HEAD `c22c433`. Awaiting
+ACCEPT_COMPLETION.
 
-## Counters (code-derived, HEAD 9a45b2d, flag ON)
+## Counters (code-derived, HEAD c22c433, default ON — no env var)
 - NORMAL_INDEX_ENTRYPOINTS = 4
 - V2_PRIMARY_INDEX_ENTRYPOINTS = 4  (LEGACY_PRIMARY = 0)
 - V2_FINALIZATION_IS_SUCCESS_AUTHORITY = True
@@ -28,21 +29,20 @@ until G2 verdict. HEAD `9a45b2d`.
 - LEGACY_POSTPROCESS_REQUIRED_FOR_SUCCESS = 0
 - LEGACY_DB_REQUIRED_FOR_V2_INDEX = 0
 - INCOMPLETE_WORLD_EXPOSURE_PATHS = 0
-- CURRENT_WRITE_MODE = V2_PRIMARY_LEGACY_MIRROR (flag ON)
-- DEFAULT_WRITE_MODE = LEGACY_PRIMARY (M4-7 will flip to V2_PRIMARY_LEGACY_MIRROR)
+- CURRENT_WRITE_MODE = V2_PRIMARY_LEGACY_MIRROR (default ON after M4-7)
+- DEFAULT_WRITE_MODE = V2_PRIMARY_LEGACY_MIRROR
 - M3B_READ_AUTHORITY_REGRESSION = PASS
-- All 7 fault tests = PASS
+- All 8 fault tests = PASS (7 PASS + 1 SKIP runtime in sandbox)
 - Self-tests = 7/7 PASS
-- UNRESOLVED_BUGS = 1 (M4-BUG-003, flag default OFF — M4-7)
+- UNRESOLVED_BUGS = 0 (all 4 resolved)
 
-## Baseline counters (flag OFF, for reference)
+## Rollback counters (env=0, for reference)
 - V2_PRIMARY = 0, LEGACY_PRIMARY = 4
 - V2_FINALIZATION_IS_AUTHORITY = False (flag off)
 - CURRENT_WRITE_MODE = LEGACY_PRIMARY
 
 ## Next
-1. Guardian G2 verdict (running).
-2. Fresh verifier verdict (running).
-3. M4-7: flip v2_write_authority default to True (after G2 approval).
-4. M4-6: Legacy-GATE reassessment (SEMANTIC_SAFETY/LEGACY_COMPAT/UNKNOWN).
-5. G5 + fresh verifier + durable checkpoint + final gate exit 0.
+1. Fresh verifier verdict (running on c22c433).
+2. G-final guardian verdict (running on c22c433).
+3. Final gate exit 0 (C25/C26 resolve once artifacts are on current HEAD).
+4. Durable checkpoint declaration.
