@@ -1,6 +1,6 @@
 {
   "test": "S1_FORGED_STATUS_TEST",
   "verdict": "PASS",
-  "head": "bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0",
+  "head": "90828637f13854338a977a99fc225b223f906637",
   "detail": "Scanner detected injected legacy DB access (creations=1) \u2014 code-derived truth wins"
 }

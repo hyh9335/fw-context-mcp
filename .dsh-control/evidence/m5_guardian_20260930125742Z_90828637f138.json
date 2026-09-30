@@ -1,0 +1,150 @@
+{
+  "verdict": "ACCEPT_COMPLETION",
+  "head": "90828637f13854338a977a99fc225b223f906637",
+  "guardian": "M5_FRESH_GUARDIAN",
+  "method": "CODE_RECONSTRUCTION (not cached ledgers)",
+  "scanners": {
+    "scan_m5_state": {
+      "command": "python .dsh-control/gates/scan_m5_state.py",
+      "result": "PASS",
+      "head_short": "9082863",
+      "dirty": false,
+      "key_findings": {
+        "LEGACY_DB_reads_writes_creations": "0/0/0",
+        "LEGACY_POSTPROCESS_calls": 0,
+        "LEGACY_FALLBACKS": 0,
+        "LEGACY_MIRROR_runs": 0,
+        "LEGACY_ACTIVE_CONFIG_deps": 0,
+        "LEGACY_LIFECYCLE_deps": 0,
+        "SCAFFOLDING_shadow_dual_read": 0,
+        "LIFECYCLE_states": ["active", "failed", "retained", "retired", "superseded", "unfinalized"],
+        "gc_impl": true,
+        "incomplete_visible": 0,
+        "BUGS_unresolved": "0/0",
+        "REGRESSION_m3b": "PASS",
+        "REGRESSION_m4": "PASS",
+        "numeric_gate": "PASS"
+      }
+    },
+    "scan_authority_state": {
+      "command": "python .dsh-control/gates/scan_authority_state.py",
+      "result": "PASS",
+      "head_short": "9082863",
+      "key_findings": {
+        "CORE": 29,
+        "V2_ROUTED": 29,
+        "V2_NATIVE_READ": 29,
+        "LEGACY_EXEC": 0,
+        "UNSAFE_FALLBACK": 0,
+        "UNRESOLVED_BUGS": 0,
+        "M3B_numeric_gate": "PASS"
+      }
+    },
+    "scan_write_authority": {
+      "command": "python .dsh-control/gates/scan_write_authority.py",
+      "result": "PASS",
+      "head_short": "9082863",
+      "key_findings": {
+        "NORMAL_ENTRYPOINTS": 4,
+        "V2_PRIMARY": 4,
+        "LEGACY_PRIMARY": 0,
+        "V2_FINALIZATION_IS_AUTHORITY": true,
+        "V2_FAILURE_MASKED": 0,
+        "LEGACY_WRITE_REQ": 0,
+        "LEGACY_POSTPROCESS_REQ": 0,
+        "LEGACY_DB_REQ": 0,
+        "INCOMPLETE_EXPOSURE": 0,
+        "WRITE_MODE": "V2_PRIMARY_LEGACY_MIRROR",
+        "M3B_REGRESSION": "PASS",
+        "faults": {
+          "V2_SUCCESS_LEGACY_FAILURE": "PASS",
+          "V2_FAILURE_LEGACY_SUCCESS": "PASS",
+          "CRASH_BEFORE_FINALIZE": "PASS",
+          "RESTART_IDEMPOTENCE": "PASS",
+          "RETRY_IDEMPOTENCE": "PASS",
+          "READ_AFTER_FINALIZE": "PASS",
+          "ROLLBACK": "PASS"
+        },
+        "numeric_gate": "PASS",
+        "fault_gate": "PASS",
+        "machine_gate": "PASS"
+      }
+    }
+  },
+  "questions": [
+    {
+      "question": "Q1: Can fw-context index many source versions and retain a deterministic, historically correct semantic view for each?",
+      "answer": "YES",
+      "evidence": "The identity chain RepositoryNamespace -> SourceSnapshot -> Build -> World -> TUBinding -> SemanticState (store_v2/worlds.py:10-11) gives each version its own World row. _ensure_world_rows (worlds.py:219-307) materializes namespace/snapshot/build/world rows idempotently via INSERT OR IGNORE over the UNIQUE(namespace_id, snapshot_id, build_identity_sha) tuple (worlds.py:15-16). finalize_world (worlds.py:672-730) only flips 'unfinalized'->'active' after verifying every processed TU context carries a bound-or-poisoned row; a failing world STAYS 'unfinalized' and is never queryable (worlds.py:678, 709-712). capture_extra_files (worlds.py:754-810) captures assembly/linker scripts per-World into world_extra_files so historical queries read immutable indexed content, NOT live disk (worlds.py:757-763). resolve_current_view (mcp/shared/queryview.py:248-449) deterministically maps project_root -> (namespace,snapshot) -> active World, and PinnedQueryView (queryview.py:130-159) does not drift across later indexing runs (P10).",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q2: Is common semantic content indexed/stored once when reuse is proven safe?",
+      "answer": "YES",
+      "evidence": "A binding NEVER mutates SemanticState (worlds.py:24-25, INV-1/INV-2/INV-5); SemanticState is content-addressed by (tusemantic_key, parser_generation) and shared across Worlds via tu_bindings. bind_tu gate 3 (worlds.py:518-538) returns 'bound_existing' on idempotent replay of the same (world, tu_context, state) triple -- no new state is created. The fast-reuse admission path (runner.py:794-833) calls attempt_fast_reuse which, on a committed hit, runs only mandatory-minimum bookkeeping and skips parse + legacy semantic writes. V2WorldContext metrics track 'new_semantic_states' vs 'existing_semantic_states_matched' (worlds.py:85-94, 149-156), confirming the store distinguishes new from reused. _insert_branch_states (worlds.py:370-421) even copies branch states from an existing binding with the same state_key+state_generation on the fast-reuse path (same SemanticState = same branch states).",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q3: Does each RepositoryNamespace x Snapshot x Build retain its own semantic view?",
+      "answer": "YES",
+      "evidence": "The World row has UNIQUE(namespace_id, snapshot_id, build_identity_sha) (worlds.py:15-16) and _ensure_world_rows inserts one row per triple (worlds.py:288-303). Each World owns its own tu_bindings (worlds.py:541-549: INSERT INTO tu_bindings world_id=...). QueryView is (repository_namespace, snapshot_id, build_id) (queryview.py:438-442) and resolve_query_view resolves it to exactly one ResolvedWorld. Different builds of the same snapshot produce different build_identity_sha (worlds.py:250-263: toolchain_identity+parser_salt+parser_generation+environment_digest+declared_env_salt+builder_family) and thus different Worlds with independent bindings.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q4: Is false semantic reuse prevented? (same bytes different meaning MUST NOT reuse)",
+      "answer": "YES",
+      "evidence": "Gate 1 (worlds.py:486-500): target state must be publication='published' -- staging/quarantined/missing fail CLOSED with an integrity event, no valid binding row created. Gate 2 / A-2 (worlds.py:26-28, 502-517): a path_spelling_sensitive state binds ONLY to bindings whose canon source path is spelling-equal to the state's first binding; a clash is refused_path_spelling. Gate 3 (worlds.py:518-538): a conflicting state for an existing (world, tu_context) binding identity fails CLOSED as refused_conflict -- explicitly NO last-writer-wins (worlds.py:34). The macro environment is part of the SemanticState identity: _insert_branch_states comment (worlds.py:388-390) 'same state_key + state_generation = same branch states, because the macro environment is part of the state identity'. build_identity incorporates toolchain, parser salt/generation, environment digest, declared env salt, and builder family (worlds.py:250-263), so same source bytes under different macros/toolchains yield different SemanticStates.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q5: Does indexing a new version approach work proportional to actual semantic TU changes?",
+      "answer": "YES",
+      "evidence": "Three-tier staleness in _check_and_parse_unit (_unit_processor.py:246-344): Tier 1 mtime (stat syscall), Tier 2 content-hash (SHA-256 of source+flags+manifest_entry_hash), Tier 3 libclang parse -- each ~1-2 orders of magnitude cheaper than the next (_unit_processor.py:247-253). Fast-reuse admission (runner.py:794-833) runs BEFORE the expensive tiers and, on a committed A8 bind hit, runs only the mandatory-minimum 'unchanged' bookkeeping with FRESH hashes and skips parse + legacy semantic writes (runner.py:817-833). Header staleness pre-pass (runner.py:636-658) requeues only TUs that include a changed header via _tus_to_requeue. _handle_unchanged (_unit_processor.py:629-776) skips libclang entirely for unchanged TUs. Manifest entries are refreshed only for re-parsed TUs (runner.py:919-925, reparsed_tus set).",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q6: Is historical query independence from the live filesystem guaranteed?",
+      "answer": "YES",
+      "evidence": "capture_extra_files (worlds.py:754-810) stores assembly (.s/.S) file content per-World into world_extra_files so get_vector_table reads immutable indexed content, NOT live disk (worlds.py:757-763: 'queries read from immutable indexed content, NOT live disk state'). _insert_membership (worlds.py:429-472) persists file_blobs (content-addressed, with content bytes -- F3 Slice 6C, worlds.py:443-449) and snapshot_files per (namespace, snapshot). PinnedQueryView (queryview.py:130-159) is frozen at pin time and 'does NOT change even if a later indexing run creates a new World (P10 -- no view drift)'; if the underlying World is retired, resolve_query_view raises WorldNotQueryable rather than silently switching (queryview.py:140-144). resolve_or_reuse_view (queryview.py:515-572) reuses the existing pin within a session unless force_refresh.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q7: Is there a single authoritative semantic system in normal production operation?",
+      "answer": "YES",
+      "evidence": "Defaults: v2_write_authority=True (config/settings.py:517 'M4-7: v2 World finalization is the authoritative success criterion (default ON)') and legacy_compatibility_mode=False (settings.py:518 'M5-1: explicit compat island -- default OFF (v2-only normal mode)'). In runner.run default path: _legacy_compat=_legacy_compat_on() is False (runner.py:505-506), so NO legacy DB is opened (runner.py:522-524 logs 'M5 v2-only mode: legacy DB not opened'), NO legacy project/config/build_context upserts (runner.py:535-556 gated), NO legacy file-hash loads (runner.py:602-604 gated), NO legacy FTS trigger maintenance (runner.py:668-680 gated), NO legacy linker scripts (runner.py:997-1009 gated), NO legacy assembly pass (runner.py:1020-1042 gated), NO legacy _run_postprocess (runner.py:1056-1094 gated). _process_unit (_unit_processor.py:536-559): v2 certify_and_publish_for_unit ALWAYS runs (the sole semantic write path), then 'if not _legacy_compat_on(): return' -- no legacy symbol writes. v2 finalization is authoritative: runner.py:945-991, when _v2_authority and not fin.ok raises IndexIntegrityError (runner.py:971-978). Scanners confirm LEGACY_DB reads=0 writes=0 creations=0, LEGACY_EXEC=0, LEGACY_WRITE_REQ=0, LEGACY_POSTPROCESS_REQ=0.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q8: Are there any hidden legacy authorities in the default operation path?",
+      "answer": "NO",
+      "evidence": "Every legacy code path is explicitly gated behind _legacy_compat_on() which defaults False (settings.py:518, _unit_processor.py:148-167). In runner.run: legacy DB open (runner.py:509), project/build_config upsert (runner.py:535-556), build_context upsert (runner.py:582-591), existing_files load (runner.py:602-604), FTS trigger maintenance (runner.py:668-680), content_backfill_needed query (runner.py:714-723 -- only computed if _legacy_compat, else False), linker scripts (runner.py:997-1009), assembly pass (runner.py:1020-1042), _run_postprocess (runner.py:1056-1094). In _process_unit: the legacy symbol-store branch (store_symbols_for_unit) is reached ONLY after 'if not _legacy_compat_on(): return' (_unit_processor.py:554-559). v2 certify_and_publish_for_unit runs unconditionally (_unit_processor.py:536-546) but is fully exception-isolated (try/except, _unit_processor.py:544-546) and writes ONLY to the v2 store. Scanners confirm LEGACY_EXEC=0, UNSAFE_FALLBACK=0, LEGACY_PRIMARY=0, V2_FAILURE_MASKED=0. No default-path code reads or writes legacy semantic storage.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q9: Does GC correctly preserve shared SemanticState until ALL referencing Worlds are unreachable?",
+      "answer": "YES",
+      "evidence": "analyze_gc Step 2 (gc.py:188-220): eligible SemanticStates are those referenced by eligible Worlds via tu_bindings AND NOT referenced by ANY protected World -- the NOT EXISTS subquery (gc.py:203-208) checks 'b2.world_id IN (protected_ids)' for the same (state_key, state_generation). A state shared between an eligible and a protected World is therefore NOT eligible. apply_gc (gc.py:243-327) performs a runtime double-check: for each eligible (state_key, state_generation) it recomputes refcount = COUNT(*) FROM tu_bindings WHERE state_key=? AND state_generation=? (gc.py:305-307) and deletes the state ONLY if refcount==0 (gc.py:308-312). This refcount re-check is a defense-in-depth guarantee that holds even if analyze_gc's candidate set was stale. GC uses the composite semantic key (state_key, state_generation) mapped to columns tusemantic_key/parser_generation on semantic_states (gc.py:309-311) -- never a surrogate state_id.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q10: Does GC respect pinned Worlds and the current completed World?",
+      "answer": "YES",
+      "evidence": "GC_ROOT_STATUSES = frozenset({'active', 'retained'}) (gc.py:115) -- current completed Worlds (status='active') and explicitly retained Worlds are roots, never collected. analyze_gc (gc.py:162-186): pinned_world_ids -> protected (gc.py:166-168), active_build_world_ids -> protected as 'building' (gc.py:169-171), root statuses -> protected (gc.py:172-174). Unknown statuses are protected fail-safe (gc.py:183-186). PinnedQueryView registration (queryview.py:167-180) documents 'A pin PROTECTS the referenced World from future GC (P29) -- a GC implementation must check this registry before collecting any World.' mark_world_retained (gc.py:401-437) makes a World a GC root. The m5 scanner confirms gc_impl=True and LIFECYCLE states include 'retained' as a protected status.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q11: Can a failed index be retried safely?",
+      "answer": "YES",
+      "evidence": "_ensure_world_rows uses INSERT OR IGNORE over identity tuples -- repeated calls are pure no-ops (worlds.py:219-228, 230, 237, 276, 288). bind_tu gate 3 (worlds.py:519-538): re-presenting the same (world, tu_context, state) converges to ONE row -- returns 'bound_existing' (idempotent replay). record_poison (worlds.py:610-621): re-presenting the same poison returns 'poisoned_recorded' (idempotent). finalize_world (worlds.py:713-716): UPDATE snapshot_builds SET world_status='active' WHERE world_status IN ('unfinalized','failed') -- a failed World can be re-finalized to active on retry. mark_world_failed (gc.py:378-398) marks a World 'failed' (GC-eligible) but retry can occur before GC sweeps it. GC APPLY is a single SQLite transaction -- a crash rolls back (gc.py:272-274, 322-324); GC is idempotent (gc.py:251-252). m4 scanner confirms RETRY_IDEMPOTENCE=PASS, RESTART_IDEMPOTENCE=PASS, CRASH_BEFORE_FINALIZE=PASS, ROLLBACK=PASS.",
+      "confidence": "HIGH"
+    },
+    {
+      "question": "Q12: Is the architecture free of newest-wins semantics?",
+      "answer": "YES",
+      "evidence": "resolve_current_view explicitly rejects ORDER BY created_at DESC LIMIT 1 (queryview.py:22-39: 'The current World is NOT ORDER BY created_at DESC LIMIT 1. It is derived from an explicit completed indexing/workspace mapping'). Resolution is deterministic via capture_repository_identity -> namespace_id and capture_snapshot -> snapshot_id, then finding the active World for that exact (namespace, snapshot) triple (queryview.py:328-349). Multi-build ambiguity without a build_id_hint FAILS CLOSED as AmbiguousWorld (queryview.py:423-436) -- 'A storage handle cannot choose semantic Build identity.' bind_tu conflict gate (worlds.py:530-538) returns refused_conflict, NOT last-writer-wins (worlds.py:34: 'no last-writer-wins (task sec22)'). The ONLY place world_id DESC influences selection is gated behind allow_tree_mismatch=True (queryview.py:354-382), which is explicitly 'SHADOW-ONLY fallback, NOT safe for v2 authority' and defaults False for production (queryview.py:282-283).",
+      "confidence": "HIGH"
+    }
+  ],
+  "summary": "M5 Fresh Guardian verdict ACCEPT_COMPLETION for HEAD 90828637f13854338a977a99fc225b223f906637. Runtime authority was reconstructed from CURRENT CODE (store_v2/worlds.py, store_v2/gc.py, indexer/runner.py, indexer/_unit_processor.py, config/settings.py, mcp/shared/queryview.py), not cached ledgers. The working tree is dirty ONLY in .dsh-control/evidence/*.json files (written by the scanners themselves) and submodule markers -- NO source code changes, so the code read IS the HEAD code. All three scanners PASS (m5_state, authority_state, write_authority). Default operation is v2-only: v2_write_authority=True and legacy_compatibility_mode=False (settings.py:517-518) mean the normal index path builds a v2 World, runs v2 certify/publish/bind as the SOLE semantic write path, makes v2 finalize authoritative, and opens NO legacy DB, writes NO legacy symbols, runs NO legacy postprocess (every legacy path gated behind _legacy_compat_on() in runner.py and _unit_processor.py). Multi-version semantics: each (RepositoryNamespace, Snapshot, Build) is a distinct finalized World with its own tu_bindings; SemanticStates are content-addressed and shared safely via bindings that never mutate them; shared states survive GC until ALL referencing Worlds are unreachable (analyze NOT EXISTS + apply refcount==0 double-check, using state_key/state_generation not state_id); pinned/current/building Worlds are GC roots. Resolution is deterministic and fail-closed -- no newest-wins, no silent semantic fallback, multi-build ambiguity fails closed. All 12 questions answered YES with HIGH confidence.",
+  "must_fix": []
+}

@@ -1,0 +1,9 @@
+{
+  "head": "54b0cc57da7e997ab2bd324d02b3fb6062467c24",
+  "passed": 23,
+  "total": 24,
+  "failed": [
+    "F24"
+  ],
+  "verdict": "ORIGINAL_PROJECT_GOAL_NOT_COMPLETE"
+}

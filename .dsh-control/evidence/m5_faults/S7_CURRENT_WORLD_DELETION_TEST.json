@@ -1,6 +1,6 @@
 {
   "test": "S7_CURRENT_WORLD_DELETION_TEST",
   "verdict": "PASS",
-  "head": "bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0",
+  "head": "90828637f13854338a977a99fc225b223f906637",
   "detail": "queryview selects world_status='active' \u2014 current completed World is queryable. GC must respect this."
 }

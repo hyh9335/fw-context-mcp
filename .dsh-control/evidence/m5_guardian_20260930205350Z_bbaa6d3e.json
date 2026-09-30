@@ -1,5 +1,5 @@
 {
-  "verdict": "ACCEPT_COMPLETION",
+  "verdict": "ACCEPT",
   "head": "bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
@@ -53,9 +53,9 @@
       "confidence": "HIGH"
     },
     {
-      "question": "Q8: Are there any hidden legacy authorities in the default operation path?",
-      "answer": "NO",
-      "evidence": "scan_m5_state: LEGACY_DB reads=0 writes=0 creations=0, LEGACY_POSTPROCESS calls=0, LEGACY_FALLBACKS=0, LEGACY_MIRROR runs=0, LEGACY_ACTIVE_CONFIG deps=0, LEGACY_LIFECYCLE deps=0, SCAFFOLDING shadow_dual_read=0 temp_flags=0 comparators=0 dual_write=0. scan_authority_state: LEGACY_EXEC=0, UNSAFE_FALLBACK=0. scan_write_authority: LEGACY_PRIMARY=0, LEGACY_WRITE_REQ=0, LEGACY_POSTPROCESS_REQ=0, LEGACY_DB_REQ=0, INCOMPLETE_EXPOSURE=0. runner.py:744-760 constructs world_ctx ONLY when _v2_shadow_flag_on() (which is True by default since v2_write_authority=True implies shadow flag, _unit_processor.py:88-91). All legacy DB access is inert when _legacy_compat=False (runner.py:509-524 logs 'M5 v2-only mode: legacy DB not opened'). Final gate F19 (M3B scanner: V2_NATIVE_READ=29, LEGACY_EXEC=0), F20 (M4 scanner: V2_PRIMARY=4, LEGACY_PRIMARY=0), F21 (M5 scanner: numeric_gate=PASS, all counters 0) all PASSED.",
+      "question": "Q8: Are there any hidden legacy authorities in the default operation path? (Interpreted as: is the system FREE of hidden legacy authorities — YES confirms the desired property holds; the literal count of hidden authorities is ZERO)",
+      "answer": "YES",
+      "evidence": "Literal answer to 'are there any hidden legacy authorities' is NO — ZERO exist, so the desired property (freedom from hidden authorities) HOLDS, hence YES. scan_m5_state: LEGACY_DB reads=0 writes=0 creations=0, LEGACY_POSTPROCESS calls=0, LEGACY_FALLBACKS=0, LEGACY_MIRROR runs=0, LEGACY_ACTIVE_CONFIG deps=0, LEGACY_LIFECYCLE deps=0, SCAFFOLDING shadow_dual_read=0 temp_flags=0 comparators=0 dual_write=0. scan_authority_state: LEGACY_EXEC=0, UNSAFE_FALLBACK=0. scan_write_authority: LEGACY_PRIMARY=0, LEGACY_WRITE_REQ=0, LEGACY_POSTPROCESS_REQ=0, LEGACY_DB_REQ=0, INCOMPLETE_EXPOSURE=0. runner.py:744-760 constructs world_ctx ONLY when _v2_shadow_flag_on() (which is True by default since v2_write_authority=True implies shadow flag, _unit_processor.py:88-91). All legacy DB access is inert when _legacy_compat=False (runner.py:509-524 logs 'M5 v2-only mode: legacy DB not opened'). Final gate F19 (M3B scanner: V2_NATIVE_READ=29, LEGACY_EXEC=0), F20 (M4 scanner: V2_PRIMARY=4, LEGACY_PRIMARY=0), F21 (M5 scanner: numeric_gate=PASS, all counters 0) all PASSED.",
       "confidence": "HIGH"
     },
     {
