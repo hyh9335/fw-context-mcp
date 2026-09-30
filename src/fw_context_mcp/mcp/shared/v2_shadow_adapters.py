@@ -2138,14 +2138,121 @@ def v2_shadow_search_code(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for search_code — FTS5 symbol name search.
+    """v2 adapter for search_code — symbol name/signature search (M3B).
 
-    v2's lookup_symbol is exact-name only. FTS5 search needs a different
-    primitive. Defer to legacy (with equivalence gate).
+    v2 has no FTS5 index.  This adapter performs a LIKE-based search over
+    ``semantic_symbols_core.name`` / ``.signature`` across the world's
+    bound states, joined to ``semantic_state_positions`` for line numbers
+    and ``binding_file_map`` + ``canon_paths`` for file paths.  Multi-word
+    queries are OR-joined across both columns (matching the legacy FTS5
+    semantics where bare terms are OR-joined with a trailing wildcard).
+
+    M3B limitations (see the Batch C module note): v2 has no FTS5, no
+    ``name_tokens`` column, no ``docstring`` column, and no
+    ``qualified_name`` column — ``qualified_name`` := ``name``,
+    ``docstring`` := ``""``, ``is_template`` / ``is_virtual`` /
+    ``is_pure_virtual`` come from the symbols_core row.  ``project_only``
+    is NOT honored (v2 hot schema has no ``is_project`` flag — vendor
+    filtering belongs to a future schema addition); the parameter is
+    accepted for API compatibility.  Progressive relaxation fallbacks
+    (``name_tokens_like`` / ``docstring_like`` / ``individual_terms``
+    / ``macros_fts``) are NOT replicated.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 search_code requires FTS5 name search primitive; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    if not query or not str(query).strip():
+        return []
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        # Legacy FTS5 OR-joins bare terms with a trailing wildcard.  Strip
+        # trailing '*' (treat as substring) and escape for LIKE.
+        raw_terms = [t.rstrip("*") for t in str(query).split() if t.rstrip("*")]
+        if not raw_terms:
+            return []
+        or_clauses: list[str] = []
+        like_params: list = []
+        for term in raw_terms:
+            esc = (term.replace("\\", "\\\\")
+                       .replace("%", "\\%").replace("_", "\\_"))
+            pat = f"%{esc}%"
+            or_clauses.append("s.name LIKE ? ESCAPE '\\'")
+            or_clauses.append("s.signature LIKE ? ESCAPE '\\'")
+            like_params.extend([pat, pat])
+        where_or = " OR ".join(or_clauses)
+
+        kind_clause = ""
+        kind_params: list = []
+        if kind:
+            kind_clause = "AND s.kind=?"
+            kind_params = [kind]
+
+        results: list[dict] = []
+        seen: set = set()
+        for binding_id, state_id in _v2_state_ids_for_bindings(conn, resolved):
+            rows = conn.execute(
+                f"""SELECT s.name, s.raw_usr, s.kind, s.signature,
+                           s.is_definition, s.is_virtual, s.is_pure_virtual,
+                           s.is_template, s.local_key,
+                           (SELECT MIN(p.line) FROM semantic_state_positions p
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key) AS line,
+                           (SELECT cp.path FROM semantic_state_positions p
+                            JOIN binding_file_map bfm
+                              ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                            JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key
+                            ORDER BY p.line LIMIT 1) AS canon_path
+                    FROM semantic_symbols_core s
+                    WHERE s.state_id=? {kind_clause}
+                      AND ({where_or})
+                    ORDER BY s.is_definition DESC, s.name, line
+                    LIMIT ?""",
+                (binding_id, state_id, *kind_params, *like_params,
+                 max(1, limit))).fetchall()
+            for r in rows:
+                rname = r["name"] or ""
+                usr = r["raw_usr"] or ""
+                line = r["line"]
+                canon = r["canon_path"] or ""
+                key = usr if usr else (rname, canon, line)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "name": rname,
+                    "qualified_name": rname,  # v2 has no qualified_name
+                    "kind": r["kind"] or "",
+                    "file": abs_path(root, canon) if canon else "",
+                    "line": int(line) if line is not None else 0,
+                    "is_definition": bool(r["is_definition"]),
+                    "signature": r["signature"] or "",
+                    "docstring": "",  # v2 hot schema has no docstring
+                    "is_template": bool(r["is_template"]),
+                    "is_virtual": bool(r["is_virtual"]),
+                    "is_pure_virtual": bool(r["is_pure_virtual"]),
+                })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 search_code query error: %s", e)
+        return []
 
 
 def v2_shadow_search_bodies(
@@ -2157,13 +2264,118 @@ def v2_shadow_search_bodies(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for search_bodies — FTS5 body text search.
+    """v2 adapter for search_bodies — symbol body text search (M3B).
 
-    Defer to legacy — needs COLD payload body text.
+    v2 has no FTS5 body index.  This adapter reads each defined symbol's
+    body text via the Batch-4 ``_v2_symbol_body`` helper (positions →
+    file blob → line-window extraction) and checks whether the query
+    terms appear in the body.  A space in the query is an AND of exact
+    tokens (matching the legacy FTS5 semantics); a trailing ``*`` is
+    treated as a wildcard (the term matches as a substring, which is the
+    LIKE-substring behavior).
+
+    M3B limitations (see the Batch C module note): v2 ``file_blobs``
+    stores RAW file bytes (not ifdef-filtered) — a match may live in an
+    inactive ``#ifdef`` branch.  ``_source_truncated`` is not set (the
+    full body window is returned, capped at the symbol extent);
+    ``_fallback`` is ``"v2_like"`` for every row.  ``project_only`` is
+    NOT honored (no ``is_project`` flag in the hot schema).  The query
+    is case-insensitive substring match (no tokenization, no stemming).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 search_bodies requires COLD payload body text; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    if not query or not str(query).strip():
+        return []
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        # Legacy FTS5: a space is an AND of exact tokens.  Strip trailing
+        # '*' wildcards (the term must appear as a substring).
+        raw_terms = [t.rstrip("*") for t in str(query).split()
+                     if t.rstrip("*")]
+        if not raw_terms:
+            return []
+        terms_lower = [t.lower() for t in raw_terms]
+
+        kind_clause = ""
+        kind_params: list = []
+        if kind:
+            kind_clause = "AND s.kind=?"
+            kind_params = [kind]
+
+        results: list[dict] = []
+        seen: set = set()
+        # Cap the candidate scan to keep O(symbols × body_size) bounded.
+        scan_cap = max(limit * 25, 500)
+        for binding_id, state_id in _v2_state_ids_for_bindings(conn, resolved):
+            rows = conn.execute(
+                f"""SELECT s.name, s.raw_usr, s.kind, s.signature,
+                           s.is_definition, s.local_key
+                    FROM semantic_symbols_core s
+                    WHERE s.state_id=? AND s.is_definition=1 {kind_clause}
+                    ORDER BY s.name
+                    LIMIT ?""",
+                (state_id, *kind_params, scan_cap)).fetchall()
+            for r in rows:
+                usr = r["raw_usr"] or ""
+                rname = r["name"] or ""
+                canon_path, line, end_line, body_text = _v2_symbol_body(
+                    conn, binding_id, state_id, int(r["local_key"]))
+                if not body_text:
+                    continue
+                body_lower = body_text.lower()
+                # AND semantics: every term must appear (case-insensitive).
+                if not all(t in body_lower for t in terms_lower):
+                    continue
+                body_lines = body_text.splitlines()
+                match_lines: list[int] = []
+                snippet = ""
+                for offset, bl in enumerate(body_lines):
+                    bl_lower = bl.lower()
+                    if any(t in bl_lower for t in terms_lower):
+                        abs_line = line + offset  # offset from body start
+                        match_lines.append(abs_line)
+                        if not snippet:
+                            snippet = bl.strip()[:200]
+                if not match_lines:
+                    continue
+                key = usr if usr else (rname, canon_path, line)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "name": rname,
+                    "qualified_name": rname,  # v2 has no qualified_name
+                    "kind": r["kind"] or "",
+                    "file": abs_path(root, canon_path) if canon_path else "",
+                    "line": line,  # first line of the DEFINITION
+                    "is_definition": bool(r["is_definition"]),
+                    "signature": r["signature"] or "",
+                    "_match_snippet": snippet,
+                    "source": body_text,
+                    "match_lines": match_lines[:20],
+                    "_fallback": "v2_like",
+                })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 search_bodies query error: %s", e)
+        return []
 
 
 def v2_shadow_search_content(
@@ -2174,13 +2386,100 @@ def v2_shadow_search_content(
     image: str | None = None,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for search_content — FTS5 full file content search.
+    """v2 adapter for search_content — full file content search (M3B).
 
-    Defer to legacy — needs file content.
+    v2 has no FTS5 file-content index.  This adapter iterates the
+    world's bound bindings' file maps (``binding_file_map``), reads each
+    file's content-addressed blob (``file_blobs.content``), and checks
+    whether the query terms appear.  Bare multi-word queries are
+    OR-joined (matching the legacy FTS5 semantics).
+
+    M3B limitations (see the Batch C module note): v2 ``file_blobs``
+    stores RAW file bytes (not ifdef-filtered) — a match may live in an
+    inactive ``#ifdef`` branch.  ``mtime`` is set to 0.0 (v2 hot schema
+    has no per-file mtime).  ``project_only`` is NOT honored (no
+    ``is_project`` flag in the hot schema).  The query is
+    case-insensitive substring match (no tokenization).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 search_content requires file content access; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    if not query or not str(query).strip():
+        return []
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return []
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return []
+
+    try:
+        resolved = pinned.resolved_world
+        # Legacy FTS5: bare terms OR-joined with trailing wildcard.  Strip
+        # trailing '*' and case-insensitive substring match.
+        raw_terms = [t.rstrip("*") for t in str(query).split()
+                     if t.rstrip("*")]
+        if not raw_terms:
+            return []
+        terms_lower = [t.lower() for t in raw_terms]
+
+        results: list[dict] = []
+        seen_paths: set = set()
+        for binding_id, _state_id in _v2_state_ids_for_bindings(conn, resolved):
+            rows = conn.execute(
+                """SELECT bfm.blob_sha, cp.path
+                   FROM binding_file_map bfm
+                   JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                   WHERE bfm.binding_id=?
+                   ORDER BY cp.path""",
+                (binding_id,)).fetchall()
+            for r in rows:
+                canon = r["path"] or ""
+                if canon in seen_paths:
+                    continue
+                blob_sha = r["blob_sha"]
+                blob_row = conn.execute(
+                    "SELECT content FROM file_blobs WHERE blob_sha=?",
+                    (blob_sha,)).fetchone()
+                if blob_row is None or blob_row["content"] is None:
+                    continue
+                text = _v2_decode_blob(blob_row["content"])
+                text_lower = text.lower()
+                # OR semantics: any term must appear.
+                if not any(t in text_lower for t in terms_lower):
+                    continue
+                seen_paths.add(canon)
+                match_lines: list[int] = []
+                snippet = ""
+                for idx, fl in enumerate(text.splitlines()):
+                    fl_lower = fl.lower()
+                    if any(t in fl_lower for t in terms_lower):
+                        match_lines.append(idx + 1)  # 1-based file line
+                        if not snippet:
+                            snippet = fl.strip()[:200]
+                if not match_lines:
+                    continue
+                results.append({
+                    "file": abs_path(root, canon) if canon else "",
+                    "language": _v2_file_language(canon),
+                    "mtime": 0.0,  # v2 hot schema has no per-file mtime
+                    "_match_snippet": snippet,
+                    "match_lines": match_lines[:20],
+                    "_fallback": "v2_like",
+                })
+                if len(results) >= limit:
+                    break
+            if len(results) >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return []
+    except QueryViewError as e:
+        log.debug("v2 search_content query error: %s", e)
+        return []
 
 
 def v2_shadow_semantic_search(
@@ -2190,13 +2489,124 @@ def v2_shadow_semantic_search(
     limit: int = 20,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for semantic_search — embedding-based search.
+    """v2 adapter for semantic_search — embedding-based search (M3B degraded).
 
-    v2 has vec_symbols but no public query function. Defer to legacy.
+    v2 has no embedding vectors.  This adapter performs a LIKE-based
+    search over symbol names/signatures (the same substrate as
+    ``search_code``) and returns results with nominal ``_similarity``
+    scores and ``_method`` = ``"v2_like_fallback"``.  A leading warning
+    dict records the degradation, matching the legacy contract's
+    ``{warning, _method}`` shape for fallbacks.
+
+    M3B limitations (see the Batch C module note): v2 has no embeddings
+    and no LLM backend — semantic similarity is NOT computed; the
+    ``_similarity`` score is a heuristic (1.0 for an exact name match,
+    0.75 for a name substring, 0.5 for a signature-only match), NOT a
+    cosine similarity.  The ``threshold`` parameter is accepted for API
+    compatibility but NOT enforced (every LIKE match passes the nominal
+    threshold of 0.4+).
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 semantic_search requires embedding query primitive; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    warning = {
+        "warning": "v2 has no embeddings; returning LIKE-based results",
+        "_method": "v2_like_fallback",
+    }
+    if not query or not str(query).strip():
+        return [warning]
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return [warning]
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return [warning]
+
+    try:
+        resolved = pinned.resolved_world
+        raw_terms = [t.rstrip("*") for t in str(query).split()
+                     if t.rstrip("*")]
+        if not raw_terms:
+            return [warning]
+        terms_lower = [t.lower() for t in raw_terms]
+
+        or_clauses: list[str] = []
+        like_params: list = []
+        for term in raw_terms:
+            esc = (term.replace("\\", "\\\\")
+                       .replace("%", "\\%").replace("_", "\\_"))
+            pat = f"%{esc}%"
+            or_clauses.append("s.name LIKE ? ESCAPE '\\'")
+            or_clauses.append("s.signature LIKE ? ESCAPE '\\'")
+            like_params.extend([pat, pat])
+        where_or = " OR ".join(or_clauses)
+
+        results: list[dict] = [dict(warning)]  # leading warning dict
+        seen: set = set()
+        for binding_id, state_id in _v2_state_ids_for_bindings(conn, resolved):
+            rows = conn.execute(
+                f"""SELECT s.name, s.raw_usr, s.kind, s.signature,
+                           s.is_definition, s.local_key,
+                           (SELECT MIN(p.line) FROM semantic_state_positions p
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key) AS line,
+                           (SELECT cp.path FROM semantic_state_positions p
+                            JOIN binding_file_map bfm
+                              ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                            JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key
+                            ORDER BY p.line LIMIT 1) AS canon_path
+                    FROM semantic_symbols_core s
+                    WHERE s.state_id=? AND ({where_or})
+                    ORDER BY s.is_definition DESC, s.name, line
+                    LIMIT ?""",
+                (binding_id, state_id, *like_params,
+                 max(1, limit))).fetchall()
+            for r in rows:
+                rname = r["name"] or ""
+                usr = r["raw_usr"] or ""
+                line = r["line"]
+                canon = r["canon_path"] or ""
+                key = usr if usr else (rname, canon, line)
+                if key in seen:
+                    continue
+                seen.add(key)
+                name_lower = rname.lower()
+                sig_lower = (r["signature"] or "").lower()
+                if any(t == name_lower for t in terms_lower):
+                    sim = 1.0
+                elif any(t in name_lower for t in terms_lower):
+                    sim = 0.75
+                elif any(t in sig_lower for t in terms_lower):
+                    sim = 0.5
+                else:
+                    sim = 0.4
+                results.append({
+                    "name": rname,
+                    "qualified_name": rname,  # v2 has no qualified_name
+                    "kind": r["kind"] or "",
+                    "file": abs_path(root, canon) if canon else "",
+                    "line": int(line) if line is not None else 0,
+                    "is_definition": bool(r["is_definition"]),
+                    "signature": r["signature"] or "",
+                    "docstring": "",  # v2 hot schema has no docstring
+                    "_similarity": sim,
+                    "_method": "v2_like_fallback",
+                })
+                if len(results) - 1 >= limit:  # -1 for the leading warning
+                    break
+            if len(results) - 1 >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return [warning]
+    except QueryViewError as e:
+        log.debug("v2 semantic_search query error: %s", e)
+        return [warning]
 
 
 def v2_shadow_smart_search(
@@ -2205,13 +2615,113 @@ def v2_shadow_smart_search(
     limit: int = 20,
     **kwargs,
 ) -> list[dict]:
-    """v2 adapter for smart_search — LLM-generated FTS5 search.
+    """v2 adapter for smart_search — LLM-driven search (M3B degraded).
 
-    Composite tool. Defer to legacy.
+    v2 has no LLM backend.  This adapter performs a LIKE-based search
+    over symbol names/signatures (the ``search_code`` substrate) and
+    returns results with a leading warning dict recording the
+    degradation (``_partial`` = True), matching the legacy contract's
+    timeout/partial shape.
+
+    M3B limitations (see the Batch C module note): v2 has no LLM — the
+    multi-phase ``smart_search`` pipeline (translate → rough_search →
+    llm_query → fts5_search → refine → embedding → adaptive_fusion) is
+    NOT executed; only a single LIKE pass runs.  ``_generated_queries``
+    / ``_rough_queries`` / ``_translated_from`` are NOT emitted (no LLM
+    to generate them).  The query is OR-joined across name/signature.
     """
-    from .authority import V2UnsupportedOperation
-    raise V2UnsupportedOperation(
-        f"v2 smart_search is a composite tool; deferring to legacy")
+    from ...utils import resolve_project_root, abs_path
+
+    warning = {
+        "warning": "v2 has no LLM; returning LIKE-based results",
+        "_partial": True,
+    }
+    if not query or not str(query).strip():
+        return [warning]
+    limit = max(0, min(int(limit), 100))
+
+    root = resolve_project_root(project_root)
+    conn = _get_v2_conn(root)
+    if conn is None:
+        return [warning]
+    try:
+        pinned = resolve_current_view(root, allow_tree_mismatch=True)
+    except QueryViewResolutionError:
+        return [warning]
+
+    try:
+        resolved = pinned.resolved_world
+        raw_terms = [t.rstrip("*") for t in str(query).split()
+                     if t.rstrip("*")]
+        if not raw_terms:
+            return [warning]
+
+        or_clauses: list[str] = []
+        like_params: list = []
+        for term in raw_terms:
+            esc = (term.replace("\\", "\\\\")
+                       .replace("%", "\\%").replace("_", "\\_"))
+            pat = f"%{esc}%"
+            or_clauses.append("s.name LIKE ? ESCAPE '\\'")
+            or_clauses.append("s.signature LIKE ? ESCAPE '\\'")
+            like_params.extend([pat, pat])
+        where_or = " OR ".join(or_clauses)
+
+        results: list[dict] = [dict(warning)]  # leading warning dict
+        seen: set = set()
+        for binding_id, state_id in _v2_state_ids_for_bindings(conn, resolved):
+            rows = conn.execute(
+                f"""SELECT s.name, s.raw_usr, s.kind, s.signature,
+                           s.is_definition, s.is_virtual, s.is_pure_virtual,
+                           s.is_template, s.local_key,
+                           (SELECT MIN(p.line) FROM semantic_state_positions p
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key) AS line,
+                           (SELECT cp.path FROM semantic_state_positions p
+                            JOIN binding_file_map bfm
+                              ON bfm.binding_id=? AND bfm.file_ordinal=p.file_ordinal
+                            JOIN canon_paths cp ON cp.path_id=bfm.canon_path_id
+                            WHERE p.state_id=s.state_id
+                              AND p.symbol_local_key=s.local_key
+                            ORDER BY p.line LIMIT 1) AS canon_path
+                    FROM semantic_symbols_core s
+                    WHERE s.state_id=? AND ({where_or})
+                    ORDER BY s.is_definition DESC, s.name, line
+                    LIMIT ?""",
+                (binding_id, state_id, *like_params,
+                 max(1, limit))).fetchall()
+            for r in rows:
+                rname = r["name"] or ""
+                usr = r["raw_usr"] or ""
+                line = r["line"]
+                canon = r["canon_path"] or ""
+                key = usr if usr else (rname, canon, line)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "name": rname,
+                    "qualified_name": rname,  # v2 has no qualified_name
+                    "kind": r["kind"] or "",
+                    "file": abs_path(root, canon) if canon else "",
+                    "line": int(line) if line is not None else 0,
+                    "is_definition": bool(r["is_definition"]),
+                    "signature": r["signature"] or "",
+                    "docstring": "",  # v2 hot schema has no docstring
+                    "is_template": bool(r["is_template"]),
+                    "is_virtual": bool(r["is_virtual"]),
+                    "is_pure_virtual": bool(r["is_pure_virtual"]),
+                })
+                if len(results) - 1 >= limit:  # -1 for the leading warning
+                    break
+            if len(results) - 1 >= limit:
+                break
+        return results
+    except SymbolNotFound:
+        return [warning]
+    except QueryViewError as e:
+        log.debug("v2 smart_search query error: %s", e)
+        return [warning]
 
 
 # ── Batch E: OO/Inheritance adapters (M3B v2-native read) ─────────────────
