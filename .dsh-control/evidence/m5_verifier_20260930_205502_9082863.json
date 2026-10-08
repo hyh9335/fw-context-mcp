@@ -2,7 +2,7 @@
   "artifact_type": "m5_verifier",
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
-  "head": "f476aca3aa9fcd3710e478babbdfbd2ce2f5307a",
+  "head": "cccccb70570ec0375252b0f01cc514e0ef2513d8",
   "head_short": "9082863",
   "dirty": false,
   "generated_at": "2026-09-30T20:55:02Z",
