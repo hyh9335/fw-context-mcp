@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "milestone": "M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE",
-  "generated_at_utc": "2026-10-08T07:31:31Z",
+  "generated_at_utc": "2026-10-08T07:34:53Z",
   "project_root": "D:\\github\\fw-context-mcp",
   "git": {
-    "head": "7b46bc4f0ea900338716fba6efb2b0ad678b068f",
-    "short": "7b46bc4",
+    "head": "6e485d281a92840d598770de328eb33480412cc5",
+    "short": "6e485d2",
     "branch": "m3b-native-v2",
     "dirty": true
   },
@@ -176,10 +176,10 @@
     "current_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "default_write_mode": "V2_PRIMARY_LEGACY_MIRROR",
     "env_flags": {
-      "FW_CONTEXT_DUAL_WRITE": null,
       "FW_CONTEXT_V2_WRITE": null,
+      "FW_CONTEXT_V2_PRIMARY": null,
       "FW_CONTEXT_V2_WRITE_AUTHORITY": null,
-      "FW_CONTEXT_V2_PRIMARY": null
+      "FW_CONTEXT_DUAL_WRITE": null
     },
     "code_default_v2_write_authority": true,
     "env_explicitly_set": false,

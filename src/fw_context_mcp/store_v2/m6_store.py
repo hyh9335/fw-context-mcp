@@ -398,26 +398,26 @@ class BuildSetStore:
             if not unreachable_ids:
                 return {**gc_info, "deleted": 0}
 
-            # Delete the unreachable facts
+            # Build the canon → fid mapping BEFORE the delete (we need
+            # the canons to clean up the in-memory _fact_cache after
+            # the DB rows are gone).
+            unreachable_canons: set[str] = set()
             placeholders = ",".join("?" * len(unreachable_ids))
+            for row in self._conn.execute(
+                f"SELECT fact_id, fact_canon FROM m6_shared_facts "
+                f"WHERE fact_id IN ({placeholders})",
+                tuple(unreachable_ids)
+            ):
+                unreachable_canons.add(row[1])
+
+            # Delete the unreachable facts from the DB
             self._conn.execute(
                 f"DELETE FROM m6_shared_facts WHERE fact_id IN ({placeholders})",
                 tuple(unreachable_ids)
             )
-            # Cascade deletes m6_world_fact_refs via FK
 
-            # Clean up the fact cache
-            unreachable_canons: set[str] = set()
-            # Rebuild all_facts view to get canon → fid mapping
-            all_facts: dict[int, tuple[str, frozenset[str]]] = {}
-            for row in self._conn.execute(
-                "SELECT fact_id, fact_canon, buildset_id FROM m6_shared_facts"
-            ):
-                all_facts[row[0]] = (row[1], frozenset())
-            for fid in unreachable_ids:
-                canon, _ = all_facts.get(fid, (None, frozenset()))
-                if canon:
-                    unreachable_canons.add(canon)
+            # Clean up the in-memory fact cache (the DB rows are gone,
+            # so cache entries pointing to them are now stale)
             for canon in unreachable_canons:
                 self._fact_cache.pop(canon, None)
 

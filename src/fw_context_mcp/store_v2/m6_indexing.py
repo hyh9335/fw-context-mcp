@@ -379,8 +379,14 @@ class M6IndexingAdapter:
         Returns {match: bool, mismatches: [...]}.
 
         gt_facts: the BuildFacts object extracted directly from Clang
-                  (independent of the M6 store).
+                  (independent of the M6 store), OR a GT dict loaded
+                  from JSON (will be converted via BuildFacts.from_dict).
         """
+        # Convert GT dict to BuildFacts if needed
+        if isinstance(gt_facts, dict):
+            from full_build_gt import BuildFacts
+            gt_facts = BuildFacts.from_dict(gt_facts)
+
         # Build the expected canon set from GT
         expected = canonicalize_all_facts(gt_facts)
         expected_canons = {c for c, _, _ in expected}
