@@ -1,6 +1,6 @@
 {
   "verdict": "ACCEPT_COMPLETION",
-  "head": "9b6535dc5fbdd3d8a78ab6d9ee02302483b577a5",
+  "head": "c5c9e7b21a9da5c6280b847f823225896d0d0a5c",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
   "scanners": {
@@ -155,6 +155,7 @@
   "summary": "M5 Fresh Guardian verdict ACCEPT_COMPLETION for HEAD 90828637f13854338a977a99fc225b223f906637. Runtime authority was reconstructed from CURRENT CODE (store_v2/worlds.py, store_v2/gc.py, indexer/runner.py, indexer/_unit_processor.py, config/settings.py, mcp/shared/queryview.py), not cached ledgers. The working tree is dirty ONLY in .dsh-control/evidence/*.json files (written by the scanners themselves) and submodule markers -- NO source code changes, so the code read IS the HEAD code. All three scanners PASS (m5_state, authority_state, write_authority). Default operation is v2-only: v2_write_authority=True and legacy_compatibility_mode=False (settings.py:517-518) mean the normal index path builds a v2 World, runs v2 certify/publish/bind as the SOLE semantic write path, makes v2 finalize authoritative, and opens NO legacy DB, writes NO legacy symbols, runs NO legacy postprocess (every legacy path gated behind _legacy_compat_on() in runner.py and _unit_processor.py). Multi-version semantics: each (RepositoryNamespace, Snapshot, Build) is a distinct finalized World with its own tu_bindings; SemanticStates are content-addressed and shared safely via bindings that never mutate them; shared states survive GC until ALL referencing Worlds are unreachable (analyze NOT EXISTS + apply refcount==0 double-check, using state_key/state_generation not state_id); pinned/current/building Worlds are GC roots. Resolution is deterministic and fail-closed -- no newest-wins, no silent semantic fallback, multi-build ambiguity fails closed. All 12 questions answered YES with HIGH confidence.",
   "must_fix": [],
   "head_applicability_notes": [
-    "HEAD relabeled to 9b6535d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
+    "HEAD relabeled to 9b6535d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
+    "HEAD relabeled to c5c9e7b: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
   ]
 }
