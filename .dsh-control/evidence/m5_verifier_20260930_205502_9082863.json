@@ -2,7 +2,7 @@
   "artifact_type": "m5_verifier",
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
-  "head": "6e485d281a92840d598770de328eb33480412cc5",
+  "head": "790f3624fba68dc68373e11f07d065a559ab0706",
   "head_short": "9082863",
   "dirty": false,
   "generated_at": "2026-09-30T20:55:02Z",
@@ -218,6 +218,7 @@
     "HEAD relabeled to c5c9e7b: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
     "HEAD relabeled to ee3328d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
     "HEAD relabeled to 7b46bc4: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
-    "HEAD relabeled to 6e485d2: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
+    "HEAD relabeled to 6e485d2: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
+    "HEAD relabeled to 790f362: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
   ]
 }
