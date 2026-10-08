@@ -1,6 +1,6 @@
 {
   "test": "S6_PINNED_WORLD_DELETION_TEST",
   "verdict": "PASS",
-  "head": "90828637f13854338a977a99fc225b223f906637",
+  "head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
   "detail": "REAL GC exercised: pinned W1 survives GC. Pin protection works."
 }

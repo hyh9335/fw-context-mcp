@@ -12,6 +12,7 @@ Gates:
   [GATE 5] Phase R regression (Prototype A — 21/21, false_shared=0)
   [GATE 6] M5 regression (39 clauses)
   [GATE 7] COST_CLASS_SEPARATION (§M4 — 3 classes reported separately)
+  [GATE 8] USEFULNESS_GATE (§10 — frozen thresholds, RED baseline evidence)
   [I3]     Concurrency (4 tests)
   [I7]     Certificate Store (7 steps)
   [I9]     Cross-TU Resolution
@@ -83,6 +84,8 @@ def main() -> int:
         ("I11 Real",     ".dsh-control/m6_research/test_real_corpus.py",
          "RESULT: PASS"),
         ("I12 CostCert", ".dsh-control/m6_research/test_cost_and_cert.py",
+         "RESULT: PASS"),
+        ("GATE 8 §10",   ".dsh-control/m6_research/test_usefulness_gate.py",
          "RESULT: PASS"),
     ]
 
