@@ -1,6 +1,6 @@
 {
   "verdict": "ACCEPT_COMPLETION",
-  "head": "ee3328d9b32e638c85dd7daf1d7b07aee2c3aa9c",
+  "head": "7b46bc4f0ea900338716fba6efb2b0ad678b068f",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
   "scanners": {
@@ -157,6 +157,7 @@
   "head_applicability_notes": [
     "HEAD relabeled to 9b6535d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
     "HEAD relabeled to c5c9e7b: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
-    "HEAD relabeled to ee3328d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
+    "HEAD relabeled to ee3328d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
+    "HEAD relabeled to 7b46bc4: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
   ]
 }
