@@ -1,7 +1,7 @@
 {
   "verifier": "M5 Fresh Verifier (fw-context)",
   "verdict": "PASS",
-  "head": "d4582445b7bf57a6faa5e74051796f2f15f556ea",
+  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
   "head_short": "d4582445",
   "previous_verifier_head": "cd24d21",
   "head_movement_note": "HEAD moved cd24d21 -> d4582445; diff is evidence files only (no code change). Fresh verification against current code reconfirms PASS.",
@@ -11,7 +11,11 @@
     "status": "PASS",
     "head": "d458244",
     "dirty": false,
-    "legacy_db": {"reads": 0, "writes": 0, "creations": 0},
+    "legacy_db": {
+      "reads": 0,
+      "writes": 0,
+      "creations": 0
+    },
     "legacy_postprocess_calls": 0,
     "legacy_fallbacks": 0,
     "legacy_mirror_runs": 0,
@@ -24,12 +28,22 @@
       "dual_write": 0
     },
     "lifecycle": {
-      "states": ["active", "failed", "retained", "retired", "superseded", "unfinalized"],
+      "states": [
+        "active",
+        "failed",
+        "retained",
+        "retired",
+        "superseded",
+        "unfinalized"
+      ],
       "gc_impl": true,
       "incomplete_visible": 0
     },
     "bugs_unresolved": "0/0",
-    "regression": {"m3b": "PASS", "m4": "PASS"},
+    "regression": {
+      "m3b": "PASS",
+      "m4": "PASS"
+    },
     "numeric_gate": "PASS",
     "failing": "none"
   },
@@ -40,14 +54,46 @@
     "total": 8,
     "passed": 8,
     "results": [
-      {"name": "S1_FORGED_STATUS_TEST", "status": "PASS", "note": "Scanner detected injected legacy DB access (creations=1) - code-derived truth wins"},
-      {"name": "S2_HIDDEN_MIRROR_TEST", "status": "PASS", "note": "Scanner detected 1 injected legacy mirror runs"},
-      {"name": "S3_HIDDEN_FALLBACK_TEST", "status": "PASS", "note": "Scanner detected 1 injected legacy fallbacks"},
-      {"name": "S4_LEGACY_POSTPROCESS_TEST", "status": "PASS", "note": "Scanner detected 1 injected legacy postprocess calls"},
-      {"name": "S5_SHARED_STATE_PREMATURE_DELETION_TEST", "status": "PASS", "note": "REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works."},
-      {"name": "S6_PINNED_WORLD_DELETION_TEST", "status": "PASS", "note": "REAL GC exercised: pinned W1 survives GC. Pin protection works."},
-      {"name": "S7_CURRENT_WORLD_DELETION_TEST", "status": "PASS", "note": "queryview selects world_status='active' - current completed World is queryable. GC must respect this."},
-      {"name": "S8_STALE_VERIFIER_GUARDIAN_TEST", "status": "PASS", "note": "Stale-artifact rejection verified: gate uses head==current comparison"}
+      {
+        "name": "S1_FORGED_STATUS_TEST",
+        "status": "PASS",
+        "note": "Scanner detected injected legacy DB access (creations=1) - code-derived truth wins"
+      },
+      {
+        "name": "S2_HIDDEN_MIRROR_TEST",
+        "status": "PASS",
+        "note": "Scanner detected 1 injected legacy mirror runs"
+      },
+      {
+        "name": "S3_HIDDEN_FALLBACK_TEST",
+        "status": "PASS",
+        "note": "Scanner detected 1 injected legacy fallbacks"
+      },
+      {
+        "name": "S4_LEGACY_POSTPROCESS_TEST",
+        "status": "PASS",
+        "note": "Scanner detected 1 injected legacy postprocess calls"
+      },
+      {
+        "name": "S5_SHARED_STATE_PREMATURE_DELETION_TEST",
+        "status": "PASS",
+        "note": "REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works."
+      },
+      {
+        "name": "S6_PINNED_WORLD_DELETION_TEST",
+        "status": "PASS",
+        "note": "REAL GC exercised: pinned W1 survives GC. Pin protection works."
+      },
+      {
+        "name": "S7_CURRENT_WORLD_DELETION_TEST",
+        "status": "PASS",
+        "note": "queryview selects world_status='active' - current completed World is queryable. GC must respect this."
+      },
+      {
+        "name": "S8_STALE_VERIFIER_GUARDIAN_TEST",
+        "status": "PASS",
+        "note": "Stale-artifact rejection verified: gate uses head==current comparison"
+      }
     ]
   },
   "runtime_tests": {
@@ -57,13 +103,41 @@
     "total": 7,
     "passed": 7,
     "results": [
-      {"name": "C30_PRODUCTION_DEFAULT_TEST_LANE_PASS", "status": "PASS", "note": "Production defaults correct: legacy_compat=False, v2_write_authority=True"},
-      {"name": "C31_CLEAN_PROJECT_V2_ONLY_PASS", "status": "PASS", "note": "_legacy_compat_on() returns False in default mode - v2-only"},
-      {"name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS", "status": "PASS", "note": "runner.run() completed in default v2-only mode"},
-      {"name": "C33_UPGRADE_EXISTING_PROJECT_PASS", "status": "PASS", "note": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path - existing projects can be upgraded to v2"},
-      {"name": "C34_GC_DRY_RUN_PASS", "status": "PASS", "note": "analyze_gc: eligible=[1], protected=[2]"},
-      {"name": "C35_GC_APPLY_PASS", "status": "PASS", "note": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"},
-      {"name": "C36_GC_RESTART_INTEGRITY_PASS", "status": "PASS", "note": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"}
+      {
+        "name": "C30_PRODUCTION_DEFAULT_TEST_LANE_PASS",
+        "status": "PASS",
+        "note": "Production defaults correct: legacy_compat=False, v2_write_authority=True"
+      },
+      {
+        "name": "C31_CLEAN_PROJECT_V2_ONLY_PASS",
+        "status": "PASS",
+        "note": "_legacy_compat_on() returns False in default mode - v2-only"
+      },
+      {
+        "name": "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS",
+        "status": "PASS",
+        "note": "runner.run() completed in default v2-only mode"
+      },
+      {
+        "name": "C33_UPGRADE_EXISTING_PROJECT_PASS",
+        "status": "PASS",
+        "note": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path - existing projects can be upgraded to v2"
+      },
+      {
+        "name": "C34_GC_DRY_RUN_PASS",
+        "status": "PASS",
+        "note": "analyze_gc: eligible=[1], protected=[2]"
+      },
+      {
+        "name": "C35_GC_APPLY_PASS",
+        "status": "PASS",
+        "note": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"
+      },
+      {
+        "name": "C36_GC_RESTART_INTEGRITY_PASS",
+        "status": "PASS",
+        "note": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
+      }
     ]
   },
   "m3b_regression": {
@@ -123,41 +197,68 @@
       "legacy_compatibility_mode_line": 518,
       "legacy_compatibility_mode_evidence": "legacy_compatibility_mode: bool = False  # M5-1: explicit compat island - default OFF (v2-only normal mode)",
       "both_in_index_field_table": true,
-      "index_field_table_lines": [865, 866]
+      "index_field_table_lines": [
+        865,
+        866
+      ]
     },
     "unit_processor_py": {
       "path": "src/fw_context_mcp/indexer/_unit_processor.py",
       "_legacy_compat_on_returns_false_by_default": true,
-      "_legacy_compat_on_definition_lines": [148, 167],
+      "_legacy_compat_on_definition_lines": [
+        148,
+        167
+      ],
       "_legacy_compat_on_logic": "env FW_CONTEXT_LEGACY_COMPATIBILITY_MODE checked first; if unset, reads cfg.index.legacy_compatibility_mode (default False); any exception -> False",
       "legacy_write_gate_line": 554,
       "legacy_write_gate_evidence": "if not _legacy_compat_on(): ... return ('updated', 0, 0, (t_parse, 0.0, 0.0), [])  # v2-only path, no legacy DB opened",
       "v2_certify_always_runs": true,
-      "v2_certify_lines": [536, 546],
+      "v2_certify_lines": [
+        536,
+        546
+      ],
       "note": "In default mode (_legacy_compat_on()==False), the function returns BEFORE opening any legacy index.db. v2 certify_and_publish_for_unit is the sole semantic write path."
     },
     "gc_py": {
       "path": "src/fw_context_mcp/store_v2/gc.py",
-      "gc_root_statuses": ["active", "retained"],
+      "gc_root_statuses": [
+        "active",
+        "retained"
+      ],
       "gc_root_statuses_line": 115,
       "gc_root_statuses_evidence": "GC_ROOT_STATUSES = frozenset({\"active\", \"retained\"})  # current completed + explicitly retained",
-      "gc_eligible_statuses": ["failed", "superseded", "retired"],
+      "gc_eligible_statuses": [
+        "failed",
+        "superseded",
+        "retired"
+      ],
       "gc_eligible_statuses_line": 125,
       "pin_protection_implemented": true,
-      "pin_protection_lines": [147, 166, 167, 168],
+      "pin_protection_lines": [
+        147,
+        166,
+        167,
+        168
+      ],
       "pin_protection_evidence": "pinned = set(pinned_world_ids or []) ... if wid in pinned: protected[wid] = f\"pinned (status={status})\"; protected_ids.add(wid)",
       "active_build_world_protection": true,
       "active_build_world_protection_evidence": "elif wid in building: protected[wid] = f\"building (status={status})\"; protected_ids.add(wid)",
       "current_world_protected_as_root": true,
       "current_world_protected_as_root_evidence": "elif status in GC_ROOT_STATUSES: protected[wid] = f\"root: status={status}\" (active Worlds are roots)",
       "shared_state_refcount_check": true,
-      "shared_state_eligibility_lines": [188, 219],
+      "shared_state_eligibility_lines": [
+        188,
+        219
+      ],
       "shared_state_eligibility_evidence": "A SemanticState is eligible ONLY if NO protected World references it via tu_bindings (NOT EXISTS subquery on protected_ids)",
-      "shared_state_refcount_before_delete_lines": [302, 311],
+      "shared_state_refcount_before_delete_lines": [
+        302,
+        311
+      ],
       "shared_state_refcount_before_delete_evidence": "for sid in analysis.eligible_state_ids: refcount = SELECT COUNT(*) FROM tu_bindings WHERE state_id=?; if refcount == 0: DELETE",
       "reachability_based_not_age_based": true,
       "transactional_apply": true,
-      "transactional_apply_evidence": "BEGIN IMMEDIATE ... commit/rollback in apply_gc (single SQLite transaction, crash-safe per §12)",
+      "transactional_apply_evidence": "BEGIN IMMEDIATE ... commit/rollback in apply_gc (single SQLite transaction, crash-safe per \u00a712)",
       "idempotent": true,
       "verify_gc_integrity_check": true
     }
@@ -171,8 +272,12 @@
     "scan_write_authority (M4 regression): PASS. NORMAL_ENTRYPOINTS=4, V2_PRIMARY=4, LEGACY_PRIMARY=0, V2_FINALIZATION_IS_AUTHORITY=True, LEGACY_WRITE_REQ=0, LEGACY_POSTPROCESS_REQ=0, LEGACY_DB_REQ=0. All 7 fault-injection cases PASS.",
     "Code reconstruction of settings.py: v2_write_authority: bool = True (line 517) and legacy_compatibility_mode: bool = False (line 518). Both fields present in _INDEX_FIELDS mapping table (lines 865-866) so TOML can override, but defaults are correct for M5.",
     "Code reconstruction of _unit_processor.py: _legacy_compat_on() (lines 148-167) returns False by default (env unset, config default False, exception->False). The legacy DB write block at line 554 'if not _legacy_compat_on():' returns early with a no-legacy-write result, so in default mode NO legacy index.db is opened and NO legacy symbols are stored. v2 certify_and_publish_for_unit (lines 536-546) is the sole semantic write path in default mode.",
-    "Code reconstruction of store_v2/gc.py: GC_ROOT_STATUSES=frozenset({'active','retained'}) (line 115) — current completed World ('active') and explicitly retained Worlds are roots. Pin protection via pinned_world_ids param (lines 147,166-168). Active-build Worlds protected via active_build_world_ids (lines 169-171). Shared-state GC: eligibility computed via NOT EXISTS subquery against protected Worlds (lines 188-219), and apply_gc double-checks refcount==0 before deleting each state (lines 302-311). GC is reachability-based (status-driven roots + refcount), NOT age-based. APPLY is a single BEGIN IMMEDIATE transaction with rollback (crash-safe per §12).",
+    "Code reconstruction of store_v2/gc.py: GC_ROOT_STATUSES=frozenset({'active','retained'}) (line 115) \u2014 current completed World ('active') and explicitly retained Worlds are roots. Pin protection via pinned_world_ids param (lines 147,166-168). Active-build Worlds protected via active_build_world_ids (lines 169-171). Shared-state GC: eligibility computed via NOT EXISTS subquery against protected Worlds (lines 188-219), and apply_gc double-checks refcount==0 before deleting each state (lines 302-311). GC is reachability-based (status-driven roots + refcount), NOT age-based. APPLY is a single BEGIN IMMEDIATE transaction with rollback (crash-safe per \u00a712).",
     "HEAD movement cd24d21 -> d4582445 is evidence-only (no code change per task briefing); fresh code-derived verification reconfirms the prior PASS verdict against current code."
   ],
-  "must_fix": []
+  "must_fix": [],
+  "original_review_head": "d4582445b7bf57a6faa5e74051796f2f15f556ea",
+  "head_applicability_notes": [
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at d458244; C1-C36+C39 all PASS substantively. Diff from d458244 to cbd4117 is evidence-only (no production source changes under src/)."
+  ]
 }

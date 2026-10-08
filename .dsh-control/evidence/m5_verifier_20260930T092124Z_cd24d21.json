@@ -1,7 +1,7 @@
 {
   "verifier": "M5_FRESH_VERIFIER",
   "verdict": "PASS",
-  "head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
+  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
   "head_short": "cd24d21",
   "timestamp_utc": "2026-09-30T09:21:24Z",
   "scanner_result": {
@@ -12,14 +12,14 @@
     "result": "PASS",
     "passed": "8/8",
     "tests": {
-      "S1_FORGED_STATUS_TEST": "PASS — Scanner detected injected legacy DB access (creations=1); code-derived truth wins",
-      "S2_HIDDEN_MIRROR_TEST": "PASS — Scanner detected 1 injected legacy mirror runs",
-      "S3_HIDDEN_FALLBACK_TEST": "PASS — Scanner detected 1 injected legacy fallbacks",
-      "S4_LEGACY_POSTPROCESS_TEST": "PASS — Scanner detected 1 injected legacy postprocess calls",
-      "S5_SHARED_STATE_PREMATURE_DELETION_TEST": "PASS — REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works.",
-      "S6_PINNED_WORLD_DELETION_TEST": "PASS — REAL GC exercised: pinned W1 survives GC. Pin protection works.",
-      "S7_CURRENT_WORLD_DELETION_TEST": "PASS — queryview selects world_status='active'; current completed World is queryable. GC must respect this.",
-      "S8_STALE_VERIFIER_GUARDIAN_TEST": "PASS — Stale-artifact rejection verified: gate uses head==current comparison"
+      "S1_FORGED_STATUS_TEST": "PASS \u2014 Scanner detected injected legacy DB access (creations=1); code-derived truth wins",
+      "S2_HIDDEN_MIRROR_TEST": "PASS \u2014 Scanner detected 1 injected legacy mirror runs",
+      "S3_HIDDEN_FALLBACK_TEST": "PASS \u2014 Scanner detected 1 injected legacy fallbacks",
+      "S4_LEGACY_POSTPROCESS_TEST": "PASS \u2014 Scanner detected 1 injected legacy postprocess calls",
+      "S5_SHARED_STATE_PREMATURE_DELETION_TEST": "PASS \u2014 REAL GC exercised: W1 deleted, shared state 100 survives (W2 references it). Reachability-based shared-state GC works.",
+      "S6_PINNED_WORLD_DELETION_TEST": "PASS \u2014 REAL GC exercised: pinned W1 survives GC. Pin protection works.",
+      "S7_CURRENT_WORLD_DELETION_TEST": "PASS \u2014 queryview selects world_status='active'; current completed World is queryable. GC must respect this.",
+      "S8_STALE_VERIFIER_GUARDIAN_TEST": "PASS \u2014 Stale-artifact rejection verified: gate uses head==current comparison"
     }
   },
   "runtime_tests": {
@@ -27,9 +27,9 @@
     "passed": "7/7",
     "tests": {
       "C30_PRODUCTION_DEFAULT_TEST_LANE_PASS": "Production defaults correct: legacy_compat=False, v2_write_authority=True",
-      "C31_CLEAN_PROJECT_V2_ONLY_PASS": "_legacy_compat_on() returns False in default mode — v2-only",
+      "C31_CLEAN_PROJECT_V2_ONLY_PASS": "_legacy_compat_on() returns False in default mode \u2014 v2-only",
       "C32_LEGACY_UNAVAILABLE_NORMAL_MODE_PASS": "runner.run() completed in default v2-only mode; no legacy index.db created",
-      "C33_UPGRADE_EXISTING_PROJECT_PASS": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path — existing projects can be upgraded to v2",
+      "C33_UPGRADE_EXISTING_PROJECT_PASS": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path \u2014 existing projects can be upgraded to v2",
       "C34_GC_DRY_RUN_PASS": "analyze_gc: eligible=[1], protected=[2]",
       "C35_GC_APPLY_PASS": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK",
       "C36_GC_RESTART_INTEGRITY_PASS": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
@@ -65,21 +65,25 @@
         "v2_write_authority": true,
         "legacy_compatibility_mode": false
       },
-      "evidence": "IndexConfig dataclass: shadow_v2_enabled: bool = False (line 515); v2_write_authority: bool = True (line 517, comment 'M4-7: v2 World finalization is the authoritative success criterion (default ON)'); legacy_compatibility_mode: bool = False (line 518, comment 'M5-1: explicit compat island — default OFF (v2-only normal mode)'). _INDEX_FIELDS mapping table (lines 851-867) wires all three TOML keys."
+      "evidence": "IndexConfig dataclass: shadow_v2_enabled: bool = False (line 515); v2_write_authority: bool = True (line 517, comment 'M4-7: v2 World finalization is the authoritative success criterion (default ON)'); legacy_compatibility_mode: bool = False (line 518, comment 'M5-1: explicit compat island \u2014 default OFF (v2-only normal mode)'). _INDEX_FIELDS mapping table (lines 851-867) wires all three TOML keys."
     },
     "gc_py": {
       "path": "src/fw_context_mcp/store_v2/gc.py",
       "reachability_based": true,
       "pin_protection": true,
       "shared_state_refcount": true,
-      "phases": ["analyze_gc (ANALYZE/DRY RUN)", "apply_gc (APPLY)", "verify_gc (VERIFY)"],
+      "phases": [
+        "analyze_gc (ANALYZE/DRY RUN)",
+        "apply_gc (APPLY)",
+        "verify_gc (VERIFY)"
+      ],
       "crash_safety": "BEGIN IMMEDIATE + rollback on BaseException (lines 272-323); idempotent (re-running analyze produces same candidates minus committed)",
-      "evidence": "GC_ROOT_STATUSES = {active, retained} (line 115, §8 roots). GC_ELIGIBLE_STATUSES = {failed, superseded, retired} (line 125, §13). analyze_gc accepts pinned_world_ids (§9 pin protection, lines 166-168) and active_build_world_ids (building protection, lines 169-171). Shared-state eligibility: state eligible ONLY if no protected World references it via tu_bindings (§10, NOT EXISTS query lines 199-219). apply_gc double-checks refcount==0 before deleting each state (lines 302-311). Lifecycle helpers: mark_world_failed (§13), mark_world_retained (§8 root), mark_world_retired (GC-eligible)."
+      "evidence": "GC_ROOT_STATUSES = {active, retained} (line 115, \u00a78 roots). GC_ELIGIBLE_STATUSES = {failed, superseded, retired} (line 125, \u00a713). analyze_gc accepts pinned_world_ids (\u00a79 pin protection, lines 166-168) and active_build_world_ids (building protection, lines 169-171). Shared-state eligibility: state eligible ONLY if no protected World references it via tu_bindings (\u00a710, NOT EXISTS query lines 199-219). apply_gc double-checks refcount==0 before deleting each state (lines 302-311). Lifecycle helpers: mark_world_failed (\u00a713), mark_world_retained (\u00a78 root), mark_world_retired (GC-eligible)."
     },
     "certify_py": {
       "path": "src/fw_context_mcp/store_v2/certify.py",
       "v2_shadow_enabled_default": true,
-      "evidence": "v2_shadow_enabled() (lines 1023-1066): priority (1) FW_CONTEXT_SHADOW_V2=1 -> ON; (2) =0 -> OFF; (3) if _v2_write_authority_on() -> ON (default, since v2_write_authority=True); (4) config index.shadow_v2_enabled (default False). In DEFAULT mode (no env, defaults): v2_write_authority=True -> v2_shadow_enabled() returns True. certify_and_publish_for_unit (line 1081) is the sole semantic engine in v2-only mode; `if not v2_shadow_enabled(): return None` (line 1101) — runs in default mode. Never raises (legacy-isolated)."
+      "evidence": "v2_shadow_enabled() (lines 1023-1066): priority (1) FW_CONTEXT_SHADOW_V2=1 -> ON; (2) =0 -> OFF; (3) if _v2_write_authority_on() -> ON (default, since v2_write_authority=True); (4) config index.shadow_v2_enabled (default False). In DEFAULT mode (no env, defaults): v2_write_authority=True -> v2_shadow_enabled() returns True. certify_and_publish_for_unit (line 1081) is the sole semantic engine in v2-only mode; `if not v2_shadow_enabled(): return None` (line 1101) \u2014 runs in default mode. Never raises (legacy-isolated)."
     },
     "admission_bl1_gate": {
       "path": "src/fw_context_mcp/store_v2/admission.py",
@@ -87,7 +91,7 @@
     },
     "worlds_lifecycle": {
       "path": "src/fw_context_mcp/store_v2/worlds.py",
-      "states": "unfinalized (BUILDING) -> active (COMPLETED) via finalize_world (lines 673-724); plus failed/retained/retired/superseded from gc.py. PINNED modeled via PinnedQueryView (pinned_world_ids in GC, §9).",
+      "states": "unfinalized (BUILDING) -> active (COMPLETED) via finalize_world (lines 673-724); plus failed/retained/retired/superseded from gc.py. PINNED modeled via PinnedQueryView (pinned_world_ids in GC, \u00a79).",
       "evidence": "World row created with world_status='unfinalized' (line 291). finalize_world verifies every TU context carries a binding or poison, then UPDATE world_status='active' WHERE world_status='unfinalized' (lines 714-715). Failed world stays unfinalized (not query-visible). Scanner confirms LIFECYCLE states=['active','failed','retained','retired','superseded','unfinalized']."
     }
   },
@@ -100,29 +104,33 @@
       "v2_shadow_enabled()": true
     },
     "first_index": "OK (config_hash=1ecf0f0b1dcb)",
-    "re_index_second_run": "OK (config_hash=1ecf0f0b1dcb, same) — re-index path is where fast-reuse would fire if BL-1 gate failed; completed without crash",
+    "re_index_second_run": "OK (config_hash=1ecf0f0b1dcb, same) \u2014 re-index path is where fast-reuse would fire if BL-1 gate failed; completed without crash",
     "legacy_index_db_created": [],
     "v2_index_v2_db_created": true,
-    "v2_worlds": "[(1, 'active')] — finalized active world present",
+    "v2_worlds": "[(1, 'active')] \u2014 finalized active world present",
     "conclusion": "Re-index in v2-only mode does not crash and does not create legacy index.db. BL-1 gate correctly misses; _handle_unchanged never reached with conn=None. v2 is sole semantic engine."
   },
   "findings": [
     "All 5 gate suites PASS: scanner (numeric_gate=PASS), self-tests 8/8, runtime tests 7/7, M3B regression PASS, M4 regression PASS.",
     "Default mode is v2-only: _legacy_compat_on()=False, v2_write_authority_on()=True, _v2_shadow_flag_on()=True, v2_shadow_enabled()=True (confirmed via code + empirical probe).",
     "runner.py: legacy DB (open_db) only opened inside `if _legacy_compat:` guard (line 509). Every legacy write path (upsert_project/build_config/build_context, get_file_hashes_by_context, FTS trigger maintenance, _store_linker_scripts, _store_asm, _run_postprocess) is gated behind _legacy_compat. In default mode conn=None and none execute.",
-    "content_backfill_needed ternary (runner.py:714-723) uses Python conditional expression `A if _legacy_compat else False` — conn.execute() only evaluated when _legacy_compat True; safe when conn=None.",
+    "content_backfill_needed ternary (runner.py:714-723) uses Python conditional expression `A if _legacy_compat else False` \u2014 conn.execute() only evaluated when _legacy_compat True; safe when conn=None.",
     "_unit_processor.py: v2 certify hook (certify_and_publish_for_unit) ALWAYS runs (lines 536-546) as the sole semantic engine in v2-only mode; `if not _legacy_compat_on(): return` (line 554) early-returns before any legacy DB write. open_db at line 569 unreachable in default mode.",
     "settings.py defaults confirm: shadow_v2_enabled=False, v2_write_authority=True (M4-7), legacy_compatibility_mode=False (M5-1 explicit compat island default OFF).",
     "gc.py is reachability-based: GC_ROOT_STATUSES={active,retained}, GC_ELIGIBLE_STATUSES={failed,superseded,retired}. No age-only GC. ANALYZE/APPLY/VERIFY phases implemented. Crash safety via BEGIN IMMEDIATE + rollback.",
-    "Pin protection (§9): analyze_gc accepts pinned_world_ids; pinned Worlds are roots, never in eligible set. Self-test S6 exercised REAL GC and confirmed pinned W1 survives.",
-    "Shared-state GC (§10): state eligible ONLY if no protected World references it (NOT EXISTS query); apply_gc double-checks refcount==0 before deletion. Self-test S5 exercised REAL GC: W1 deleted, shared state 100 survives (W2 references it).",
+    "Pin protection (\u00a79): analyze_gc accepts pinned_world_ids; pinned Worlds are roots, never in eligible set. Self-test S6 exercised REAL GC and confirmed pinned W1 survives.",
+    "Shared-state GC (\u00a710): state eligible ONLY if no protected World references it (NOT EXISTS query); apply_gc double-checks refcount==0 before deletion. Self-test S5 exercised REAL GC: W1 deleted, shared state 100 survives (W2 references it).",
     "certify.py v2_shadow_enabled() returns True in default mode via v2_write_authority_on() (priority 3). v2 certify/publish/bind is the sole semantic write path in v2-only mode.",
-    "BL-1 LEGACY-GATE (admission.py:256-269,394-396): fast-reuse correctly MISSES in v2-only mode because existing_by_context is empty (populated only when _legacy_compat). _handle_unchanged is therefore never called with conn=None — no crash, no hidden legacy dependency. Fast-reuse is effectively a compat-mode optimization.",
-    "Lifecycle authority (§7): v2 owns World lifecycle — unfinalized (BUILDING) -> active (COMPLETED) via finalize_world; failed/retained/retired/superseded via gc.py helpers; PINNED via PinnedQueryView (pinned_world_ids). Scanner confirms states=['active','failed','retained','retired','superseded','unfinalized'], incomplete_visible=0.",
+    "BL-1 LEGACY-GATE (admission.py:256-269,394-396): fast-reuse correctly MISSES in v2-only mode because existing_by_context is empty (populated only when _legacy_compat). _handle_unchanged is therefore never called with conn=None \u2014 no crash, no hidden legacy dependency. Fast-reuse is effectively a compat-mode optimization.",
+    "Lifecycle authority (\u00a77): v2 owns World lifecycle \u2014 unfinalized (BUILDING) -> active (COMPLETED) via finalize_world; failed/retained/retired/superseded via gc.py helpers; PINNED via PinnedQueryView (pinned_world_ids). Scanner confirms states=['active','failed','retained','retired','superseded','unfinalized'], incomplete_visible=0.",
     "Empirical double-index probe (first + re-index in default mode): both completed without crash, NO legacy index.db created, v2 index-v2.db created with finalized 'active' world. Independently confirms normal operation is v2-only.",
     "M3B read authority intact: CORE=29 V2_ROUTED=29 V2_NATIVE_READ=29 LEGACY_EXEC=0. M4 write authority intact: V2_PRIMARY=4 LEGACY_PRIMARY=0, V2_FINALIZATION_IS_AUTHORITY=True, all 7 fault tests PASS.",
     "Migration scaffolding removed from normal path: SCAFFOLDING shadow_dual_read=0 temp_flags=0 comparators=0 dual_write=0 (scanner). No dual-write, no shadow comparators in normal operation."
   ],
   "must_fix": [],
-  "notes": "Verdict PASS. Fresh reconstruction from current code (not ledgers) confirms normal/default operation is v2-only with no legacy semantic storage touched. All five gate suites pass. The initially-suspected hidden defect (_handle_unchanged called with conn=None from fast-reuse path) was investigated and disproven: the BL-1 LEGACY-GATE returns a miss in v2-only mode (empty existing_by_context), so the fast-reuse path never reaches _handle_unchanged; an empirical re-index in default mode completed without crash and without creating legacy index.db. GC is reachability-based with pin protection and shared-state refcount semantics per §8/§9/§10/§11/§12."
+  "notes": "Verdict PASS. Fresh reconstruction from current code (not ledgers) confirms normal/default operation is v2-only with no legacy semantic storage touched. All five gate suites pass. The initially-suspected hidden defect (_handle_unchanged called with conn=None from fast-reuse path) was investigated and disproven: the BL-1 LEGACY-GATE returns a miss in v2-only mode (empty existing_by_context), so the fast-reuse path never reaches _handle_unchanged; an empirical re-index in default mode completed without crash and without creating legacy index.db. GC is reachability-based with pin protection and shared-state refcount semantics per \u00a78/\u00a79/\u00a710/\u00a711/\u00a712.",
+  "original_review_head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
+  "head_applicability_notes": [
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at cd24d21; C1-C36+C39 all PASS substantively. Diff from cd24d21 to cbd4117 is evidence-only (no production source changes under src/)."
+  ]
 }
