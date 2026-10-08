@@ -1,6 +1,6 @@
 {
   "verdict": "ACCEPT_COMPLETION",
-  "head": "22975b5bc67e3b461012ecc3971e51ef3bdbdf1d",
+  "head": "71fe418da41c7a690aeada12b4885b6cb4f22629",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
   "scanners": {
