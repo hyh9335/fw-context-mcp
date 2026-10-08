@@ -99,11 +99,24 @@ Reference (6 ref_kinds), ConditionalState, Body, FileContent.
 
 | Metric | Value |
 |---|---|
-| DEBUG facts | 217 |
-| RELEASE facts | 184 |
+| DEBUG facts (RED baseline, no sharing) | 362 |
+| RELEASE facts (RED baseline, no sharing) | 307 |
+| RED total (no sharing) | 669 |
+| GREEN total (M6 store with sharing) | 229 |
 | Shared facts | 172 (75.1%) |
-| Storage savings | 75.1% vs no-sharing |
+| Storage reduction vs RED | 65.8% (669 → 229) |
+| Semantic materialization reduction | 94.5% (217 → 12 new facts for 2nd build) |
+| Query overhead | 0.001s |
 | Fact-kind coverage | 11/12 (only Inherits missing — C, not C++) |
+
+### §10 Usefulness Gate — Frozen Thresholds
+
+| Check | Measured | Threshold (conservative) |
+|---|---|---|
+| storage_reuse_ratio | 0.751 | ≥ 0.50 |
+| storage_reduction_vs_red | 0.658 | ≥ 0.25 |
+| semantic_materialization_reduction | 0.945 | ≥ 0.50 |
+| query_overhead_s | 0.001s | ≤ 5.0s |
 
 ### Cost Class Separation
 
@@ -156,3 +169,29 @@ corpus, well above the implicit RED baseline of 0% (no sharing). The
 storage work scales with semantic differences (12 new facts for RELEASE
 vs 217 for DEBUG), not build count. Query overhead is negligible (parity
 checks complete in <1s per build).
+
+## Final Acceptance
+
+### Fresh M5 Reviewers (at HEAD `21c1f08`)
+- **M5 Verifier:** `.dsh-control/evidence/m5_verifier_20261008_154126_e1b3480.json`
+  (verdict=PASS, head=21c1f08, m5_code_unchanged=true, 39/39 clauses)
+- **M5 Guardian G6:** `.dsh-control/evidence/m5_guardian_20261008074407Z_e1b3480d3f32.json`
+  (verdict=ACCEPT_COMPLETION, head=21c1f08, all 6 adversarial checks TRUE)
+
+### Fresh M6 Reviewers (at HEAD `21c1f08`)
+- **M6 Verifier:** `.dsh-control/evidence/m6_verifier_final_20261008_155104.json`
+  (verdict=ACCEPT, 13/13 gates, all contract compliance true)
+- **M6 Guardian G6:** `.dsh-control/evidence/m6_guardian_final_20261008T155201Z.json`
+  (verdict=ACCEPT_COMPLETION, 10/10 adversarial checks pass, both blockers resolved)
+
+### Milestone Status
+
+**`M6_CROSS_BUILD_FINE_GRAINED_SEMANTIC_REUSE_COMPLETE`**
+
+Declared complete at HEAD `21c1f0892589d61575d29db7e67027d6a2fb21d5`:
+- All 13 M6 Hard Gates PASS (executable: `run_m6_stage_gate.py` exits 0)
+- All 39 M5 clauses PASS (executable: `run_m5_stage_gate.py` exits 0)
+- Fresh Verifier + Fresh Guardian G6 accepted this exact HEAD
+- M6 store remains shadow-only; v2 store remains Ground Truth
+- Production authority NOT transitioned (M6 validated as shadow;
+  transition is a separate future decision per Architecture Contract §3)

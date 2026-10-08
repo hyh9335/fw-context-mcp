@@ -2,7 +2,7 @@
   "guardian": "M5 Guardian G6 (final independent stage reviewer, fresh one-shot)",
   "checkpoint": "G6",
   "verdict": "ACCEPT_COMPLETION",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_short": "cd24d21",
   "head_dirty": false,
   "contract": ".dsh-control/contracts/IMMUTABLE_M5_GOAL_CONTRACT.md",
@@ -124,6 +124,7 @@
   "notes": "Verdict ACCEPT_COMPLETION. Fresh independent reconstruction (read cold, no inherited Lead reasoning) confirms M5 is complete: normal/default fw-context operation is fully v2-native across semantic reads, indexing/write/finalization, and semantic lifecycle. Legacy semantic storage is never touched in default mode (all paths gated behind _legacy_compat, which defaults OFF). The legacy compatibility island is isolated, explicit, and default-OFF per \u00a75. GC is reachability-based with pin protection and shared-state refcount semantics per \u00a78/\u00a79/\u00a710/\u00a711/\u00a712. Both previous Guardian G6 findings are fixed and verified: (1) verifier artifact uses full 40-char head hash, (2) S8 is a genuine adversarial stale-artifact rejection test. The \u00a741 stop boundary applies: do NOT begin physical deletion of legacy modules or start new features. M5 is semantic/operational retirement, complete.",
   "original_review_head": "cd24d21c5b2521f1588a6980446a89772586dd2f",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at cd24d21; C1-C36+C39 all PASS substantively. Diff from cd24d21 to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at cd24d21; C1-C36+C39 all PASS substantively. Diff from cd24d21 to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }

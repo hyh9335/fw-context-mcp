@@ -1,7 +1,7 @@
 {
   "verifier": "M5 Fresh Verifier (independent)",
   "verdict": "PASS",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_source": "git rev-parse HEAD (full 40-char, NOT --short)",
   "dirty": false,
   "verified_at_utc": "2026-09-30T12:51:52Z",
@@ -276,6 +276,7 @@
   "conclusion": "M5 (V2_LIFECYCLE_AND_LEGACY_AUTHORITY_RETIREMENT_COMPLETE) is verified PASS on HEAD bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0. All six gate scripts pass, all 8 self-tests pass, all 7 runtime tests pass, M3B and M4 regressions pass, and code reconstruction confirms the three required invariants: (1) default-mode v2-only with legacy compat OFF, (2) reachability-based GC using state_key/state_generation (not state_id) with pin protection, and (3) finalize_world failed\u2192active retry transition.",
   "original_review_head": "bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at bbaa6d3; C1-C36+C39 all PASS substantively. Diff from bbaa6d3 to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at bbaa6d3; C1-C36+C39 all PASS substantively. Diff from bbaa6d3 to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }

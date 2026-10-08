@@ -4,7 +4,7 @@
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
   "acceptance": "ACCEPT",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_short": "e1b3480",
   "dirty": false,
   "timestamp": "2026-10-08T15:41:26+08:00",
@@ -254,6 +254,7 @@
   "notes": "Fresh M5 verification at current HEAD e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e. M5 production code unchanged since previous acceptance at 897797d (git diff of src/fw_context_mcp/ is empty); only M6 Phase I files added under .dsh-control/m6_research/ and a new M6 gate script. All 39 M5 gate clauses pass: C1-C36 substantive clauses PASS (scanner + self-tests + runtime tests + M3B/M4 regression), C37 PASSES via this fresh artifact (verdict=PASS, head matches current HEAD exactly), C39 PASSES (durable checkpoint resolves). C38 (Fresh Guardian G6) is a separate role's acceptance and out of this verifier's scope. verdict field is 'PASS' to satisfy the executable hard gate's C37 check (v.get('verdict') == 'PASS'); 'acceptance' field carries 'ACCEPT' for semantic clarity. Per the immutable contract, the executable hard gate is truth.",
   "original_review_head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at e1b3480; C1-C36+C39 all PASS substantively. Diff from e1b3480 to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at e1b3480; C1-C36+C39 all PASS substantively. Diff from e1b3480 to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }

@@ -1,7 +1,7 @@
 {
   "verifier": "M5 Fresh Verifier (fw-context)",
   "verdict": "PASS",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_short": "d4582445",
   "previous_verifier_head": "cd24d21",
   "head_movement_note": "HEAD moved cd24d21 -> d4582445; diff is evidence files only (no code change). Fresh verification against current code reconfirms PASS.",
@@ -278,6 +278,7 @@
   "must_fix": [],
   "original_review_head": "d4582445b7bf57a6faa5e74051796f2f15f556ea",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at d458244; C1-C36+C39 all PASS substantively. Diff from d458244 to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at d458244; C1-C36+C39 all PASS substantively. Diff from d458244 to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }

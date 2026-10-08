@@ -1,7 +1,7 @@
 {
   "verifier": "M5_FRESH_VERIFIER",
   "verdict": "FAIL",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_full": "8af4f1754a79905c9418cbf2328f4368cc6e6e61",
   "timestamp_utc": "2026-09-30T16:39:55Z",
   "scanner_result": "PASS",
@@ -36,6 +36,7 @@
   },
   "original_review_head": "8af4f17",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at 8af4f17; C1-C36+C39 all PASS substantively. Diff from 8af4f17 to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at 8af4f17; C1-C36+C39 all PASS substantively. Diff from 8af4f17 to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }

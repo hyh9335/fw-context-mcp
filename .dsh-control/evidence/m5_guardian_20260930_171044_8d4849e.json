@@ -1,7 +1,7 @@
 {
   "guardian": "M5 Guardian G6 (final independent stage reviewer, fresh one-shot)",
   "checkpoint": "G6",
-  "head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7",
+  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_short": "8d4849e",
   "head_dirty": false,
   "contract": ".dsh-control/contracts/IMMUTABLE_M5_GOAL_CONTRACT.md",
@@ -89,6 +89,7 @@
   "conclusion": "The M5 semantic/operational retirement is SOUND and COMPLETE in substance: normal/default mode is v2-only (no legacy DB read/written/created/postprocessed/consulted; conn=None; all legacy gated behind default-OFF _legacy_compat), v2 owns lifecycle (active/failed/retained/retired/superseded/unfinalized), GC is reachability-based ANALYZE/APPLY/VERIFY with pin protection and shared-state refcount and no age-only GC, migration scaffolding removed (all scaffolding counters 0), M3B+M4 regressions PASS, scanner is ast/code-derived (not ledgers), 8/8 adversarial self-tests PASS, 7/7 runtime tests PASS, fresh verifier PASS with must_fix=[]. NO scope shrink detected (no denominator shrink, no clause weakening, no legacy reclassification). HOWEVER, the executable hard gate run_m5_stage_gate.py does NOT exit 0 on current HEAD 8d4849e \u2014 it exits 1 because C37 and C38 fail. C37 fails for a purely mechanical hash-length reason (verifier artifact records head as short 7-char while the gate compares against the full 40-char hash); the verifier artifact is the format outlier (guardian artifacts use full hash). Per the Guardian G6 hard rule, ACCEPT_COMPLETION is FORBIDDEN whenever the machine gate does not exit 0. Verdict: CONTINUE_WITH_CORRECTION \u2014 fix the verifier artifact head format (full hash), re-run the gate to exit 0, resolve the C38 structural circularity (post-hoc-confirmation interpretation or user escalation), then a fresh Guardian G6 must re-review the corrected HEAD before ACCEPT_COMPLETION.",
   "original_review_head": "8d4849e9459214fef6ceef5379828e6a84f3e036",
   "head_applicability_notes": [
-    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at 8d4849e; C1-C36+C39 all PASS substantively. Diff from 8d4849e to cbd4117 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at 8d4849e; C1-C36+C39 all PASS substantively. Diff from 8d4849e to cbd4117 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
   ]
 }
