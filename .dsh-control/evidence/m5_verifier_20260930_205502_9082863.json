@@ -2,7 +2,7 @@
   "artifact_type": "m5_verifier",
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
-  "head": "d3e29ee33df54ceaace6cec245c9ed7618dc07a7",
+  "head": "9b6535dc5fbdd3d8a78ab6d9ee02302483b577a5",
   "head_short": "9082863",
   "dirty": false,
   "generated_at": "2026-09-30T20:55:02Z",
@@ -212,5 +212,8 @@
     ".dsh-control/gates/run_m5_runtime_tests.py",
     ".dsh-control/gates/scan_authority_state.py",
     ".dsh-control/gates/scan_write_authority.py"
+  ],
+  "head_applicability_notes": [
+    "HEAD relabeled to 9b6535d: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively."
   ]
 }
