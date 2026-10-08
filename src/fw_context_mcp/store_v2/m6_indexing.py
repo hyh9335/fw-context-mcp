@@ -157,11 +157,107 @@ def canonicalize_inheritance(facts) -> list[tuple[str, str, dict]]:
     return out
 
 
+# ── Phase I I4/I5/I6: new fact kinds ──────────────────────────────────
+
+def _hash_str(s: str) -> str:
+    """Stable SHA-256 digest for body/file content canonicalization."""
+    import hashlib
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def canonicalize_references(facts) -> list[tuple[str, str, dict]]:
+    """I5: Reference facts — 6 ref_kinds.
+
+    ref_kind ∈ {call, ref, member, indirect, implicit_construct, macro_use}
+    """
+    out = []
+    for ref in facts.references:
+        # The canon key includes src+target+kind+line so that two references
+        # at different lines are distinct facts (matches production semantics).
+        canon = (f"Reference({ref.get('src_usr','')},"
+                 f"{ref.get('ref_kind','ref')},"
+                 f"{ref.get('target_usr','')},"
+                 f"{ref.get('line',0)})")
+        out.append((canon, "Reference", {
+            "src_usr": ref.get("src_usr", ""),
+            "src_name": ref.get("src_name", ""),
+            "ref_kind": ref.get("ref_kind", "ref"),
+            "target_usr": ref.get("target_usr", ""),
+            "target_name": ref.get("target_name", ""),
+            "target_kind": ref.get("target_kind", ""),
+            "line": ref.get("line", 0),
+            "file": ref.get("file", ""),
+        }))
+    return out
+
+
+def canonicalize_conditional_states(facts) -> list[tuple[str, str, dict]]:
+    """I6: ConditionalState facts — preprocessor directive + taken state."""
+    out = []
+    for cs in facts.conditional_states:
+        canon = (f"ConditionalState({cs.get('file','')},"
+                 f"{cs.get('line',0)},"
+                 f"{cs.get('directive','')},"
+                 f"{cs.get('taken',-1)})")
+        out.append((canon, "ConditionalState", {
+            "file": cs.get("file", ""),
+            "line": cs.get("line", 0),
+            "directive": cs.get("directive", ""),
+            "condition": cs.get("condition", ""),
+            "taken": cs.get("taken", -1),
+        }))
+    return out
+
+
+def canonicalize_bodies(facts) -> list[tuple[str, str, dict]]:
+    """I4: Body facts — function body text (canonicalized by content digest).
+
+    Two bodies are the SAME fact iff their text is byte-identical AND they
+    belong to the same function (by USR). This enables cross-build sharing
+    of unchanged function bodies.
+    """
+    out = []
+    for body in facts.bodies:
+        body_text = body.get("body_text", "")
+        content_digest = _hash_str(body_text)
+        canon = (f"Body({body.get('func_usr','')},"
+                 f"{content_digest})")
+        out.append((canon, "Body", {
+            "func_usr": body.get("func_usr", ""),
+            "func_name": body.get("func_name", ""),
+            "content_digest": content_digest,
+            "start_line": body.get("start_line", 0),
+            "end_line": body.get("end_line", 0),
+            "file": body.get("file", ""),
+            # NOTE: body_text is NOT stored in the canon key — it's stored
+            # in the payload and can be large. The content_digest is the
+            # canonical identity.
+            "body_text": body_text,
+        }))
+    return out
+
+
+def canonicalize_file_contents(facts) -> list[tuple[str, str, dict]]:
+    """I4: FileContent facts — file content digest (canonical by digest).
+
+    Two FileContent facts are the SAME iff their content digests match.
+    This enables cross-build sharing of unchanged files.
+    """
+    out = []
+    for fc in facts.file_contents:
+        canon = f"FileContent({fc.get('content_digest','')})"
+        out.append((canon, "FileContent", {
+            "file_path": fc.get("file_path", ""),
+            "content_digest": fc.get("content_digest", ""),
+            "line_count": fc.get("line_count", 0),
+        }))
+    return out
+
+
 def canonicalize_all_facts(facts) -> list[tuple[str, str, dict]]:
-    """Canonicalize every fact kind that Phase R supports.
+    """Canonicalize every fact kind that Phase R + Phase I support.
 
     Returns a list of (canon_str, fact_kind, payload_dict).
-    Phase I I4/I5/I6 will add Body/FileContent/Reference/ConditionalState.
     """
     name_to_usr = _build_name_to_usr_map(facts)
     type_name_to_usr = _build_type_name_to_usr_map(facts)
@@ -175,6 +271,11 @@ def canonicalize_all_facts(facts) -> list[tuple[str, str, dict]]:
     out.extend(canonicalize_fields(facts, type_name_to_usr))
     out.extend(canonicalize_enum_constants(facts, type_name_to_usr))
     out.extend(canonicalize_inheritance(facts))
+    # Phase I I4/I5/I6
+    out.extend(canonicalize_references(facts))
+    out.extend(canonicalize_conditional_states(facts))
+    out.extend(canonicalize_bodies(facts))
+    out.extend(canonicalize_file_contents(facts))
     return out
 
 
