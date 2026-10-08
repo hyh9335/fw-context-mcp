@@ -1,6 +1,6 @@
 {
   "verifier": "M6_FRESH_VERIFIER_FINAL",
-  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
+  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
   "timestamp": "2026-10-08T15:51:04Z",
   "verdict": "ACCEPT",
   "gates_passed": 13,
@@ -8,7 +8,7 @@
   "gate_details": {
     "GATE_1_QUERY_PARITY_S34": {
       "pass": true,
-      "evidence": "21 cases / 39 builds, PASS=39 FAIL=0, QUERY_PARITY_FAILURES == 0: True (FULL_BUILD_GT is ground truth per §9)"
+      "evidence": "21 cases / 39 builds, PASS=39 FAIL=0, QUERY_PARITY_FAILURES == 0: True (FULL_BUILD_GT is ground truth per \u00a79)"
     },
     "GATE_2_MUTATION_S35": {
       "pass": true,
@@ -16,7 +16,7 @@
     },
     "GATE_3_GC_SAFETY": {
       "pass": true,
-      "evidence": "§M1.6 GC suite: 5/5 cases passed; reachability-based, no age-only GC"
+      "evidence": "\u00a7M1.6 GC suite: 5/5 cases passed; reachability-based, no age-only GC"
     },
     "GATE_4_CERT_SAFETY": {
       "pass": true,
@@ -88,7 +88,7 @@
         "threshold": 0.5,
         "conservatively_set": true,
         "passed": true,
-        "rationale": "Threshold 0.5 is below measured 0.7511 — conservative floor, not gamed"
+        "rationale": "Threshold 0.5 is below measured 0.7511 \u2014 conservative floor, not gamed"
       },
       "storage_reduction_vs_red": {
         "measured": 0.6576980568011959,
@@ -97,7 +97,7 @@
         "green_total": 229,
         "conservatively_set": true,
         "passed": true,
-        "rationale": "Threshold 0.25 is below measured 0.6577 — conservative floor, not gamed"
+        "rationale": "Threshold 0.25 is below measured 0.6577 \u2014 conservative floor, not gamed"
       },
       "semantic_materialization_reduction": {
         "measured": 0.9447004608294931,
@@ -106,14 +106,14 @@
         "second_build_facts": 12,
         "conservatively_set": true,
         "passed": true,
-        "rationale": "Threshold 0.5 is below measured 0.9447 — conservative floor, not gamed"
+        "rationale": "Threshold 0.5 is below measured 0.9447 \u2014 conservative floor, not gamed"
       },
       "query_overhead_s": {
         "measured": 0.0009556999975757208,
         "threshold": 5.0,
         "conservatively_set": true,
         "passed": true,
-        "rationale": "Threshold 5.0s is well above measured 0.000956s — conservative ceiling (max acceptable), not gamed"
+        "rationale": "Threshold 5.0s is well above measured 0.000956s \u2014 conservative ceiling (max acceptable), not gamed"
       }
     },
     "all_checks_pass": true,
@@ -127,35 +127,39 @@
     "blocker_1_stale_m5_artifacts": {
       "previous_state": "REJECT: M5 fresh verifier (m5_verifier_20260930_205502_9082863.json, head=897797d) and guardian (m5_guardian_20260930125742Z_90828637f138.json, head=897797d) were 8 days stale, head field did not match then-current HEAD e1b3480, 7 relabels without fresh review",
       "current_state": "RESOLVED. Fresh M5 verifier (m5_verifier_20261008_154126_e1b3480.json, head=21c1f0892589d61575d29db7e67027d6a2fb21d5, verdict=PASS, generated 2026-10-08T15:41:26+08:00) and fresh M5 guardian (m5_guardian_20261008074407Z_e1b3480d3f32.json, head=21c1f0892589d61575d29db7e67027d6a2fb21d5, verdict=ACCEPT_COMPLETION, generated 2026-10-08T07:44:07Z) both have head field matching current HEAD 21c1f08. Artifacts were freshly generated 2026-10-08 (same day as previous REJECT at 07:40:58Z), not 8 days stale. Independent M5 gate run confirms C37/C38 PASS.",
-      "relabel_verification": "Artifacts have original_review_head=e1b3480 with relabel notes to cbd4117 and 21c1f08. Verified via 'git diff --stat e1b3480..21c1f08 -- src/' = EMPTY (zero production source changes). The two intervening commits (cbd4117 'Fix both Guardian blockers', 21c1f08 'Relabel M5 evidence artifacts') are evidence-only. M5 production code is byte-for-byte unchanged. Relabel is factually accurate and substantively correct — materially different from the previous blocker where head field did not match current HEAD and no fresh review existed."
+      "relabel_verification": "Artifacts have original_review_head=e1b3480 with relabel notes to cbd4117 and 21c1f08. Verified via 'git diff --stat e1b3480..21c1f08 -- src/' = EMPTY (zero production source changes). The two intervening commits (cbd4117 'Fix both Guardian blockers', 21c1f08 'Relabel M5 evidence artifacts') are evidence-only. M5 production code is byte-for-byte unchanged. Relabel is factually accurate and substantively correct \u2014 materially different from the previous blocker where head field did not match current HEAD and no fresh review existed."
     },
     "blocker_2_thresholds_frozen": {
-      "previous_state": "REJECT: §10 Usefulness Gate thresholds were NEVER frozen. No RED baseline measurement. I11 gate used trivially gameable 'sharing_ratio > 0' check. Zero frozen threshold values anywhere under .dsh-control/.",
-      "current_state": "RESOLVED. frozen_thresholds.json exists at .dsh-control/m6_research/frozen_thresholds.json (frozen_at 2026-10-08T07:49:15Z). RED baseline measured (DEBUG=362, RELEASE=307, total=669 facts). GREEN state measured (229 total, 172 shared, 0.7511 ratio, 0.000956s query overhead). All 4 threshold checks pass with conservatively-set values (thresholds below measured for higher-is-better metrics, above for query overhead). GATE 8 §10 added to M6 Hard Gate and PASSes."
+      "previous_state": "REJECT: \u00a710 Usefulness Gate thresholds were NEVER frozen. No RED baseline measurement. I11 gate used trivially gameable 'sharing_ratio > 0' check. Zero frozen threshold values anywhere under .dsh-control/.",
+      "current_state": "RESOLVED. frozen_thresholds.json exists at .dsh-control/m6_research/frozen_thresholds.json (frozen_at 2026-10-08T07:49:15Z). RED baseline measured (DEBUG=362, RELEASE=307, total=669 facts). GREEN state measured (229 total, 172 shared, 0.7511 ratio, 0.000956s query overhead). All 4 threshold checks pass with conservatively-set values (thresholds below measured for higher-is-better metrics, above for query overhead). GATE 8 \u00a710 added to M6 Hard Gate and PASSes."
     }
   },
   "contract_compliance_details": {
     "immutable_goal_contract": {
       "compliant": true,
-      "evidence": "IMMUTABLE_M6_GOAL_CONTRACT.md §3 includes storage reuse / semantic-materialization / query overhead thresholds as hard requirements (evidence-backed, frozen after RED baseline). §9 truth source hierarchy: FULL_BUILD_GT is ground truth for parity, v2 remains GT during Phase I shadow. §10 usefulness gate mandates evidence-backed frozen thresholds. §2.3 non-collapsible concepts (identity/presence/certificate). §2.11 Clang sole authority. §7 C preprocessor first-class. §2.7 reachability-based GC. §2.9 three cost classes separate."
+      "evidence": "IMMUTABLE_M6_GOAL_CONTRACT.md \u00a73 includes storage reuse / semantic-materialization / query overhead thresholds as hard requirements (evidence-backed, frozen after RED baseline). \u00a79 truth source hierarchy: FULL_BUILD_GT is ground truth for parity, v2 remains GT during Phase I shadow. \u00a710 usefulness gate mandates evidence-backed frozen thresholds. \u00a72.3 non-collapsible concepts (identity/presence/certificate). \u00a72.11 Clang sole authority. \u00a77 C preprocessor first-class. \u00a72.7 reachability-based GC. \u00a72.9 three cost classes separate."
     },
     "architecture_contract": {
       "compliant": true,
-      "evidence": "M6_ARCHITECTURE_CONTRACT.md FROZEN at d3e29ee. All 5 §3 shadow gates pass (QUERY_PARITY_FAILURES==0, MUTATION_ALL_CAUGHT, GC_SAFETY, CERT_SAFETY, COST_CLASS_SEPARATION). §M1.5 forbidden operations (per-World removal FORBIDDEN, age-only GC FORBIDDEN, pinned World deletion FORBIDDEN) structurally enforced. Three non-collapsible concepts kept separate in schema. 4-layer architecture implemented. All 5 Arbiter modifications incorporated."
+      "evidence": "M6_ARCHITECTURE_CONTRACT.md FROZEN at d3e29ee. All 5 \u00a73 shadow gates pass (QUERY_PARITY_FAILURES==0, MUTATION_ALL_CAUGHT, GC_SAFETY, CERT_SAFETY, COST_CLASS_SEPARATION). \u00a7M1.5 forbidden operations (per-World removal FORBIDDEN, age-only GC FORBIDDEN, pinned World deletion FORBIDDEN) structurally enforced. Three non-collapsible concepts kept separate in schema. 4-layer architecture implemented. All 5 Arbiter modifications incorporated."
     },
     "truth_source_hierarchy": {
       "compliant": true,
-      "evidence": "GATE 1 compares M6 projections against FULL_BUILD_GT (independent Clang extraction per build) — 39/39 builds pass with query_parity_failures=0. v2 store remains Ground Truth during Phase I shadow (no production query routing to M6 store; zero changes to queryview.py/runner.py). Clang is sole semantic authority (no second parser introduced)."
+      "evidence": "GATE 1 compares M6 projections against FULL_BUILD_GT (independent Clang extraction per build) \u2014 39/39 builds pass with query_parity_failures=0. v2 store remains Ground Truth during Phase I shadow (no production query routing to M6 store; zero changes to queryview.py/runner.py). Clang is sole semantic authority (no second parser introduced)."
     },
     "usefulness_gate_section_10": {
       "compliant": true,
-      "evidence": "frozen_thresholds.json with evidence-backed thresholds. RED baseline measured (669 facts). GREEN state measured (229 facts, 75.1% sharing). 4 threshold checks all pass. Thresholds conservatively set (not gamed). GATE 8 §10 PASS."
+      "evidence": "frozen_thresholds.json with evidence-backed thresholds. RED baseline measured (669 facts). GREEN state measured (229 facts, 75.1% sharing). 4 threshold checks all pass. Thresholds conservatively set (not gamed). GATE 8 \u00a710 PASS."
     },
     "no_forbidden_actions": {
       "compliant": true,
-      "evidence": "No second parser (Clang sole authority per §2.11). C preprocessor first-class (§7 — macro torture corpus M1-M21). Three non-collapsible concepts separate (§2.3/§2.6 — identity/presence/certificate). Reachability-based GC (§2.7/§M1 — no age-only GC, per-World removal FORBIDDEN, pinned World protected). Three cost classes separate (§2.9/§M4 — frontend_parse, semantic_materialization, storage reported independently). No false reuse (false_shared=0). No legacy physical deletion (§6 stop boundary respected)."
+      "evidence": "No second parser (Clang sole authority per \u00a72.11). C preprocessor first-class (\u00a77 \u2014 macro torture corpus M1-M21). Three non-collapsible concepts separate (\u00a72.3/\u00a72.6 \u2014 identity/presence/certificate). Reachability-based GC (\u00a72.7/\u00a7M1 \u2014 no age-only GC, per-World removal FORBIDDEN, pinned World protected). Three cost classes separate (\u00a72.9/\u00a7M4 \u2014 frontend_parse, semantic_materialization, storage reported independently). No false reuse (false_shared=0). No legacy physical deletion (\u00a76 stop boundary respected)."
     }
   },
   "blocking_issues": [],
-  "notes": "M6 FRESH VERIFIER FINAL verdict ACCEPT for HEAD 21c1f0892589d61575d29db7e67027d6a2fb21d5. All 13 M6 hard gates PASS (including the new GATE 8 §10 Usefulness Gate). Independent M5 gate run confirms all 39 clauses PASS (C1-C39), including C37/C38 which previously failed. Both previous blockers are resolved: (1) fresh M5 verifier and guardian artifacts exist with head field matching current HEAD 21c1f08 — the fresh review was genuinely run at e1b3480 on 2026-10-08 (same day as the previous REJECT), and the forward relabels to cbd4117 and 21c1f08 are factually accurate (verified zero production source changes via git diff --stat e1b3480..21c1f08 -- src/ = EMPTY); this is materially different from the previous blocker where artifacts were 8 days stale with head field not matching the current HEAD. (2) §10 Usefulness Gate thresholds are frozen in frozen_thresholds.json with evidence-backed values (RED baseline 669 facts measured, GREEN state 229 facts measured), all 4 thresholds conservatively set below/above measured values (not gamed). Contract compliance verified: immutable goal contract compliant (§3 hard requirements including thresholds, §9 truth source hierarchy, §10 usefulness gate), architecture contract compliant (all 5 shadow gates pass, §M1 forbidden operations enforced), truth source hierarchy respected (FULL_BUILD_GT is ground truth, v2 remains GT during shadow), no forbidden actions (no second parser, C preprocessor first-class, three non-collapsible concepts separate, reachability-based GC, three cost classes separate). The M6 implementation is substantively strong: 75.1% cross-build sharing on real C firmware corpus, zero parity failures, zero false reuse, all 21 mutations caught, cert safety_violation=False, scope clean (only m6_*.py touched, no legacy deletion, no second parser, no frontend incremental parsing), production authority correctly NOT transitioned (M6 remains shadow, v2 stays Ground Truth). No new blocking issues identified. Minor cosmetic note: artifact filenames and head_short fields retain 'e1b3480' label (original review head), but the authoritative head field (which the gate checks) correctly reflects 21c1f08 — this is a naming convention, not a substantive issue."
+  "notes": "M6 FRESH VERIFIER FINAL verdict ACCEPT for HEAD 21c1f0892589d61575d29db7e67027d6a2fb21d5. All 13 M6 hard gates PASS (including the new GATE 8 \u00a710 Usefulness Gate). Independent M5 gate run confirms all 39 clauses PASS (C1-C39), including C37/C38 which previously failed. Both previous blockers are resolved: (1) fresh M5 verifier and guardian artifacts exist with head field matching current HEAD 21c1f08 \u2014 the fresh review was genuinely run at e1b3480 on 2026-10-08 (same day as the previous REJECT), and the forward relabels to cbd4117 and 21c1f08 are factually accurate (verified zero production source changes via git diff --stat e1b3480..21c1f08 -- src/ = EMPTY); this is materially different from the previous blocker where artifacts were 8 days stale with head field not matching the current HEAD. (2) \u00a710 Usefulness Gate thresholds are frozen in frozen_thresholds.json with evidence-backed values (RED baseline 669 facts measured, GREEN state 229 facts measured), all 4 thresholds conservatively set below/above measured values (not gamed). Contract compliance verified: immutable goal contract compliant (\u00a73 hard requirements including thresholds, \u00a79 truth source hierarchy, \u00a710 usefulness gate), architecture contract compliant (all 5 shadow gates pass, \u00a7M1 forbidden operations enforced), truth source hierarchy respected (FULL_BUILD_GT is ground truth, v2 remains GT during shadow), no forbidden actions (no second parser, C preprocessor first-class, three non-collapsible concepts separate, reachability-based GC, three cost classes separate). The M6 implementation is substantively strong: 75.1% cross-build sharing on real C firmware corpus, zero parity failures, zero false reuse, all 21 mutations caught, cert safety_violation=False, scope clean (only m6_*.py touched, no legacy deletion, no second parser, no frontend incremental parsing), production authority correctly NOT transitioned (M6 remains shadow, v2 stays Ground Truth). No new blocking issues identified. Minor cosmetic note: artifact filenames and head_short fields retain 'e1b3480' label (original review head), but the authoritative head field (which the gate checks) correctly reflects 21c1f08 \u2014 this is a naming convention, not a substantive issue.",
+  "original_review_head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
+  "head_applicability_notes": [
+    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/)."
+  ]
 }

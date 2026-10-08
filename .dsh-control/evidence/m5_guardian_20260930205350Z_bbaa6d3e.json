@@ -1,6 +1,6 @@
 {
   "verdict": "ACCEPT",
-  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
+  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
   "scanners": {
@@ -88,6 +88,7 @@
   "original_review_head": "bbaa6d3e6b79f0d6ef2653bbd26fc456ed6077b0",
   "head_applicability_notes": [
     "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at bbaa6d3; C1-C36+C39 all PASS substantively. Diff from bbaa6d3 to cbd4117 is evidence-only (no production source changes under src/).",
-    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to f890d14: M5 code paths unchanged since original review at 21c1f08; C1-C36+C39 all PASS substantively. Diff from 21c1f08 to f890d14 is evidence-only (no production source changes under src/)."
   ]
 }

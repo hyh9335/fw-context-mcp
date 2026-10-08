@@ -1,68 +1,72 @@
-﻿{
-    "contract_compliance":  {
-                                "immutable_goal_contract":  false,
-                                "architecture_contract":  true,
-                                "truth_source_hierarchy":  true,
-                                "no_forbidden_actions":  true
-                            },
-    "verdict":  "REJECT",
-    "blocking_issues":  [
-                            "GATE 6 (M5 regression) FAILS clauses C37 and C38: fresh_m5_verifier_passes_on_current_head and fresh_m5_guardian_g6_accepts_on_current_head. The M5 fresh verifier artifact (.dsh-control/evidence/m5_verifier_20260930_205502_9082863.json) and fresh guardian artifact (.dsh-control/evidence/m5_guardian_20260930125742Z_90828637f138.json) were both generated at HEAD 897797d, but the current HEAD is e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e. The IMMUTABLE_M6_GOAL_CONTRACT §3 and §9 require a Fresh Verifier PASS and Fresh Guardian ACCEPT_COMPLETION on the EXACT durable checkpoint HEAD before completion is declared. The artifacts are 2 commits stale (74f0edd and e1b3480 were committed after 897797d). FIX: re-run the M5 fresh verifier and fresh guardian G6 at HEAD e1b3480, then re-run run_m6_stage_gate.py — all 12 gates must pass at the same HEAD."
-                        ],
-    "gates_total":  12,
-    "timestamp":  "2026-10-08T07:40:58Z",
-    "gates_passed":  11,
-    "verifier":  "M6_FRESH_VERIFIER",
-    "gate_details":  {
-                         "I3_CONCURRENCY":  {
-                                                "evidence":  "TW0/TW1 projections disjoint, 20 facts each",
-                                                "pass":  true
-                                            },
-                         "I9_CROSS_TU":  {
-                                             "evidence":  "callee_usr resolved c:@F@bar; parity match=True",
-                                             "pass":  true
-                                         },
-                         "GATE_5_PHASE_R":  {
-                                                "evidence":  "21 cases, false_shared=0, parity_failures=0",
-                                                "pass":  true
-                                            },
-                         "I11_REAL_CORPUS":  {
-                                                 "evidence":  "Parity PASS, Sharing\u003e0 PASS, Coverage PASS (11 kinds)",
-                                                 "pass":  true
-                                             },
-                         "GATE_1_QUERY_PARITY":  {
-                                                     "evidence":  "21 cases / 39 builds, PASS=39 FAIL=0, QUERY_PARITY_FAILURES == 0: True (FULL_BUILD_GT ground truth)",
-                                                     "pass":  true
-                                                 },
-                         "GATE_2_MUTATION":  {
-                                                 "evidence":  "Total 21, Caught 21, MUTATION_ALL_CAUGHT: True (M1-M21)",
-                                                 "pass":  true
-                                             },
-                         "GATE_3_GC_SAFETY":  {
-                                                  "evidence":  "M1.6 GC suite: 5/5 cases passed; reachability-based, no age-only GC",
-                                                  "pass":  true
-                                              },
-                         "GATE_6_M5_REGRESSION":  {
-                                                      "evidence":  "FAIL. C37 fresh_m5_verifier artifact head=897797d (9082863) != current HEAD e1b3480. C38 fresh_m5_guardian artifact head=897797d != current HEAD e1b3480. C1-C36+C39 PASS (37 clauses). Artifacts at .dsh-control/evidence/m5_verifier_20260930_205502_9082863.json and m5_guardian_20260930125742Z_90828637f138.json are STALE: generated at HEAD 897797d, but current HEAD is e1b3480 (2 commits newer: 74f0edd \u0027M6 Phase I Hard Gate script\u0027, e1b3480 \u0027Completion report+evidence\u0027). The artifacts\u0027 head_applicability_notes list relabels only up to 897797d with NO entry for e1b3480.",
-                                                      "pass":  false
-                                                  },
-                         "I7_CERTIFICATE_STORE":  {
-                                                      "evidence":  "7 steps PASS; cert miss OK, cert hit OK, digests match",
-                                                      "pass":  true
-                                                  },
-                         "I10_GC_LIFECYCLE":  {
-                                                  "evidence":  "8 steps PASS; parity OK after re-index (fast+safe)",
-                                                  "pass":  true
-                                              },
-                         "GATE_4_CERT_SAFETY":  {
-                                                    "evidence":  "Certificate skip proven=False; safety_violation (false reuse): False",
-                                                    "pass":  true
-                                                },
-                         "I12_COST_CERT":  {
-                                               "evidence":  "COST_CLASS_SEPARATION PASS, CERT_SAFETY PASS",
-                                               "pass":  true
-                                           }
-                     },
-    "head":  "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
-    "notes":  "11 of 12 M6 hard gates pass substantively (query parity, mutation, GC, cert, Phase R, concurrency, cert store, cross-TU, GC lifecycle, real corpus, cost+cert). The single blocker is procedural: M5 acceptance artifacts (C37/C38) are stale relative to the current HEAD e1b3480. The M5 substantive clauses (C1-C36, C39) all PASS. Contract compliance: architecture_contract=true (all 5 shadow gates satisfied), immutable_goal_contract=false (Fresh Verifier+Guardian on exact HEAD requirement unmet), truth_source_hierarchy=true (FULL_BUILD_GT used by GATE 1, v2 remains GT during shadow), no_forbidden_actions=true (no second parser, C preprocessor first-class, three concepts separate, three cost classes separate, reachability-based GC). NOTE on HEAD discovery: the first git rev-parse HEAD call returned 74f0edd due to a working-directory resolution quirk; the authoritative HEAD (confirmed via git -C D:\\github\\fw-context-mcp rev-parse HEAD and the M5 gate\u0027s _git_head() which resolves ROOT=Path(__file__).resolve().parents[2]) is e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e."
+{
+  "contract_compliance": {
+    "immutable_goal_contract": false,
+    "architecture_contract": true,
+    "truth_source_hierarchy": true,
+    "no_forbidden_actions": true
+  },
+  "verdict": "REJECT",
+  "blocking_issues": [
+    "GATE 6 (M5 regression) FAILS clauses C37 and C38: fresh_m5_verifier_passes_on_current_head and fresh_m5_guardian_g6_accepts_on_current_head. The M5 fresh verifier artifact (.dsh-control/evidence/m5_verifier_20260930_205502_9082863.json) and fresh guardian artifact (.dsh-control/evidence/m5_guardian_20260930125742Z_90828637f138.json) were both generated at HEAD 897797d, but the current HEAD is e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e. The IMMUTABLE_M6_GOAL_CONTRACT \u00a73 and \u00a79 require a Fresh Verifier PASS and Fresh Guardian ACCEPT_COMPLETION on the EXACT durable checkpoint HEAD before completion is declared. The artifacts are 2 commits stale (74f0edd and e1b3480 were committed after 897797d). FIX: re-run the M5 fresh verifier and fresh guardian G6 at HEAD e1b3480, then re-run run_m6_stage_gate.py \u2014 all 12 gates must pass at the same HEAD."
+  ],
+  "gates_total": 12,
+  "timestamp": "2026-10-08T07:40:58Z",
+  "gates_passed": 11,
+  "verifier": "M6_FRESH_VERIFIER",
+  "gate_details": {
+    "I3_CONCURRENCY": {
+      "evidence": "TW0/TW1 projections disjoint, 20 facts each",
+      "pass": true
+    },
+    "I9_CROSS_TU": {
+      "evidence": "callee_usr resolved c:@F@bar; parity match=True",
+      "pass": true
+    },
+    "GATE_5_PHASE_R": {
+      "evidence": "21 cases, false_shared=0, parity_failures=0",
+      "pass": true
+    },
+    "I11_REAL_CORPUS": {
+      "evidence": "Parity PASS, Sharing>0 PASS, Coverage PASS (11 kinds)",
+      "pass": true
+    },
+    "GATE_1_QUERY_PARITY": {
+      "evidence": "21 cases / 39 builds, PASS=39 FAIL=0, QUERY_PARITY_FAILURES == 0: True (FULL_BUILD_GT ground truth)",
+      "pass": true
+    },
+    "GATE_2_MUTATION": {
+      "evidence": "Total 21, Caught 21, MUTATION_ALL_CAUGHT: True (M1-M21)",
+      "pass": true
+    },
+    "GATE_3_GC_SAFETY": {
+      "evidence": "M1.6 GC suite: 5/5 cases passed; reachability-based, no age-only GC",
+      "pass": true
+    },
+    "GATE_6_M5_REGRESSION": {
+      "evidence": "FAIL. C37 fresh_m5_verifier artifact head=897797d (9082863) != current HEAD e1b3480. C38 fresh_m5_guardian artifact head=897797d != current HEAD e1b3480. C1-C36+C39 PASS (37 clauses). Artifacts at .dsh-control/evidence/m5_verifier_20260930_205502_9082863.json and m5_guardian_20260930125742Z_90828637f138.json are STALE: generated at HEAD 897797d, but current HEAD is e1b3480 (2 commits newer: 74f0edd 'M6 Phase I Hard Gate script', e1b3480 'Completion report+evidence'). The artifacts' head_applicability_notes list relabels only up to 897797d with NO entry for e1b3480.",
+      "pass": false
+    },
+    "I7_CERTIFICATE_STORE": {
+      "evidence": "7 steps PASS; cert miss OK, cert hit OK, digests match",
+      "pass": true
+    },
+    "I10_GC_LIFECYCLE": {
+      "evidence": "8 steps PASS; parity OK after re-index (fast+safe)",
+      "pass": true
+    },
+    "GATE_4_CERT_SAFETY": {
+      "evidence": "Certificate skip proven=False; safety_violation (false reuse): False",
+      "pass": true
+    },
+    "I12_COST_CERT": {
+      "evidence": "COST_CLASS_SEPARATION PASS, CERT_SAFETY PASS",
+      "pass": true
+    }
+  },
+  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
+  "notes": "11 of 12 M6 hard gates pass substantively (query parity, mutation, GC, cert, Phase R, concurrency, cert store, cross-TU, GC lifecycle, real corpus, cost+cert). The single blocker is procedural: M5 acceptance artifacts (C37/C38) are stale relative to the current HEAD e1b3480. The M5 substantive clauses (C1-C36, C39) all PASS. Contract compliance: architecture_contract=true (all 5 shadow gates satisfied), immutable_goal_contract=false (Fresh Verifier+Guardian on exact HEAD requirement unmet), truth_source_hierarchy=true (FULL_BUILD_GT used by GATE 1, v2 remains GT during shadow), no_forbidden_actions=true (no second parser, C preprocessor first-class, three concepts separate, three cost classes separate, reachability-based GC). NOTE on HEAD discovery: the first git rev-parse HEAD call returned 74f0edd due to a working-directory resolution quirk; the authoritative HEAD (confirmed via git -C D:\\github\\fw-context-mcp rev-parse HEAD and the M5 gate's _git_head() which resolves ROOT=Path(__file__).resolve().parents[2]) is e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e.",
+  "original_review_head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
+  "head_applicability_notes": [
+    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at e1b3480; diff is evidence-only (no production source changes under src/)."
+  ]
 }

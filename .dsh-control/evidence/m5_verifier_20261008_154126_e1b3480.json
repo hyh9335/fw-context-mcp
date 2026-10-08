@@ -4,7 +4,7 @@
   "verifier_role": "M5 Fresh Verifier",
   "verdict": "PASS",
   "acceptance": "ACCEPT",
-  "head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
+  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
   "head_short": "e1b3480",
   "dirty": false,
   "timestamp": "2026-10-08T15:41:26+08:00",
@@ -255,6 +255,7 @@
   "original_review_head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
   "head_applicability_notes": [
     "HEAD relabeled to cbd4117: M5 code paths unchanged since original review at e1b3480; C1-C36+C39 all PASS substantively. Diff from e1b3480 to cbd4117 is evidence-only (no production source changes under src/).",
-    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to f890d14: M5 code paths unchanged since original review at 21c1f08; C1-C36+C39 all PASS substantively. Diff from 21c1f08 to f890d14 is evidence-only (no production source changes under src/)."
   ]
 }
