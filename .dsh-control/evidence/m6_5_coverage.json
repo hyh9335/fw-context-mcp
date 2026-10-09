@@ -1,10 +1,10 @@
 {
   "m6_5_version": "1.0",
-  "generated_at": "2026-10-09T11:33:42.687344",
+  "generated_at": "2026-10-09T11:41:55.561022",
   "goal": "M6_5_VALIDATION_COVERAGE_CLOSED",
   "corpus": {
-    "main_cases": 48,
-    "main_builds": 96,
+    "main_cases": 50,
+    "main_builds": 105,
     "standalone_corpora": [
       "FUNC_PTR",
       "REAL_CPP"
@@ -46,7 +46,7 @@
         "parity_fail": 0
       }
     },
-    "total_builds_with_gt": 115
+    "total_builds_with_gt": 124
   },
   "fact_kind_coverage": {
     "total_kinds": 12,
@@ -68,8 +68,8 @@
   },
   "test_suites": {
     "shadow_differential": {
-      "total": 96,
-      "passed": 96,
+      "total": 105,
+      "passed": 105,
       "failed": 0,
       "all_passed": true
     },
@@ -178,9 +178,9 @@
     },
     "performance": {
       "acceptable": true,
-      "add_fact_p99_us": 31.1,
-      "project_p99_us": 1699.4,
-      "gc_p99_us": 1958.7
+      "add_fact_p99_us": 17.2,
+      "project_p99_us": 1365.2,
+      "gc_p99_us": 1918.7
     },
     "real_project_freertos": {
       "total": 5,
