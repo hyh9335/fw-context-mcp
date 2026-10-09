@@ -44,7 +44,7 @@ def run_gate(name: str, script: str, pattern: str) -> tuple[bool, str]:
         cwd=str(REPO),
     )
     elapsed = time.perf_counter() - t0
-    output = result.stdout + result.stderr
+    output = (result.stdout or "") + (result.stderr or "")
     # Print last 5 lines of output
     lines = output.strip().split("\n")
     for line in lines[-5:]:
