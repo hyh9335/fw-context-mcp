@@ -1,6 +1,6 @@
 {
   "guardian": "M6_FRESH_GUARDIAN_G6",
-  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
+  "head": "a1b462b53a56451b0429f73020442166c90d5824",
   "head_note": "Authoritative HEAD confirmed via re-run of git rev-parse HEAD and git log -1. An initial read returned 74f0edd (parent of e1b3480) because the 'M6 Phase I: Completion report + evidence' commit (e1b3480, dated 2026-10-08 15:39:48 +0800) landed during the review. The M6 Fresh Verifier artifact (m6_verifier_20261008_154058.json) independently confirmed e1b3480 as the authoritative HEAD. Both candidate HEADs (74f0edd and e1b3480) are NEWER than the stale M5 artifacts (head=897797d), so the blocking issue is identical under either reading.",
   "timestamp": "2026-10-08T15:45:00+08:00",
   "verdict": "REJECT",
@@ -64,6 +64,9 @@
   "original_review_head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
   "head_applicability_notes": [
     "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at e1b3480; diff is evidence-only (no production source changes under src/).",
-    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to fe0c74d: M6 evidence-only update after commit. Original review at c102073; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 8ca270e: M6 evidence-only update after commit. Original review at fe0c74d; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to a1b462b: M6 evidence-only update after commit. Original review at 8ca270e; diff is evidence-only (no production source changes under src/)."
   ]
 }

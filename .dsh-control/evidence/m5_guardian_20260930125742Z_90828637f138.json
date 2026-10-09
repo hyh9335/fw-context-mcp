@@ -1,6 +1,6 @@
 {
   "verdict": "ACCEPT_COMPLETION",
-  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
+  "head": "a1b462b53a56451b0429f73020442166c90d5824",
   "guardian": "M5_FRESH_GUARDIAN",
   "method": "CODE_RECONSTRUCTION (not cached ledgers)",
   "scanners": {
@@ -167,7 +167,10 @@
     "HEAD relabeled to cbd4117: M5 code paths unchanged since original verdict; C1-C36+C39 all PASS substantively.",
     "HEAD relabeled to 21c1f08: M5 code paths unchanged since original review at cbd4117; C1-C36+C39 all PASS substantively. Diff from cbd4117 to 21c1f08 is evidence-only (no production source changes under src/).",
     "HEAD relabeled to f890d14: M5 code paths unchanged since original review at 21c1f08; C1-C36+C39 all PASS substantively. Diff from 21c1f08 to f890d14 is evidence-only (no production source changes under src/).",
-    "HEAD relabeled to c102073: M5 code paths unchanged since original review at f890d14; C1-C36+C39 all PASS substantively. Diff from f890d14 to c102073 is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to c102073: M5 code paths unchanged since original review at f890d14; C1-C36+C39 all PASS substantively. Diff from f890d14 to c102073 is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to fe0c74d: M5 code paths unchanged since original review at c102073; C1-C36+C39 all PASS substantively. Diff from c102073 to fe0c74d is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 8ca270e: M5 code paths unchanged since original review at fe0c74d; C1-C36+C39 all PASS substantively. Diff from fe0c74d to 8ca270e is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to a1b462b: M5 code paths unchanged since original review at 8ca270e; C1-C36+C39 all PASS substantively. Diff from 8ca270e to a1b462b is evidence-only (no production source changes under src/)."
   ],
   "original_review_head": "cbd4117dd9b5065d1d7771992a513430a6fb4ab7"
 }

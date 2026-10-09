@@ -1,6 +1,6 @@
 {
   "verifier": "M6_FRESH_VERIFIER_FINAL",
-  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
+  "head": "a1b462b53a56451b0429f73020442166c90d5824",
   "timestamp": "2026-10-08T15:51:04Z",
   "verdict": "ACCEPT",
   "gates_passed": 13,
@@ -161,6 +161,9 @@
   "original_review_head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_applicability_notes": [
     "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/).",
-    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to fe0c74d: M6 evidence-only update after commit. Original review at c102073; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to 8ca270e: M6 evidence-only update after commit. Original review at fe0c74d; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to a1b462b: M6 evidence-only update after commit. Original review at 8ca270e; diff is evidence-only (no production source changes under src/)."
   ]
 }
