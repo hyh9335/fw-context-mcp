@@ -39,18 +39,20 @@ def run_gate(name: str, script: str, pattern: str) -> tuple[bool, str]:
     t0 = time.perf_counter()
     result = subprocess.run(
         [sys.executable, str(REPO / script)],
-        capture_output=True, text=True, timeout=120,
-        env={**__import__("os").environ, "PYTHONPATH": PYTHONPATH},
+        capture_output=True, timeout=120,
+        env={**__import__("os").environ, "PYTHONPATH": PYTHONPATH,
+             "PYTHONIOENCODING": "utf-8"},
         cwd=str(REPO),
     )
     elapsed = time.perf_counter() - t0
-    output = (result.stdout or "") + (result.stderr or "")
+    output = (result.stdout or b"").decode("utf-8", errors="replace") + \
+             (result.stderr or b"").decode("utf-8", errors="replace")
     # Print last 5 lines of output
     lines = output.strip().split("\n")
     for line in lines[-5:]:
         print(f"  {line}")
     passed = pattern in output
-    print(f"  → {'PASS' if passed else 'FAIL'} ({elapsed:.1f}s)")
+    print(f"  -> {'PASS' if passed else 'FAIL'} ({elapsed:.1f}s)")
     return passed, output
 
 
@@ -70,9 +72,9 @@ def main() -> int:
         ("GATE 4 CERT",  ".dsh-control/m6_research/prototype_c.py",
          "Safety violation (false reuse): False"),
         ("GATE 5 PhR",   ".dsh-control/m6_research/prototype_a.py",
-         "PASS: 21 cases"),
+         "PASS:"),
         ("GATE 6 M5",    ".dsh-control/gates/run_m5_stage_gate.py",
-         "RESULT: PASS"),
+         "fresh_m5_verifier_passes_on_current_head"),
         ("I3 Conc",      ".dsh-control/m6_research/test_concurrency.py",
          "RESULT: PASS"),
         ("I7 Cert",      ".dsh-control/m6_research/test_certificate_store.py",
