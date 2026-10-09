@@ -134,13 +134,34 @@
       "gate": "G12/G13",
       "passed": true,
       "constraints": {
-        "production_authority_transitioned": false,
-        "reuse_ratio_optimized": false,
-        "thresholds_moved": false,
-        "v2_gt_removed": false,
-        "mcp_tools_switched": false,
-        "new_pointer_analysis_added": false,
-        "brute_force_cartesian_expansion": false
+        "C1_no_production_authority_transition": {
+          "violated": false,
+          "evidence": "0 src/ files changed"
+        },
+        "C2_no_reuse_ratio_optimization": {
+          "violated": false,
+          "evidence": "threshold values unchanged"
+        },
+        "C3_no_v2_gt_removal": {
+          "violated": false,
+          "evidence": "19 v2 store files present"
+        },
+        "C4_no_mcp_tool_switching": {
+          "violated": false,
+          "evidence": "no src/ changes => tool count unchanged"
+        },
+        "C5_no_new_pointer_analysis": {
+          "violated": false,
+          "evidence": "no src/ changes => no new pointer-analysis"
+        },
+        "C6_no_brute_force_cartesian": {
+          "violated": false,
+          "evidence": "no itertools.product in test code"
+        },
+        "C7_no_threshold_movement": {
+          "violated": false,
+          "evidence": "threshold values unchanged"
+        }
       }
     }
   ]
