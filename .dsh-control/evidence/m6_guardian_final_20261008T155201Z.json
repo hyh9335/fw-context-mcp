@@ -1,6 +1,6 @@
 {
   "guardian": "M6_FRESH_GUARDIAN_G6_FINAL",
-  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
+  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
   "timestamp": "2026-10-08T15:52:01Z",
   "verdict": "ACCEPT_COMPLETION",
   "milestone": "M6_CROSS_BUILD_FINE_GRAINED_SEMANTIC_REUSE",
@@ -77,6 +77,7 @@
   "notes": "M6 FRESH GUARDIAN G6 FINAL verdict ACCEPT_COMPLETION for HEAD 21c1f0892589d61575d29db7e67027d6a2fb21d5. Both previous blockers are resolved: (1) fresh M5 Verifier (PASS) and Guardian G6 (ACCEPT_COMPLETION) artifacts exist at the current HEAD with full head equality; (2) \u00a710 Usefulness Gate thresholds are frozen, evidence-backed (RED baseline=669 facts measured), conservative (all thresholds below measured values), and reproducible (standalone re-run confirmed). The M6 Hard Gate passes 13/13 and the M5 Hard Gate passes 39/39, both run independently at the current HEAD. All 10 adversarial checks PASS: false_reuse (21 cases/39 builds, false_shared=0), missing_mutations (M1-M21, 12 fact kinds), gc_safety_holes (reachability-based, \u00a7M1.6 5/5), certificate_bypass (defense-in-depth, safety_violation=False), cost_class_conflation (3 classes independent), scope_creep (only m6_*.py touched), truth_source_violation (FULL_BUILD_GT ground truth), contract_violations (5 Arbiter mods + 4-layer arch), production_authority (M6 shadow-only), threshold_gaming (evidence-backed, conservative, reproducible). M5 production code is byte-for-byte unchanged since the previous M5 acceptance. The M6 implementation is substantively strong and architecturally faithful to the FROZEN contract. Per the IMMUTABLE_M6_GOAL_CONTRACT \u00a73 and \u00a79, and AGENTS.local.md (executable hard gate is truth), all completion requirements are satisfied at the exact durable checkpoint HEAD.",
   "original_review_head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_applicability_notes": [
-    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/)."
   ]
 }

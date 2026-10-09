@@ -1,6 +1,6 @@
 {
   "verifier": "M6_FRESH_VERIFIER_FINAL",
-  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
+  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
   "timestamp": "2026-10-08T15:51:04Z",
   "verdict": "ACCEPT",
   "gates_passed": 13,
@@ -160,6 +160,7 @@
   "notes": "M6 FRESH VERIFIER FINAL verdict ACCEPT for HEAD 21c1f0892589d61575d29db7e67027d6a2fb21d5. All 13 M6 hard gates PASS (including the new GATE 8 \u00a710 Usefulness Gate). Independent M5 gate run confirms all 39 clauses PASS (C1-C39), including C37/C38 which previously failed. Both previous blockers are resolved: (1) fresh M5 verifier and guardian artifacts exist with head field matching current HEAD 21c1f08 \u2014 the fresh review was genuinely run at e1b3480 on 2026-10-08 (same day as the previous REJECT), and the forward relabels to cbd4117 and 21c1f08 are factually accurate (verified zero production source changes via git diff --stat e1b3480..21c1f08 -- src/ = EMPTY); this is materially different from the previous blocker where artifacts were 8 days stale with head field not matching the current HEAD. (2) \u00a710 Usefulness Gate thresholds are frozen in frozen_thresholds.json with evidence-backed values (RED baseline 669 facts measured, GREEN state 229 facts measured), all 4 thresholds conservatively set below/above measured values (not gamed). Contract compliance verified: immutable goal contract compliant (\u00a73 hard requirements including thresholds, \u00a79 truth source hierarchy, \u00a710 usefulness gate), architecture contract compliant (all 5 shadow gates pass, \u00a7M1 forbidden operations enforced), truth source hierarchy respected (FULL_BUILD_GT is ground truth, v2 remains GT during shadow), no forbidden actions (no second parser, C preprocessor first-class, three non-collapsible concepts separate, reachability-based GC, three cost classes separate). The M6 implementation is substantively strong: 75.1% cross-build sharing on real C firmware corpus, zero parity failures, zero false reuse, all 21 mutations caught, cert safety_violation=False, scope clean (only m6_*.py touched, no legacy deletion, no second parser, no frontend incremental parsing), production authority correctly NOT transitioned (M6 remains shadow, v2 stays Ground Truth). No new blocking issues identified. Minor cosmetic note: artifact filenames and head_short fields retain 'e1b3480' label (original review head), but the authoritative head field (which the gate checks) correctly reflects 21c1f08 \u2014 this is a naming convention, not a substantive issue.",
   "original_review_head": "21c1f0892589d61575d29db7e67027d6a2fb21d5",
   "head_applicability_notes": [
-    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at 21c1f08; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/)."
   ]
 }

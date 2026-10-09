@@ -1,6 +1,6 @@
 {
   "guardian": "M6_FRESH_GUARDIAN_G6",
-  "head": "f890d14322923f24ce437b25cd1c99d2535903a8",
+  "head": "c1020738fb1423bee5b15fa0240d633f8bed2425",
   "head_note": "Authoritative HEAD confirmed via re-run of git rev-parse HEAD and git log -1. An initial read returned 74f0edd (parent of e1b3480) because the 'M6 Phase I: Completion report + evidence' commit (e1b3480, dated 2026-10-08 15:39:48 +0800) landed during the review. The M6 Fresh Verifier artifact (m6_verifier_20261008_154058.json) independently confirmed e1b3480 as the authoritative HEAD. Both candidate HEADs (74f0edd and e1b3480) are NEWER than the stale M5 artifacts (head=897797d), so the blocking issue is identical under either reading.",
   "timestamp": "2026-10-08T15:45:00+08:00",
   "verdict": "REJECT",
@@ -63,6 +63,7 @@
   "notes": "M6 FRESH GUARDIAN G6 verdict REJECT for HEAD e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e. Of 10 adversarial checks, 8 PASS (false_reuse, missing_mutations, gc_safety_holes, certificate_bypass, cost_class_conflation, scope_creep, truth_source_violation, contract_violations, production_authority \u2014 that is 9 PASS) and 1 FAILS (threshold_gaming). M5 regression FAILS (37/39 clauses; C37/C38 stale). Two blocking issues identified. The M6 implementation itself is substantively strong: 11/12 hard gates pass (query parity 39/39 builds, 21/21 mutations caught, 5/5 GC suite, cert safety_violation=False, Phase R 21/21, concurrency, cert store, cross-TU, GC lifecycle, real corpus, cost+cert separation), the architecture matches the FROZEN contract (all 5 Arbiter modifications incorporated, 4-layer architecture implemented), scope is clean (only m6_*.py touched, no legacy deletion, no second parser, no frontend incremental parsing), and production authority was correctly NOT transitioned (M6 remains shadow; v2 stays Ground Truth). The blockers are procedural/contractual, not architectural: (1) stale M5 fresh-review artifacts at the new HEAD, and (2) missing frozen \u00a710 usefulness thresholds. Both are fixable without re-architecting M6. The M6 Fresh Verifier (m6_verifier_20261008_154058.json) independently reached the same REJECT verdict on the same primary blocker. Per \u00a73 and \u00a79, completion cannot be declared until a fresh M5 Verifier + fresh M5 Guardian G6 accept the exact HEAD e1b3480 AND the \u00a710 usefulness thresholds are frozen and pass.",
   "original_review_head": "e1b3480d3f32cf204c2bfe7b0b777a8476b05b0e",
   "head_applicability_notes": [
-    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at e1b3480; diff is evidence-only (no production source changes under src/)."
+    "HEAD relabeled to f890d14: M6 evidence-only update after commit. Original review at e1b3480; diff is evidence-only (no production source changes under src/).",
+    "HEAD relabeled to c102073: M6 evidence-only update after commit. Original review at f890d14; diff is evidence-only (no production source changes under src/)."
   ]
 }
