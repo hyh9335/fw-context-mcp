@@ -1,0 +1,147 @@
+{
+  "verdict": "M6_5_VALIDATION_COVERAGE_CLOSED",
+  "all_pass": true,
+  "gates": [
+    {
+      "gate": "G1",
+      "name": "Shadow Differential",
+      "script": "test_shadow_differential.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G2",
+      "name": "Shadow Mutation M1-M21",
+      "script": "test_shadow_mutation.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G3",
+      "name": "Expanded Mutation M22-M35",
+      "script": "test_expanded_mutations.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G4",
+      "name": "Property-Based Differential",
+      "script": "test_property_based.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G5",
+      "name": "Metamorphic",
+      "script": "test_metamorphic.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G6",
+      "name": "False-Confidence",
+      "script": "test_false_confidence.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G7",
+      "name": "Cross-TU Closure",
+      "script": "test_cross_tu_closure.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G8",
+      "name": "Include/Header Attack",
+      "script": "test_include_attack.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G9",
+      "name": "Lifecycle Combination",
+      "script": "test_lifecycle.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G10",
+      "name": "Performance Baseline",
+      "script": "test_performance.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G11",
+      "name": "FreeRTOS-Kernel Real-Project",
+      "script": "test_freertos.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G12",
+      "name": "Mbed TLS Real-Project",
+      "script": "test_mbedtls.py",
+      "exit_code": 0,
+      "ran_ok": true,
+      "passed": true,
+      "status": "PASS"
+    },
+    {
+      "gate": "G11",
+      "covered": 12,
+      "total": 12,
+      "passed": true,
+      "kinds": [
+        "Symbol",
+        "Function",
+        "Call",
+        "Variable",
+        "Type",
+        "Field",
+        "EnumConst",
+        "Inherits",
+        "Reference",
+        "ConditionalState",
+        "Body",
+        "FileContent"
+      ]
+    },
+    {
+      "gate": "G12/G13",
+      "passed": true,
+      "constraints": {
+        "production_authority_transitioned": false,
+        "reuse_ratio_optimized": false,
+        "thresholds_moved": false,
+        "v2_gt_removed": false,
+        "mcp_tools_switched": false,
+        "new_pointer_analysis_added": false,
+        "brute_force_cartesian_expansion": false
+      }
+    }
+  ]
+}

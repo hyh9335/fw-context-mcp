@@ -1,0 +1,206 @@
+{
+  "m6_5_version": "1.0",
+  "generated_at": "2026-10-09T11:33:42.687344",
+  "goal": "M6_5_VALIDATION_COVERAGE_CLOSED",
+  "corpus": {
+    "main_cases": 48,
+    "main_builds": 96,
+    "standalone_corpora": [
+      "FUNC_PTR",
+      "REAL_CPP"
+    ],
+    "standalone_corpora_builds": {
+      "FUNC_PTR": 5,
+      "REAL_CPP": 5
+    },
+    "real_project_corpora": {
+      "FreeRTOS-Kernel": {
+        "pinned_commit": "8be86d4a24fd4091f8f4192018423ab590f408db",
+        "builds": [
+          "BASE",
+          "NO_PREEMPT",
+          "NO_MUTEXES",
+          "STATIC_ONLY",
+          "FULL_FEATURE"
+        ],
+        "sources": [
+          "list.c",
+          "queue.c"
+        ],
+        "parity_pass": 5,
+        "parity_fail": 0
+      },
+      "mbedtls": {
+        "pinned_commit": "de23569aa95ac518e1c794236219dcb04fca4ae5",
+        "builds": [
+          "BASE",
+          "MBEDTLS_ENTROPY_C",
+          "MBEDTLS_PLATFORM_MEMORY_C",
+          "FULL_FEATURE"
+        ],
+        "sources": [
+          "version.c",
+          "timing.c"
+        ],
+        "parity_pass": 4,
+        "parity_fail": 0
+      }
+    },
+    "total_builds_with_gt": 115
+  },
+  "fact_kind_coverage": {
+    "total_kinds": 12,
+    "covered_kinds": 12,
+    "kinds": {
+      "Symbol": "covered (M1, M22-M33 canon, property-based, false-confidence, corpus T01-T48)",
+      "Function": "covered (M2, M13, M30 storage_class, M33, metamorphic MR-NEQ-3/4, property-based)",
+      "Call": "covered (M10, M33 callee_name/caller_usr, cross-TU closure)",
+      "Variable": "covered (M3, M31 init_value, property-based, metamorphic)",
+      "Type": "covered (M1, M9, M12, M25 name/typedef, M26 kind, M29 pack_state, metamorphic MR-NEQ-2/5, include-attack)",
+      "Field": "covered (M9, M26, metamorphic MR-NEQ-2/5 field reorder/add)",
+      "EnumConst": "covered (M22 value, M23 enum_usr, REAL_CPP corpus, metamorphic MR-NEQ-1)",
+      "Inherits": "covered (REAL_CPP corpus, 5-6 edges per build, multiple/virtual/multi-level)",
+      "Reference": "covered (M27 src_usr/include-root, cross-TU closure)",
+      "ConditionalState": "covered (M24, M32 xmacro identity, corpus T01-T48 #ifdef branches)",
+      "Body": "covered (M28 func_usr/generated-header, corpus T01-T48)",
+      "FileContent": "covered (M20, M32 xmacro, corpus T01-T48, include-attack struct layout)"
+    }
+  },
+  "test_suites": {
+    "shadow_differential": {
+      "total": 96,
+      "passed": 96,
+      "failed": 0,
+      "all_passed": true
+    },
+    "shadow_mutation_m1_m21": {
+      "total": 21,
+      "caught": 21,
+      "all_caught": true
+    },
+    "expanded_mutation_m22_m35": {
+      "total": 14,
+      "caught": 14,
+      "all_caught": true,
+      "all_categories_pass": true,
+      "categories": {
+        "cert_macro_dependency": {
+          "caught": 2,
+          "total": 2,
+          "passed": true
+        },
+        "typedef_propagation": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "struct_layout": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "include_root_dependency": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "generated_header": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "pragma_state": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "storage_class_scoping": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "xmacro_identity": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "cross_tu_closure": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "enum_const": {
+          "caught": 2,
+          "total": 2,
+          "passed": true
+        },
+        "gc_reachability": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        },
+        "buildset_membership": {
+          "caught": 1,
+          "total": 1,
+          "passed": true
+        }
+      }
+    },
+    "property_based": {
+      "total": 10,
+      "passed": 10,
+      "all_passed": true
+    },
+    "metamorphic": {
+      "total": 6,
+      "passed": 6,
+      "all_passed": true
+    },
+    "false_confidence": {
+      "total": 2,
+      "passed": 2,
+      "all_passed": true
+    },
+    "cross_tu_closure": {
+      "total": 2,
+      "passed": 2,
+      "all_passed": true
+    },
+    "include_attack": {
+      "total": 2,
+      "passed": 2,
+      "all_passed": true
+    },
+    "lifecycle": {
+      "total": 5,
+      "passed": 5,
+      "all_passed": true
+    },
+    "performance": {
+      "acceptable": true,
+      "add_fact_p99_us": 31.1,
+      "project_p99_us": 1699.4,
+      "gc_p99_us": 1958.7
+    },
+    "real_project_freertos": {
+      "total": 5,
+      "passed": 5,
+      "all_passed": true
+    },
+    "real_project_mbedtls": {
+      "total": 4,
+      "passed": 4,
+      "all_passed": true
+    }
+  },
+  "hard_constraints": {
+    "production_authority_transitioned": false,
+    "reuse_ratio_optimized": false,
+    "thresholds_moved": false,
+    "v2_gt_removed": false,
+    "mcp_tools_switched": false,
+    "new_pointer_analysis_added": false,
+    "brute_force_cartesian_expansion": false
+  },
+  "overall_verdict": "M6_5_VALIDATION_COVERAGE_CLOSED"
+}
