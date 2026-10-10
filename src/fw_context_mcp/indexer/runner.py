@@ -759,6 +759,31 @@ def run(
                       _w_exc)
             world_ctx = None
 
+    # ── M7-FINAL: open the M6 store ONCE per run and attach to world_ctx.
+    # The M6 store is the production semantic-materialization authority
+    # (Issue A remediation). Opened once per run, shared across all TUs.
+    # The build_name is derived from the build identity (variant/image),
+    # NOT hardcoded to "default".
+    _m6_write_authority = os.environ.get(
+        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
+    ).strip() in ("1", "true", "yes", "on")
+    if _m6_write_authority and world_ctx is not None:
+        try:
+            from fw_context_mcp.store_v2.m6_query import open_m6_store
+            _m6_store = open_m6_store(project_root)
+            world_ctx.m6_store = _m6_store
+            # Derive real build_name from variant/image (NOT hardcoded "default").
+            _m6_build_name = variant or image or "default"
+            if variant and image:
+                _m6_build_name = f"{variant}/{image}"
+            world_ctx.build_name = _m6_build_name
+            log.info("M6 direct materialization store opened for build '%s'",
+                     _m6_build_name)
+        except Exception as _m6_open_exc:                 # pragma: no cover
+            log.debug("M6 store open failed: %s", _m6_open_exc)
+            if world_ctx is not None:
+                world_ctx.m6_store = None
+
     # Single sequential loop with per-TU write lock for responsiveness.
     # The lock is acquired and released for each translation unit so that
     # manual operations (reindex_file, reset_index) can interleave via
@@ -1104,40 +1129,80 @@ def run(
     log.info("", extra={"phase": f"Done — {total_syms} symbols, {total_refs} refs, {_fmt_dur(elapsed)}"})
     log.info("%d updated, %d unchanged, %d skipped  config_hash=%s", updated, unchanged, skipped, config_hash[:12])
 
-    # ── M7.3: M6 PRODUCTION INDEXING ────────────────────────────────────────
-    # After the legacy index completes, extract canonical M6 facts from
-    # the freshly-written legacy DB and populate the M6 Shared Fact Graph.
-    # This makes M6 the production WRITE authority (§8: production write →
-    # M6 indexing → M6 store population).
-    # When M6 write authority is disabled (FW_CONTEXT_M6_WRITE_AUTHORITY=0),
-    # this step is skipped (legacy/v2 remains write authority).
+    # ── M7-FINAL: M6 WORLD FINALIZATION ────────────────────────────────────
+    # M6 facts were materialized DIRECTLY from libclang per-TU (Issue A
+    # remediation, see _unit_processor.py). This step finalizes the M6
+    # World: records completion and counts facts.
+    #
+    # The legacy-DB conversion path (index_legacy_db_into_m6) is now an
+    # EXPLICIT COMPAT/BENCHMARK MODE only — it runs ONLY when
+    # FW_CONTEXT_M6_LEGACY_CONVERSION=1 is set, NOT in normal production.
+    # Normal production uses direct materialization (no legacy DB required).
     _m6_write_authority = os.environ.get(
         "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
     ).strip() in ("1", "true", "yes", "on")
+    _m6_legacy_conversion = os.environ.get(
+        "FW_CONTEXT_M6_LEGACY_CONVERSION", "0"
+    ).strip() in ("1", "true", "yes", "on")
     if _m6_write_authority:
-        try:
-            from fw_context_mcp.store_v2.m6_production_indexing import (
-                index_legacy_db_into_m6,
-            )
-            build_name = variant or image or "default"
-            if variant and image:
-                build_name = f"{variant}/{image}"
-            stats = index_legacy_db_into_m6(
-                legacy_db_path=db_path,
-                project_root=project_root,
-                build_name=build_name,
-            )
-            log.info(
-                "M6 production indexing: %d facts extracted for build '%s' "
-                "(M6 is now production write authority)",
-                stats.get("facts_total", 0), build_name,
-            )
-        except Exception as _m6_exc:
-            # M6 indexing failure is NOT silently swallowed — it is logged
-            # and (when M6 write authority is ON) raised as authoritative.
-            log.error("M6 production indexing FAILED: %s", _m6_exc)
-            raise IndexIntegrityError(
-                f"M6 production indexing failed (M6 is authoritative): "
-                f"{_m6_exc}") from _m6_exc
+        # Derive real build_name and world_id from the world context.
+        _m6_build_name = (getattr(world_ctx, "build_name", None)
+                          if world_ctx else None) or "default"
+        _m6_world_id = (getattr(world_ctx, "world_id", None)
+                        if world_ctx else None) or 1
+        _m6_store = getattr(world_ctx, "m6_store", None) if world_ctx else None
+
+        if _m6_legacy_conversion:
+            # EXPLICIT compat/benchmark mode: convert from legacy DB.
+            # This is NOT the normal production path — it exists for
+            # benchmarking against the old approach (§41).
+            try:
+                from fw_context_mcp.store_v2.m6_production_indexing import (
+                    index_legacy_db_into_m6,
+                )
+                stats = index_legacy_db_into_m6(
+                    legacy_db_path=db_path,
+                    project_root=project_root,
+                    build_name=_m6_build_name,
+                    world_id=_m6_world_id,
+                )
+                log.info(
+                    "M6 legacy-DB conversion (compat mode): %d facts for build '%s'",
+                    stats.get("facts_total", 0), _m6_build_name,
+                )
+            except Exception as _m6_exc:
+                log.error("M6 legacy conversion FAILED: %s", _m6_exc)
+                raise IndexIntegrityError(
+                    f"M6 legacy conversion failed (compat mode): "
+                    f"{_m6_exc}") from _m6_exc
+        elif _m6_store is not None:
+            # NORMAL PRODUCTION: finalize the M6 World that was populated
+            # by direct per-TU materialization.
+            try:
+                from fw_context_mcp.store_v2.m6_direct_materialization import (
+                    finalize_m6_world,
+                )
+                fin = finalize_m6_world(
+                    store=_m6_store,
+                    world_id=_m6_world_id,
+                    build_name=_m6_build_name,
+                    config_hash=config_hash,
+                )
+                if not fin["ok"]:
+                    raise IndexIntegrityError(
+                        f"M6 World finalization failed (M6 is authoritative): "
+                        f"{fin.get('error', 'unknown')}")
+                log.info(
+                    "M6 World finalized: world_id=%d build='%s' facts=%d "
+                    "(direct materialization, no legacy DB required)",
+                    _m6_world_id, _m6_build_name, fin["facts_total"],
+                )
+            except IndexIntegrityError:
+                raise
+            except Exception as _m6_exc:
+                log.error("M6 World finalization FAILED: %s", _m6_exc)
+                raise IndexIntegrityError(
+                    f"M6 World finalization failed (M6 is authoritative): "
+                    f"{_m6_exc}") from _m6_exc
 
     return config_hash

@@ -447,7 +447,11 @@ def m6_authority_route(
                 f"{project_root}. Run 'fw-context index' to populate the M6 store."
             )
 
-        build_name = resolve_build_name(store, project_root)
+        build_name = resolve_build_name(
+            store, project_root,
+            variant=kwargs.pop("variant", None),
+            image=kwargs.pop("image", None),
+        )
 
         # Call the M6 query implementation (project_root already stripped)
         result = m6_fn(store, build_name, *args, **kwargs)

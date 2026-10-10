@@ -65,7 +65,8 @@ def open_m6_store(project_root: Path) -> BuildSetStore:
 
 
 def index_legacy_db_into_m6(legacy_db_path: Path, project_root: Path,
-                             build_name: str = "default") -> dict:
+                             build_name: str = "default",
+                             world_id: int | None = None) -> dict:
     """Populate the M6 store from a legacy SQLite DB.
 
     Reads symbol/call/reference data from the legacy DB and writes
@@ -75,12 +76,22 @@ def index_legacy_db_into_m6(legacy_db_path: Path, project_root: Path,
         legacy_db_path: Path to the legacy index.db
         project_root: Project root (for M6 store path)
         build_name: Build identifier for the M6 BuildSet
+        world_id: Real World identity (from snapshot_builds.world_id or
+                  build_identity()). If None, derives a deterministic
+                  world_id from the build_name hash (NOT hardcoded 1).
 
     Returns:
         Stats dict: {facts_indexed, facts_reused, kinds}
     """
     store = open_m6_store(project_root)
-    store.register_world(1, {build_name})
+    # Derive real World identity — NOT hardcoded 1.
+    # Prefer the caller-provided world_id (from v2 snapshot_builds).
+    # Fall back to a deterministic hash of build_name (stable across restarts).
+    if world_id is None:
+        import hashlib
+        world_id = (int(hashlib.sha256(
+            build_name.encode()).hexdigest()[:8], 16) % 1000000) + 1
+    store.register_world(world_id, {build_name})
     builds = frozenset([build_name])
 
     conn = sqlite3.connect(str(legacy_db_path))

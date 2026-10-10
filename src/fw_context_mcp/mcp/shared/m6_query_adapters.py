@@ -75,11 +75,8 @@ def m6_find_all_callers_recursive(store: BuildSetStore, build_name: str,
 
 def m6_find_call_path(store: BuildSetStore, build_name: str,
                       from_name: str, to_name: str, max_depth: int = 10, **kwargs) -> list[dict]:
-    """M6 adapter for find_call_path — simplified (direct path only)."""
-    callers = m6_query.find_callers(store, build_name, to_name, limit=5)
-    if callers:
-        return [{"depth": 1, "chain": f"{from_name} → {to_name}"}]
-    return [{"info": "no path found"}]
+    """M6 adapter for find_call_path — real BFS over Call facts."""
+    return m6_query.find_call_path(store, build_name, from_name, to_name, max_depth=max_depth)
 
 
 def m6_find_callees_recursive(store: BuildSetStore, build_name: str,
@@ -161,8 +158,8 @@ def m6_find_indirect_call_sites(store: BuildSetStore, build_name: str,
 
 def m6_find_indirect_targets(store: BuildSetStore, build_name: str,
                              name: str, limit: int = 50, **kwargs) -> list[dict]:
-    """M6 adapter for find_indirect_targets."""
-    return m6_find_indirect_call_sites(store, build_name, name, limit=limit)
+    """M6 adapter for find_indirect_targets — finds functions assigned to a fn ptr."""
+    return m6_query.find_indirect_targets(store, build_name, name, limit=limit)
 
 
 def m6_find_references(store: BuildSetStore, build_name: str,
@@ -178,8 +175,12 @@ def m6_find_wrapper_callers(store: BuildSetStore, build_name: str,
 
 def m6_trace_data_flow(store: BuildSetStore, build_name: str,
                        type_name: str, to_symbol: str, **kwargs) -> list[dict]:
-    """M6 adapter for trace_data_flow — simplified."""
-    return [{"info": "data flow tracing requires call graph analysis"}]
+    """M6 adapter for trace_data_flow — real BFS over Call facts."""
+    max_depth = kwargs.get("max_depth", 8)
+    limit = kwargs.get("limit", 15)
+    return m6_query.trace_data_flow(
+        store, build_name, type_name, to_symbol,
+        max_depth=max_depth, limit=limit)
 
 
 # ── Source/context adapters ───────────────────────────────────────────────
@@ -242,14 +243,15 @@ def m6_get_inheritance_chain(store: BuildSetStore, build_name: str,
 
 def m6_get_method_overrides(store: BuildSetStore, build_name: str,
                            method_name: str, **kwargs) -> dict:
-    """M6 adapter for get_method_overrides."""
-    return {"name": method_name, "overrides": [], "overridden_by": []}
+    """M6 adapter for get_method_overrides — real inheritance+virtual scan."""
+    return m6_query.get_method_overrides(store, build_name, method_name)
 
 
 def m6_get_template_instances(store: BuildSetStore, build_name: str,
                               template_name: str, **kwargs) -> list[dict]:
-    """M6 adapter for get_template_instances."""
-    return []
+    """M6 adapter for get_template_instances — real template_usr scan."""
+    limit = kwargs.get("limit", 50)
+    return m6_query.get_template_instances(store, build_name, template_name, limit=limit)
 
 
 # ── Variable/conditional adapters ─────────────────────────────────────────
@@ -276,8 +278,8 @@ def m6_find_variables(store: BuildSetStore, build_name: str,
 
 def m6_explain_condition(store: BuildSetStore, build_name: str,
                         file_path: str, line: int, **kwargs) -> dict:
-    """M6 adapter for explain_condition."""
-    return {"file": file_path, "line": line, "chain": []}
+    """M6 adapter for explain_condition — real ConditionalState scan."""
+    return m6_query.explain_condition(store, build_name, file_path, line)
 
 
 def m6_list_conditional_regions(store: BuildSetStore, build_name: str,
@@ -300,17 +302,19 @@ def m6_list_conditional_regions(store: BuildSetStore, build_name: str,
 # ── Variant adapters (non-v2-migrated, now M6-native) ──────────────────────
 
 def m6_get_vector_table(store: BuildSetStore, build_name: str, **kwargs) -> list[dict]:
-    """M6 adapter for get_vector_table."""
-    return [{"info": "vector table not available in M6 store"}]
+    """M6 adapter for get_vector_table — scans Function facts for IRQ handlers."""
+    limit = kwargs.get("limit", 400)
+    return m6_query.get_vector_table(store, build_name, limit=limit)
 
 
 def m6_compare_variants(store: BuildSetStore, build_name: str,
                         a: str, b: str, **kwargs) -> dict:
-    """M6 adapter for compare_variants."""
-    return {"a": a, "b": b, "kind": "build", "error": "variant comparison not yet implemented in M6"}
+    """M6 adapter for compare_variants — real cross-build fact comparison."""
+    symbol_or_file = kwargs.get("symbol_or_file")
+    return m6_query.compare_variants(store, build_name, a, b, symbol_or_file=symbol_or_file)
 
 
 def m6_group_equivalent_variants(store: BuildSetStore, build_name: str,
                                   symbol: str, **kwargs) -> dict:
-    """M6 adapter for group_equivalent_variants."""
-    return {"symbol": symbol, "groups": [], "unobserved": []}
+    """M6 adapter for group_equivalent_variants — real fingerprint grouping."""
+    return m6_query.group_equivalent_variants(store, build_name, symbol)

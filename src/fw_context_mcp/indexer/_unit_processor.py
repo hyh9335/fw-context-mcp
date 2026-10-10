@@ -545,6 +545,53 @@ def _process_unit(
         log.debug("v2 certify hook returned error: %s",
                    _v2_exc)
 
+    # ── M7-FINAL: M6 DIRECT MATERIALIZATION (Issue A remediation) ──
+    # Materialize canonical M6 facts DIRECTLY from the libclang
+    # ExtractionResult, WITHOUT requiring a completed legacy DB.
+    # This makes M6 the production semantic-materialization authority
+    # (§5: normal indexing can produce a correct M6 production semantic
+    # view without requiring a completed old semantic DB).
+    # The legacy DB conversion path (index_legacy_db_into_m6) remains as
+    # an explicit compat/benchmark mode, NOT a normal prerequisite.
+    _m6_write_authority = os.environ.get(
+        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
+    ).strip() in ("1", "true", "yes", "on")
+    if _m6_write_authority and world_ctx is not None:
+        try:
+            from fw_context_mcp.store_v2.m6_direct_materialization import (
+                materialize_unit_into_m6,
+            )
+            # Derive real World identity — NOT hardcoded 1.
+            # Prefer the v2-derived world_id (set by _ensure_world_rows
+            # during v2 certify). If v2 didn't set it, derive a
+            # deterministic world_id from the build_name hash (stable
+            # across restarts for the same build).
+            _m6_world_id = getattr(world_ctx, "world_id", None)
+            if not _m6_world_id:
+                import hashlib
+                _m6_build_name_fallback = (
+                    getattr(world_ctx, "build_name", None) or "default")
+                _m6_world_id = (
+                    int(hashlib.sha256(
+                        _m6_build_name_fallback.encode()
+                    ).hexdigest()[:8], 16) % 1000000) + 1
+                world_ctx.world_id = _m6_world_id
+            _m6_build_name = getattr(world_ctx, "build_name", None) or "default"
+            _m6_store = getattr(world_ctx, "m6_store", None)
+            if _m6_store is not None:
+                materialize_unit_into_m6(
+                    store=_m6_store,
+                    parsed=parsed,
+                    project_root=project_root,
+                    build_name=_m6_build_name,
+                    world_id=_m6_world_id,
+                    config_hash=config_hash,
+                    context_id=context_id,
+                )
+        except Exception as _m6_exc:                # pragma: no cover
+            log.debug("M6 direct materialization hook error: %s",
+                       _m6_exc)
+
     # ── M5-1: legacy DB writes are gated behind explicit compat mode ──
     # When _legacy_compat_on() is False (the M5 default), normal indexing is
     # v2-only: the v2 certification/publication/binding above is the sole
