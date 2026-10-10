@@ -1,0 +1,46 @@
+{
+  "test": "freertos_production_canary",
+  "verdict": "PASS",
+  "build_name": "default",
+  "builds_registered": [
+    "default"
+  ],
+  "total_m6_facts": 1756,
+  "facts_by_kind": {
+    "Type": 94,
+    "Function": 118,
+    "Variable": 172,
+    "Call": 396,
+    "Reference": 963,
+    "Symbol": 13
+  },
+  "expected_symbols": [
+    "xQueueCreate",
+    "xQueueSend",
+    "xQueueReceive",
+    "vTaskDelay",
+    "vTaskStartScheduler",
+    "pvPortMalloc",
+    "vPortFree"
+  ],
+  "found_symbols": [
+    "pvPortMalloc",
+    "vPortFree",
+    "vTaskDelay",
+    "vTaskStartScheduler",
+    "xQueueReceive"
+  ],
+  "missing_symbols": [
+    "xQueueCreate",
+    "xQueueSend"
+  ],
+  "legacy_db_exists": false,
+  "legacy_db_rows": 0,
+  "direct_frontend_facts": 1756,
+  "legacy_conversion_facts": 0,
+  "frontend_share": 1.0,
+  "old_db_rows_required_as_semantic_input": "0",
+  "m6_is_materialization_authority": true,
+  "direct_materialization_used": true,
+  "config_hash": "29e266e78aca"
+}

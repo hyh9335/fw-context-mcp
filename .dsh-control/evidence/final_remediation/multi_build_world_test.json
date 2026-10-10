@@ -1,0 +1,27 @@
+{
+  "test": "multi_build_world_test",
+  "verdict": "PASS",
+  "build_a": {
+    "world_id": 1001,
+    "build_name": "buildA",
+    "facts": 6,
+    "functions": [
+      "shared_func",
+      "functionA"
+    ]
+  },
+  "build_b": {
+    "world_id": 1002,
+    "build_name": "buildB",
+    "facts": 6,
+    "functions": [
+      "shared_func",
+      "functionB"
+    ]
+  },
+  "query_isolation": true,
+  "shared_fact_dedup": true,
+  "world_id_hardcoded": false,
+  "world_identity_collisions": 0,
+  "build_query_leakage": 0
+}

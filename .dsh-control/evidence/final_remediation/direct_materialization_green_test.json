@@ -1,0 +1,24 @@
+{
+  "test": "direct_materialization_green_test",
+  "verdict": "PASS",
+  "facts_indexed_directly": 14,
+  "facts_reused": 0,
+  "facts_total_queryable": 14,
+  "kinds": {
+    "Function": 2,
+    "Type": 2,
+    "Variable": 2,
+    "Symbol": 3,
+    "Call": 1,
+    "Reference": 4
+  },
+  "legacy_db_created": false,
+  "old_db_rows_required_as_semantic_input": "0",
+  "m6_is_materialization_authority": true,
+  "world_id_used": 100,
+  "build_name": "test_build_A",
+  "found_public_func": true,
+  "found_helper": true,
+  "found_point": true,
+  "found_call": true
+}

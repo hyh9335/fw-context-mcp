@@ -1,0 +1,31 @@
+{
+  "gate": "final_closure_remediation_gate",
+  "verdict": "PASS",
+  "checks": [
+    {
+      "name": "A_direct_materialization",
+      "required": "OLD_DB_ROWS_REQUIRED_AS_SEMANTIC_INPUT=0 AND M6_IS_AUTHORITY=true",
+      "actual": "green=PASS, facts=14, legacy_db=False",
+      "pass": true
+    },
+    {
+      "name": "B_tool_parity",
+      "required": "STUB_COUNT=0 AND REAL_COUNT>=9",
+      "actual": "stub_count=0, real_count=9",
+      "pass": true
+    },
+    {
+      "name": "C_multi_build_world",
+      "required": "WORLD_ID_HARDCODED=false AND QUERY_ISOLATION=true AND SHARED_FACT_DEDUP=true",
+      "actual": "world_id_hardcoded=False, isolation=True, dedup=True",
+      "pass": true
+    },
+    {
+      "name": "freertos_canary",
+      "required": "FACTS>0 AND LEGACY_DB_REQUIRED=false AND M6_IS_AUTHORITY=true",
+      "actual": "facts=1756, legacy_db_rows=0",
+      "pass": true
+    }
+  ],
+  "all_required_equalities_satisfied": true
+}

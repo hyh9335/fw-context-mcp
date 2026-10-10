@@ -1,0 +1,116 @@
+{
+  "audit": "M6 World/Build identity — multi-build correctness",
+  "scope": {
+    "files": [
+      "src/fw_context_mcp/store_v2/m6_production_indexing.py",
+      "src/fw_context_mcp/store_v2/m6_store.py",
+      "src/fw_context_mcp/store_v2/m6_query.py",
+      "src/fw_context_mcp/store_v2/m6_schema.py",
+      "src/fw_context_mcp/indexer/runner.py (call site L1107-1142)",
+      "src/fw_context_mcp/mcp/shared/authority.py (call site L440-453)"
+    ],
+    "call_chain": "runner.py:1125 index_legacy_db_into_m6(build_name=variant|image|\"default\") -> m6_production_indexing.py:83 store.register_world(1, {build_name}) -> m6_store.register_world INSERT OR IGNORE into m6_world_builds(world_id, build_name). Query path: authority.py:450 resolve_build_name(store, project_root) -> next(iter(_build_to_buildsets.keys())) -> m6_fn(store, build_name, ...)"
+  },
+
+  "world_id_hardcoded": true,
+  "world_id_hardcoded_evidence": {
+    "sole_caller": "src/fw_context_mcp/store_v2/m6_production_indexing.py:83",
+    "call": "store.register_world(1, {build_name})",
+    "literal": "1 (Python int literal, not derived)",
+    "grep_register_world_callers": [
+      "m6_store.py:267  (definition, takes world_id as param)",
+      "m6_production_indexing.py:83  (the ONLY production caller; passes literal 1)"
+    ],
+    "ignored_derivation_sources": [
+      "variant / image — available at runner.py:1122 (build_name = variant or image or 'default') but never used to derive a world_id",
+      "config_hash — fetched from legacy DB at m6_production_indexing.py:91-98, used only for row scoping, never hashed into a world_id",
+      "v2 snapshot_builds.world_id — a real monotonic handle per schema.py:206 / worlds.py:_ensure_world_rows; runner.py:973 creates world_ctx.world_id but NEVER passes it to index_legacy_db_into_m6",
+      "store_v2/world_id.py build_identity() — a real World-identity primitive imported by worlds.py:64 and identity_capture.py:40, but NOT imported by m6_production_indexing.py"
+    ],
+    "schema_intent_violated": "m6_schema.py:92,105 comment 'world_id INTEGER NOT NULL, -- → snapshot_builds.world_id' implies m6_world_builds.world_id should reference the real v2 handle; production indexing feeds it a constant 1 instead."
+  },
+
+  "register_world_behavior_for_multiple_builds": {
+    "location": "m6_store.py:267-280",
+    "sql": "INSERT OR IGNORE INTO m6_world_builds(world_id, build_name) VALUES(?, ?)",
+    "pk": "PRIMARY KEY(world_id, build_name)  (m6_schema.py:94)",
+    "semantics": "UNION/accumulate — adds (world_id, build_name) pairs; INSERT OR IGNORE means a repeat pair is a no-op. It does NOT replace, delete, or overwrite prior builds for that world_id.",
+    "call_sequence_register_world_1_build_A_then_1_build_B": [
+      "register_world(1, {build_A})  -> inserts (1, 'build_A')",
+      "register_world(1, {build_B})  -> inserts (1, 'build_B')",
+      "final state of world 1: references BOTH build_A AND build_B (coexist, NOT replace)"
+    ],
+    "supports_multiple_distinct_worlds": "YES at the API level — world_id is a free int parameter and the table is a many-to-many map. NO in production — the sole caller (m6_production_indexing.py:83) always passes 1, so every indexed build lands in the same World 1.",
+    "does_build_B_replace_build_A_in_world_1": false,
+    "note": "Builds accumulate into World 1. The World->Builds cardinality is 1->N (one World referencing many builds), never 1->1 per build. There is no path that gives each indexed build its own distinct World."
+  },
+
+  "multi_build_coexistence": "unsafe",
+  "multi_build_coexistence_detail": {
+    "world_builds_map_level": "safe — both builds retained, both 'active' (refcount>0 via world 1), neither GC-eligible",
+    "fact_level_distinct_build_names": "safe — facts interned under per-build buildsets ({build_A} vs {build_B}); project_build('build_A') and project_build('build_B') are disjoint; BuildSet interning (m6_store.py:84-111) and project_build (m6_store.py:196-233) isolate by build_name",
+    "fact_level_same_build_name_default_BROKEN": {
+      "trigger": "runner.py:1122 build_name = variant or image or 'default' — when a project has no variant/image (single-build project), EVERY index run passes build_name='default'",
+      "register_world": "register_world(1, {'default'}) x N — all no-ops after the first (INSERT OR IGNORE on existing PK)",
+      "fact_attribution": "Build A and Build B facts both attributed to buildset {'default'}",
+      "same_canon_collision": "add_fact (m6_store.py:146-178): if fact_canon exists, only buildset_id is UPDATEd (lines 158-166); payload_json is NEVER updated. First writer wins; Build B's payload for the same canon is SILENTLY DROPPED.",
+      "different_canon_collision": "facts coexist under build 'default' with no way to tell which build produced them",
+      "project_build_default": "returns the UNION of Build A and Build B facts — CROSS-CONTAMINATION, no isolation",
+      "verdict": "broken"
+    },
+    "net": "unsafe — safe only when build_names happen to differ; broken (silent data loss + cross-contamination) in the common single-build 'default' path."
+  },
+
+  "build_query_isolation": "broken",
+  "build_query_isolation_detail": {
+    "resolver": "m6_query.py:65-81 resolve_build_name(store, project_root)",
+    "selection_logic": "returns next(iter(store._build_to_buildsets.keys())) — the FIRST build_name by dict insertion order (Python 3.7+ preserves it). Falls back to the string 'default' if no buildsets exist.",
+    "what_it_ignores": [
+      "world_id (never consulted)",
+      "active_world_ids (the store has active_builds(active_world_ids) but resolve_build_name never calls it)",
+      "config_hash / variant / image (not passed in, not queried)",
+      "any caller-supplied build selector (no such parameter exists)",
+      "snapshot_builds.world_status / build_identity_sha (the v2 selection state)"
+    ],
+    "cardinality": "returns a SINGLE str — the API cannot express 'query multiple builds' or 'query a specific build'",
+    "production_wiring": "authority.py:450 build_name = resolve_build_name(store, project_root); authority.py:453 result = m6_fn(store, build_name, *args, **kwargs) — every M6 query (lookup_symbol, search_code, find_callers, find_references, get_symbol_context, get_class_members, search_bodies, get_file_map, get_source) is scoped to that ONE build_name",
+    "consequence": "even when distinct build_names coexist in World 1 (Scenario B), only the first-inserted build is reachable through the production read path. Every other indexed build is INVISIBLE — there is no API to select it. A re-index that changes insertion order silently shifts which build is queryable.",
+    "verdict": "broken"
+  },
+
+  "world_identity_derivation": "hardcoded",
+  "world_identity_derivation_detail": {
+    "m6_production_path": "hardcoded — index_legacy_db_into_m6 receives only a build_name string and passes literal world_id=1 to register_world. No Snapshot/Build/World state is consulted.",
+    "v2_path_has_real_derivation": "store_v2/world_id.py exposes build_identity(); store_v2/worlds.py:_ensure_world_rows creates real snapshot_builds.world_id (monotonic INTEGER PRIMARY KEY per schema.py:206); runner.py:973 binds world_ctx.world_id; identity_capture.py:40 imports from .world_id. A genuine World-identity system EXISTS but is NOT wired to M6 indexing.",
+    "codebase_level": "mixed (v2 derives real world_id; M6 hardcodes 1) — but for the M6 World/Build identity under audit, the answer is hardcoded.",
+    "schema_comment_mismatch": "m6_schema.py:92,105 declare world_id '-- → snapshot_builds.world_id', yet no production code ever populates m6_world_builds.world_id with a real snapshot_builds.world_id value. The FK-intent comment is unfulfilled."
+  },
+
+  "trace_index_build_A_then_build_B": {
+    "assume_default_build_name": "build_name='default' for both (single-build project, no variant/image)",
+    "step_1_index_A": [
+      "register_world(1, {'default'}) -> m6_world_builds={(1,'default')}",
+      "A's facts added with build_names=frozenset({'default'})",
+      "each fact interned: new buildset {'default'} -> bsid_A; payload stored"
+    ],
+    "step_2_index_B": [
+      "register_world(1, {'default'}) -> INSERT OR IGNORE no-op; m6_world_builds still {(1,'default')}",
+      "B's facts added with build_names=frozenset({'default'})",
+      "SAME canon as an A fact: add_fact hits existing_fid branch (m6_store.py:158-166), UPDATEs buildset_id only (still {'default'}, no change), RETURNS existing_fid. B's payload_json is NEVER written. First-writer-wins; B's per-build payload VARIANTS (e.g., different signature/docstring/ifdef-filtered body under a different config) are SILENTLY LOST.",
+      "DIFFERENT canon from any A fact: new fact inserted under buildset {'default'}, coexisting with A's facts with no build discriminator"
+    ],
+    "state_of_world_1": "references only 'default'. World identity does not distinguish A from B. Both A and B are 'active' (refcount('default')=1) and neither is GC-eligible.",
+    "are_A_and_B_both_retained": "partially — A's facts are fully retained; B's facts are retained ONLY where their canon differs from A's; same-canon B facts had their payload silently dropped.",
+    "can_you_query_both": "NO. resolve_build_name returns 'default' (the only build). project_build('default') returns the merged union of A's facts + B's disjoint facts, with no way to ask for 'A only' or 'B only'. The two builds are NOT independently queryable.",
+    "verdict": "broken — silent payload loss on same-canon facts + cross-contamination on disjoint facts + no per-build query path"
+  },
+
+  "summary": {
+    "world_id_hardcoded": true,
+    "register_world_behavior_for_multiple_builds": "Accumulates builds into a World via INSERT OR IGNORE (union semantics, never replaces). register_world(1,{A}) then register_world(1,{B}) leaves World 1 referencing BOTH A and B. The API supports distinct world_ids, but the sole production caller always passes literal 1, so all builds collapse into one World.",
+    "multi_build_coexistence": "unsafe",
+    "build_query_isolation": "broken",
+    "world_identity_derivation": "hardcoded",
+    "root_cause": "M6 production indexing (m6_production_indexing.py:83) hardcodes world_id=1 and ignores the real v2 World-identity derivation (store_v2/world_id.py / worlds.py / snapshot_builds.world_id). Combined with build_name defaulting to 'default' (runner.py:1122) and resolve_build_name (m6_query.py:65-81) returning only the first-inserted build, the M6 path cannot represent, retain, or query more than one build. Same-canon facts across builds silently lose the second writer's payload (m6_store.py:158-166 updates buildset_id only, never payload_json)."
+  }
+}
