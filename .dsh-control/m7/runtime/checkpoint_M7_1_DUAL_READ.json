@@ -1,0 +1,68 @@
+{
+  "milestone": "M7.1_DUAL_READ",
+  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "timestamp": "2026-10-09T13:30:00Z",
+  "verdict": "M7_1_DUAL_READ_PASS",
+  "gate": {
+    "script": ".dsh-control/m7/gates/run_m7_1_dual_read_gate.py",
+    "result": ".dsh-control/m7/gates/m7_1_dual_read_gate_result.json",
+    "clauses_passed": 8,
+    "clauses_total": 8
+  },
+  "harness": {
+    "script": ".dsh-control/m7/gates/dual_read_harness.py",
+    "result": ".dsh-control/m7/gates/dual_read_harness_result.json",
+    "total_m6_facts": 176823,
+    "total_queries": 13,
+    "parity_failures": 0,
+    "false_shared_semantic_facts": 0,
+    "gt_canon_count": 5736,
+    "m6_projection_count": 5736,
+    "non_vacuous_queries": 6,
+    "test_build": "BASE",
+    "cross_build_builds": ["NO_PREEMPT", "NO_MUTEXES"],
+    "independent_false_shared_check": true
+  },
+  "fresh_reviews": {
+    "query_parity_critic": {
+      "artifact": ".dsh-control/evidence/m7_1_query_parity_critic_20261009_143642b.json",
+      "verdict": "PASS",
+      "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+      "agent_id": "08642870-bf98-48de-92f9-2a4d03358480"
+    },
+    "verifier": {
+      "artifact": ".dsh-control/evidence/m7_1_verifier_20261009_143642b.json",
+      "verdict": "PASS",
+      "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+      "agent_id": "b318027e-99fb-4f64-ba9b-75fdf94190d1"
+    }
+  },
+  "clauses": [
+    {"id": "D1", "name": "dual_read_harness_runs", "passed": true},
+    {"id": "D2", "name": "all_representative_queries_tested", "passed": true, "detail": "13 queries (7 BASE + 6 cross-build)"},
+    {"id": "D3", "name": "PARITY_FAILURES_eq_0", "passed": true, "detail": "0"},
+    {"id": "D4", "name": "FALSE_SHARED_SEMANTIC_FACTS_eq_0", "passed": true, "detail": "0 (independently computed: 5736 GT, 5736 M6, 0 not-in-GT)"},
+    {"id": "D5", "name": "fresh_query_parity_critic", "passed": true},
+    {"id": "D6", "name": "fresh_verifier", "passed": true},
+    {"id": "D7", "name": "M6_still_shadow_comparator", "passed": true, "detail": "m6_native_read=0 (no authority switched)"},
+    {"id": "D8", "name": "M5_regression_intact", "passed": true, "detail": "M3B PASS + M4 PASS"}
+  ],
+  "authority_at_completion": {
+    "production_read_authority": "v2",
+    "production_write_authority": "v2",
+    "m6_status": "SHADOW_ONLY (dual-read proven equivalent, not yet authoritative)",
+    "v2_status": "AUTHORITATIVE",
+    "mixed_authority": false
+  },
+  "m7_progress": {
+    "BOOTSTRAP": "PASS",
+    "M7.1_DUAL_READ": "PASS",
+    "M7.2_READ_AUTHORITY": "NEXT",
+    "M7.3_WRITE_AUTHORITY": "PENDING",
+    "M7.4_LIFECYCLE": "PENDING",
+    "M7.5_V2_RETIREMENT": "PENDING",
+    "ECONOMIC_CLOSURE": "PENDING",
+    "ORIGINAL_GOAL_FINAL_AUDIT": "PENDING"
+  },
+  "next_stage": "M7.2_READ_AUTHORITY"
+}

@@ -1,0 +1,53 @@
+{
+  "verdict": "M7_1_DUAL_READ_PASS",
+  "passed": 8,
+  "total": 8,
+  "results": [
+    {
+      "clause": "D1_dual_read_harness_runs",
+      "passed": true,
+      "detail": "rc=0 verdict=M7_1_DUAL_READ_PASS"
+    },
+    {
+      "clause": "D2_all_representative_queries_tested",
+      "passed": true,
+      "detail": "total_queries=13"
+    },
+    {
+      "clause": "D3_PARITY_FAILURES_eq_0",
+      "passed": true,
+      "detail": "parity_failures=0"
+    },
+    {
+      "clause": "D4_FALSE_SHARED_SEMANTIC_FACTS_eq_0",
+      "passed": true,
+      "detail": "false_shared=0"
+    },
+    {
+      "clause": "D5_fresh_query_parity_critic",
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
+    },
+    {
+      "clause": "D6_fresh_verifier",
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
+    },
+    {
+      "clause": "D7_M6_still_shadow_comparator",
+      "passed": true,
+      "detail": "m6_native_read=0"
+    },
+    {
+      "clause": "D8_M5_regression_intact",
+      "passed": true,
+      "detail": "M3B=True M4=True"
+    }
+  ],
+  "harness_summary": {
+    "total_m6_facts": 176823,
+    "total_queries": 13,
+    "parity_failures": 0,
+    "false_shared": 0
+  }
+}

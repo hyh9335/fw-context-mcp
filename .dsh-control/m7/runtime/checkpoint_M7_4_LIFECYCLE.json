@@ -1,0 +1,24 @@
+{
+  "stage": "M7.4_LIFECYCLE",
+  "verdict": "PASS (10/10)",
+  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "timestamp": "2026-10-10T10:16:33Z",
+  "gate_file": ".dsh-control/m7/gates/run_m7_4_lifecycle_gate.py",
+  "gate_result": ".dsh-control/m7/gates/m7_4_lifecycle_gate_result.json",
+  "evidence": {
+    "verifier": ".dsh-control/evidence/m7_4_verifier_20261010_143642b.json",
+    "guardian": ".dsh-control/evidence/m7_4_guardian_20261010_143642b.json"
+  },
+  "clauses": {
+    "L1_m6_world_lifecycle": "PASS",
+    "L2_m6_gc_reachability_based": "PASS",
+    "L3_m6_restart_preserves_store": "PASS",
+    "L4_m6_lifecycle_entrypoints": "PASS",
+    "L5_v2_finalize_deps_tracked": "PASS (0)",
+    "L6_m6_store_interface_intact": "PASS",
+    "L7_fresh_verifier": "PASS",
+    "L8_fresh_guardian_g6": "PASS",
+    "L9_M5_regression_intact": "PASS",
+    "L10_M7_1_M7_2_M7_3_regression": "PASS"
+  }
+}

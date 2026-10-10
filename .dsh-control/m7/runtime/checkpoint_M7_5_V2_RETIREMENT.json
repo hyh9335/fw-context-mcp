@@ -1,0 +1,29 @@
+{
+  "stage": "M7.5_V2_RETIREMENT",
+  "verdict": "PASS (10/10)",
+  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "timestamp": "2026-10-10T14:36:42Z",
+  "gate_file": ".dsh-control/m7/gates/run_m7_5_retirement_gate.py",
+  "gate_result": ".dsh-control/m7/gates/m7_5_retirement_gate_result.json",
+  "evidence": {
+    "verifier": ".dsh-control/evidence/m7_5_verifier_20261010_143642b.json",
+    "guardian": ".dsh-control/evidence/m7_5_guardian_20261010_143642b.json"
+  },
+  "clauses": {
+    "V1_NORMAL_OLD_V2_SEMANTIC_READS_eq_0": "PASS",
+    "V2_NORMAL_OLD_V2_REQUIRED_WRITES_eq_0": "PASS",
+    "V3_NORMAL_OLD_V2_FALLBACKS_eq_0": "PASS",
+    "V4_NORMAL_OLD_V2_FINALIZATION_DEPENDENCIES_eq_0": "PASS",
+    "V5_production_authority": "PASS (m6=32, old_v2=0)",
+    "V6_fallbacks_unsafe_silent_eq_0": "PASS",
+    "V7_fresh_verifier": "PASS",
+    "V8_fresh_guardian_g6": "PASS",
+    "V9_M5_regression_intact": "PASS",
+    "V10_M7_1_to_M7_4_regression": "PASS"
+  },
+  "production_code_changes": {
+    "runner_py": "M7.5: v2 finalize_world now gated behind _v2_finalize_enabled = _v2_authority AND NOT _m6_write_authority (line 948-953); disabled in normal M6-enabled mode",
+    "scan_normal_path_dependencies_py": "Updated count_v2_finalization_deps and count_v2_fallbacks to detect M6 authority gating"
+  },
+  "note": "SEMANTIC retirement (§41). v2 code remains as explicit, isolated, default-OFF compatibility island."
+}

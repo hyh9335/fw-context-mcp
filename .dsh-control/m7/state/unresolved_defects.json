@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "frozen_at_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+    "description": "Unresolved defects registry. A defect may only be closed with a reproducer-based regression test and fix verification. Final gate requires UNRESOLVED_BLOCKING_DEFECTS = 0."
+  },
+  "defects": [
+    {
+      "id": "M7-D001",
+      "stage": "BOOTSTRAP",
+      "severity": "non-blocking",
+      "description": "M6 fact-kind naming inconsistency: m6_schema.py enum comment declares 'EnumConst' but m6_indexing.py:140 emits 'EnumConstant'. Count is 12 either way; does not affect correctness.",
+      "reproducer": "grep -n 'EnumConst' src/fw_context_mcp/store_v2/m6_schema.py src/fw_context_mcp/store_v2/m6_indexing.py",
+      "root_cause": "Cosmetic naming drift between schema declaration and emitter.",
+      "status": "open",
+      "fix_head": null,
+      "verification": null
+    }
+  ],
+  "blocking_count": 0,
+  "total_count": 1
+}

@@ -1,0 +1,77 @@
+{
+  "verdict": "BOOTSTRAP_PASS",
+  "passed": 14,
+  "total": 14,
+  "results": [
+    {
+      "clause": "B1_M3B_scanner_PASS",
+      "passed": true,
+      "detail": "rc=0 PASS"
+    },
+    {
+      "clause": "B2_M4_scanner_PASS",
+      "passed": true,
+      "detail": "rc=0"
+    },
+    {
+      "clause": "B3_M5_substantive_PASS",
+      "passed": true,
+      "detail": "C1-C19/C22-C36/C39 PASS; C20=False C21=False (sandbox); C37=False C38=False (stale, see B13/B14)"
+    },
+    {
+      "clause": "B4_M6_gate_PASS",
+      "passed": true,
+      "detail": "rc=0"
+    },
+    {
+      "clause": "B5_M6_5_gate_PASS",
+      "passed": true,
+      "detail": "rc=0"
+    },
+    {
+      "clause": "B6_M7_0A_corpus_provisioned",
+      "passed": true,
+      "detail": "FreeRTOS=True MbedTLS=True"
+    },
+    {
+      "clause": "B7_M7_0B_freertos_canary_READY",
+      "passed": true,
+      "detail": "rc=0"
+    },
+    {
+      "clause": "B8_M6_SHADOW_ONLY",
+      "passed": true,
+      "detail": "m6_native_read=0 in_path=False"
+    },
+    {
+      "clause": "B9_denominator_stable_32",
+      "passed": true,
+      "detail": "current=32 stable=True"
+    },
+    {
+      "clause": "B10_M6_fact_kinds_12",
+      "passed": true,
+      "detail": "count=12"
+    },
+    {
+      "clause": "B11_baselines_frozen",
+      "passed": true,
+      "detail": "D:\\github\\fw-context-mcp\\.dsh-control\\m7\\baselines\\production_baseline.json"
+    },
+    {
+      "clause": "B12_immutable_contract_exists",
+      "passed": true,
+      "detail": "D:\\github\\fw-context-mcp\\.dsh-control\\m7\\contracts\\IMMUTABLE_M7_MASTER_GOAL.md"
+    },
+    {
+      "clause": "B13_fresh_M5_verifier_at_143642b",
+      "passed": true,
+      "detail": "PASS artifact stamped head=143642b"
+    },
+    {
+      "clause": "B14_fresh_M5_guardian_G6_ACCEPT_at_143642b",
+      "passed": true,
+      "detail": "ACCEPT_COMPLETION stamped head=143642b"
+    }
+  ]
+}

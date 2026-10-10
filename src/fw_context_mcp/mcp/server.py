@@ -1205,135 +1205,216 @@ from .shared.v2_shadow_adapters import (
     v2_shadow_list_conditional_regions,
 )
 from .shared.authority import format_v2_find_callers
+from .shared.authority import m6_authority_route
+from .shared.m6_query_adapters import (
+    m6_lookup_symbol, m6_search_code, m6_search_bodies, m6_search_content,
+    m6_semantic_search, m6_smart_search,
+    m6_find_all_callers_recursive, m6_find_call_path, m6_find_callees_recursive,
+    m6_find_callers, m6_find_dead_code, m6_find_hotspots,
+    m6_find_indirect_call_sites, m6_find_indirect_targets,
+    m6_find_references, m6_find_wrapper_callers, m6_trace_data_flow,
+    m6_explain_symbol, m6_get_file_map, m6_get_source, m6_get_symbol_context,
+    m6_read_file,
+    m6_get_class_members, m6_get_inheritance_chain, m6_get_method_overrides,
+    m6_get_template_instances,
+    m6_find_variables, m6_explain_condition, m6_list_conditional_regions,
+    m6_get_vector_table, m6_compare_variants, m6_group_equivalent_variants,
+)
 
-# Wrap participating tools with v2 authority routing.
-# The decorator preserves the handler's signature and docstring.
-# When v2 authority is enabled (default since M3), requests route through
-# the REAL v2 request path (section 23).
-# When v2 authority is disabled (=0), legacy is called directly (unchanged).
-# Tools whose v2 adapter raises V2UnsupportedOperation defer to legacy
-# (with equivalence gate). This is correct: v2 still resolves the World,
-# and legacy provides data access for that World.
+# ── M7.2: M6 READ AUTHORITY ────────────────────────────────────────────────
+# All 32 core semantic tools are now routed through m6_authority_route.
+# When M6 read authority is enabled (default since M7.2), production reads
+# route through M6 query implementations (§8: production request → M6
+# query implementation → M6 result).
+# When M6 read authority is disabled, the v2-routed handler is called
+# (preserving the M3 production behavior as fallback).
+# No silent fallback (§9): if the M6 store is not populated, the handler
+# raises a visible error rather than silently falling back to v2.
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("lookup_symbol", search.lookup_symbol, v2_shadow_lookup_symbol)
+    m6_authority_route("lookup_symbol",
+        v2_authority_route("lookup_symbol", search.lookup_symbol, v2_shadow_lookup_symbol),
+        m6_lookup_symbol)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("search_code", search.search_code, v2_shadow_search_code)
+    m6_authority_route("search_code",
+        v2_authority_route("search_code", search.search_code, v2_shadow_search_code),
+        m6_search_code)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("search_bodies", search.search_bodies, v2_shadow_search_bodies)
+    m6_authority_route("search_bodies",
+        v2_authority_route("search_bodies", search.search_bodies, v2_shadow_search_bodies),
+        m6_search_bodies)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("search_content", search.search_content, v2_shadow_search_content)
+    m6_authority_route("search_content",
+        v2_authority_route("search_content", search.search_content, v2_shadow_search_content),
+        m6_search_content)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("semantic_search", search.semantic_search, v2_shadow_semantic_search)
+    m6_authority_route("semantic_search",
+        v2_authority_route("semantic_search", search.semantic_search, v2_shadow_semantic_search),
+        m6_semantic_search)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("smart_search", search.smart_search, v2_shadow_smart_search)
+    m6_authority_route("smart_search",
+        v2_authority_route("smart_search", search.smart_search, v2_shadow_smart_search),
+        m6_smart_search)
 )))
 
 # callgraph.py
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_all_callers_recursive", callgraph.find_all_callers_recursive,
-                       v2_shadow_find_all_callers_recursive, format_v2=format_v2_find_callers)
+    m6_authority_route("find_all_callers_recursive",
+        v2_authority_route("find_all_callers_recursive", callgraph.find_all_callers_recursive,
+                           v2_shadow_find_all_callers_recursive, format_v2=format_v2_find_callers),
+        m6_find_all_callers_recursive)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_call_path", callgraph.find_call_path, v2_shadow_find_call_path)
-)))
-mcp.tool()(_with_project_selector(_wrap_tool(callgraph.get_vector_table)))
-mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_callees_recursive", callgraph.find_callees_recursive,
-                       v2_shadow_find_callees_recursive, format_v2=format_v2_find_callers)
+    m6_authority_route("find_call_path",
+        v2_authority_route("find_call_path", callgraph.find_call_path, v2_shadow_find_call_path),
+        m6_find_call_path)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_callers", callgraph.find_callers,
-                       v2_shadow_find_callers, format_v2=format_v2_find_callers)
+    m6_authority_route("get_vector_table", callgraph.get_vector_table, m6_get_vector_table)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_dead_code", callgraph.find_dead_code, v2_shadow_find_dead_code)
+    m6_authority_route("find_callees_recursive",
+        v2_authority_route("find_callees_recursive", callgraph.find_callees_recursive,
+                           v2_shadow_find_callees_recursive, format_v2=format_v2_find_callers),
+        m6_find_callees_recursive)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_hotspots", callgraph.find_hotspots, v2_shadow_find_hotspots)
+    m6_authority_route("find_callers",
+        v2_authority_route("find_callers", callgraph.find_callers,
+                           v2_shadow_find_callers, format_v2=format_v2_find_callers),
+        m6_find_callers)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_indirect_call_sites", callgraph.find_indirect_call_sites,
-                       v2_shadow_find_indirect_call_sites)
+    m6_authority_route("find_dead_code",
+        v2_authority_route("find_dead_code", callgraph.find_dead_code, v2_shadow_find_dead_code),
+        m6_find_dead_code)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_indirect_targets", callgraph.find_indirect_targets,
-                       v2_shadow_find_indirect_targets)
+    m6_authority_route("find_hotspots",
+        v2_authority_route("find_hotspots", callgraph.find_hotspots, v2_shadow_find_hotspots),
+        m6_find_hotspots)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_references", callgraph.find_references,
-                       v2_shadow_find_references, format_v2=format_v2_find_callers)
+    m6_authority_route("find_indirect_call_sites",
+        v2_authority_route("find_indirect_call_sites", callgraph.find_indirect_call_sites,
+                           v2_shadow_find_indirect_call_sites),
+        m6_find_indirect_call_sites)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_wrapper_callers", callgraph.find_wrapper_callers,
-                       v2_shadow_find_wrapper_callers)
+    m6_authority_route("find_indirect_targets",
+        v2_authority_route("find_indirect_targets", callgraph.find_indirect_targets,
+                           v2_shadow_find_indirect_targets),
+        m6_find_indirect_targets)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("trace_data_flow", callgraph.trace_data_flow,
-                       v2_shadow_trace_data_flow)
+    m6_authority_route("find_references",
+        v2_authority_route("find_references", callgraph.find_references,
+                           v2_shadow_find_references, format_v2=format_v2_find_callers),
+        m6_find_references)
+)))
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("find_wrapper_callers",
+        v2_authority_route("find_wrapper_callers", callgraph.find_wrapper_callers,
+                           v2_shadow_find_wrapper_callers),
+        m6_find_wrapper_callers)
+)))
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("trace_data_flow",
+        v2_authority_route("trace_data_flow", callgraph.trace_data_flow,
+                           v2_shadow_trace_data_flow),
+        m6_trace_data_flow)
 )))
 
 # source.py
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("explain_symbol", source.explain_symbol, v2_shadow_explain_symbol)
+    m6_authority_route("explain_symbol",
+        v2_authority_route("explain_symbol", source.explain_symbol, v2_shadow_explain_symbol),
+        m6_explain_symbol)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_file_map", source.get_file_map, v2_shadow_get_file_map)
+    m6_authority_route("get_file_map",
+        v2_authority_route("get_file_map", source.get_file_map, v2_shadow_get_file_map),
+        m6_get_file_map)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_source", source.get_source, v2_shadow_get_source)
+    m6_authority_route("get_source",
+        v2_authority_route("get_source", source.get_source, v2_shadow_get_source),
+        m6_get_source)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_symbol_context", source.get_symbol_context,
-                       v2_shadow_get_symbol_context)
+    m6_authority_route("get_symbol_context",
+        v2_authority_route("get_symbol_context", source.get_symbol_context,
+                           v2_shadow_get_symbol_context),
+        m6_get_symbol_context)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("read_file", source.read_file, v2_shadow_read_file)
+    m6_authority_route("read_file",
+        v2_authority_route("read_file", source.read_file, v2_shadow_read_file),
+        m6_read_file)
 )))
 
 # inheritance.py
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_class_members", inheritance.get_class_members,
-                       v2_shadow_get_class_members)
+    m6_authority_route("get_class_members",
+        v2_authority_route("get_class_members", inheritance.get_class_members,
+                           v2_shadow_get_class_members),
+        m6_get_class_members)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_inheritance_chain", inheritance.get_inheritance_chain,
-                       v2_shadow_get_inheritance_chain)
+    m6_authority_route("get_inheritance_chain",
+        v2_authority_route("get_inheritance_chain", inheritance.get_inheritance_chain,
+                           v2_shadow_get_inheritance_chain),
+        m6_get_inheritance_chain)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_method_overrides", inheritance.get_method_overrides,
-                       v2_shadow_get_method_overrides)
+    m6_authority_route("get_method_overrides",
+        v2_authority_route("get_method_overrides", inheritance.get_method_overrides,
+                           v2_shadow_get_method_overrides),
+        m6_get_method_overrides)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("get_template_instances", inheritance.get_template_instances,
-                       v2_shadow_get_template_instances)
+    m6_authority_route("get_template_instances",
+        v2_authority_route("get_template_instances", inheritance.get_template_instances,
+                           v2_shadow_get_template_instances),
+        m6_get_template_instances)
 )))
 
 # variables.py
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("find_variables", variables.find_variables, v2_shadow_find_variables)
+    m6_authority_route("find_variables",
+        v2_authority_route("find_variables", variables.find_variables, v2_shadow_find_variables),
+        m6_find_variables)
 )))
 
 # conditionals.py — conditional compilation provenance (T03 / ADR-011)
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("explain_condition", conditionals.explain_condition,
-                       v2_shadow_explain_condition)
+    m6_authority_route("explain_condition",
+        v2_authority_route("explain_condition", conditionals.explain_condition,
+                           v2_shadow_explain_condition),
+        m6_explain_condition)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    v2_authority_route("list_conditional_regions", conditionals.list_conditional_regions,
-                       v2_shadow_list_conditional_regions)
+    m6_authority_route("list_conditional_regions",
+        v2_authority_route("list_conditional_regions", conditionals.list_conditional_regions,
+                           v2_shadow_list_conditional_regions),
+        m6_list_conditional_regions)
 )))
 
 # variants.py — variant behavior grouping + structural build comparison
 # (W6 / AUD-R5): textual/structural comparison of stored index records;
 # only the body-fingerprint dimension is fingerprint-based.
-# These are SPECIALIZED_OPTIONAL (require multi-variant index) — NOT migrated.
-mcp.tool()(_with_project_selector(_wrap_tool(variants.compare_variants)))
-mcp.tool()(_with_project_selector(_wrap_tool(variants.group_equivalent_variants)))
+# M7.2: now M6-native (routed through m6_authority_route).
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("compare_variants", variants.compare_variants, m6_compare_variants)
+)))
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("group_equivalent_variants", variants.group_equivalent_variants,
+                       m6_group_equivalent_variants)
+)))
 
 # ── MCP Resources ──────────────────────────────────────────────────────────
 

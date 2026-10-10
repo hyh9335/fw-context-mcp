@@ -1,0 +1,57 @@
+{
+  "verdict": "M7_2_READ_AUTHORITY_PASS",
+  "passed": 10,
+  "total": 10,
+  "results": [
+    {
+      "clause": "R1_CORE_NATIVE_M6_READ_eq_32",
+      "passed": true,
+      "detail": "m6_native_read=32"
+    },
+    {
+      "clause": "R2_OLD_V2_READ_AUTHORITY_eq_0",
+      "passed": true,
+      "detail": "old_v2_read=0"
+    },
+    {
+      "clause": "R3_UNSAFE_OR_SILENT_FALLBACK_eq_0",
+      "passed": true,
+      "detail": "unsafe_silent=0"
+    },
+    {
+      "clause": "R4_scanner_confirms_authority_switch",
+      "passed": true,
+      "detail": "rc=0 m6_native=32"
+    },
+    {
+      "clause": "R5_normal_v2_reads_eq_0",
+      "passed": true,
+      "detail": "normal_old_v2_semantic_reads=0"
+    },
+    {
+      "clause": "R6_fallbacks_unsafe_silent_eq_0",
+      "passed": true,
+      "detail": "unsafe_or_silent_fallback=0"
+    },
+    {
+      "clause": "R7_m6_store_interface_intact",
+      "passed": true,
+      "detail": "BuildSetStore methods present"
+    },
+    {
+      "clause": "R8_fresh_verifier",
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
+    },
+    {
+      "clause": "R9_fresh_guardian_g6",
+      "passed": true,
+      "detail": "ACCEPT artifact at 143642b"
+    },
+    {
+      "clause": "R10_M5_regression_intact",
+      "passed": true,
+      "detail": "M3B=True M4=True"
+    }
+  ]
+}

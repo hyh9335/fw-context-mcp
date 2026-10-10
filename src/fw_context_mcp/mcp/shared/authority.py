@@ -382,6 +382,94 @@ def v2_authority_route(
     return wrapper
 
 
+# ── M7.2 Production routing primitive — M6 read authority ──────────────────
+
+def m6_authority_route(
+    tool_name: str,
+    legacy_fn: Callable,
+    m6_fn: Callable,
+    format_m6: Callable[[Any], Any] | None = None,
+):
+    """M7.2 production routing primitive — routes to M6 query implementations.
+
+    This is the M6 READ AUTHORITY routing (§8: "production request → M6
+    query implementation → M6 result"). When M6 read authority is enabled
+    (M7.2), the wrapped handler:
+
+    1. Resolves the project's M6 store (open_m6_store)
+    2. Resolves the active build name
+    3. Calls the M6 query function (m6_fn) with the store + build + args
+    4. Returns the M6 result (optionally formatted)
+
+    When M6 read authority is disabled, the wrapped handler calls legacy_fn
+    directly (unchanged production behavior — the v2 path).
+
+    The REAL request path (§8):
+        MCP request → handler (decorated) → resolve M6 store →
+        m6 query → format → response
+
+    No silent fallback: if the M6 store is not available, the handler
+    raises (visible failure), it does NOT silently fall back to legacy.
+    This is the M7.2 no-silent-fallback guarantee (§9).
+
+    Args:
+        tool_name: Tool name (for logging/telemetry)
+        legacy_fn: Legacy handler (called when M6 authority disabled)
+        m6_fn: M6 query adapter function (store, build_name, *args, **kwargs)
+        format_m6: Optional result formatter
+    """
+    import functools
+
+    @functools.wraps(legacy_fn)
+    def wrapper(*args, **kwargs):
+        if not m6_read_authority_enabled():
+            # M6 authority disabled — use legacy/v2 path (unchanged)
+            return legacy_fn(*args, **kwargs)
+
+        # Extract project_root from kwargs (strip before passing to M6 adapter)
+        project_root = kwargs.pop("project_root", None)
+        if project_root is None:
+            from fw_context_mcp.utils import resolve_project_root
+            project_root = resolve_project_root(None)
+
+        if project_root is None:
+            raise RuntimeError(
+                f"M6 authority for {tool_name}: cannot resolve project_root"
+            )
+
+        # Resolve M6 store
+        from fw_context_mcp.store_v2.m6_query import get_m6_store, resolve_build_name
+        store = get_m6_store(project_root)
+        if store is None:
+            # M6 store not populated — visible failure, NOT silent fallback (§9)
+            raise RuntimeError(
+                f"M6 authority for {tool_name}: M6 store not found for "
+                f"{project_root}. Run 'fw-context index' to populate the M6 store."
+            )
+
+        build_name = resolve_build_name(store, project_root)
+
+        # Call the M6 query implementation (project_root already stripped)
+        result = m6_fn(store, build_name, *args, **kwargs)
+
+        # Format if needed
+        if format_m6 is not None:
+            result = format_m6(result)
+
+        return result
+
+    return wrapper
+
+
+def m6_read_authority_enabled() -> bool:
+    """Check if M6 read authority is enabled (M7.2).
+
+    When True, production reads route through M6 query implementations.
+    When False, production reads use the v2 path (unchanged).
+    """
+    return os.environ.get("FW_CONTEXT_M6_READ_AUTHORITY", "1") == "1"
+
+
 # ── v2 result formatters (P18 — presentation compatibility) ────────────────
 
 def format_v2_lookup_symbol(v2_result: list[dict]) -> list[dict]:

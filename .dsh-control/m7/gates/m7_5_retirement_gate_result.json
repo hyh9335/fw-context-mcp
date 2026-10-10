@@ -1,0 +1,57 @@
+{
+  "verdict": "M7_5_V2_RETIREMENT_PASS",
+  "passed": 10,
+  "total": 10,
+  "results": [
+    {
+      "clause": "V1_NORMAL_OLD_V2_SEMANTIC_READS_eq_0",
+      "passed": true,
+      "detail": "v2_reads=0"
+    },
+    {
+      "clause": "V2_NORMAL_OLD_V2_REQUIRED_WRITES_eq_0",
+      "passed": true,
+      "detail": "v2_writes=0"
+    },
+    {
+      "clause": "V3_NORMAL_OLD_V2_FALLBACKS_eq_0",
+      "passed": true,
+      "detail": "v2_fallbacks=0"
+    },
+    {
+      "clause": "V4_NORMAL_OLD_V2_FINALIZATION_DEPENDENCIES_eq_0",
+      "passed": true,
+      "detail": "v2_finalize=0"
+    },
+    {
+      "clause": "V5_production_authority",
+      "passed": true,
+      "detail": "m6_native=32 old_v2=0"
+    },
+    {
+      "clause": "V6_fallbacks_unsafe_silent_eq_0",
+      "passed": true,
+      "detail": "unsafe_silent=0"
+    },
+    {
+      "clause": "V7_fresh_verifier",
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
+    },
+    {
+      "clause": "V8_fresh_guardian_g6",
+      "passed": true,
+      "detail": "ACCEPT artifact at 143642b"
+    },
+    {
+      "clause": "V9_M5_regression_intact",
+      "passed": true,
+      "detail": "M3B=True M4=True"
+    },
+    {
+      "clause": "V10_M7_1_to_M7_4_regression",
+      "passed": true,
+      "detail": "M7.1-M7.4 all PASS"
+    }
+  ]
+}

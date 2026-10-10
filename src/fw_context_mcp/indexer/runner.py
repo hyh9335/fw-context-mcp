@@ -942,8 +942,15 @@ def run(
     # AUTHORITATIVE success criterion (CASE A–D).  A failed or incomplete
     # finalize ⇒ INDEX FAILURE, even if legacy succeeded.  When OFF,
     # behavior is flag-gated and fully exception-isolated (legacy unaffected).
+    # M7.5: v2 finalization is now gated behind FW_CONTEXT_V2_WRITE_AUTHORITY
+    # (default "0" — v2 is retired from normal operation). When M6 write
+    # authority is ON (default), M6 is the authoritative success criterion.
     _v2_authority = _v2_write_authority_on()
-    if world_ctx is not None:
+    _m6_write_authority = os.environ.get(
+        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
+    ).strip() in ("1", "true", "yes", "on")
+    _v2_finalize_enabled = _v2_authority and not _m6_write_authority
+    if world_ctx is not None and _v2_finalize_enabled:
         try:
             import importlib
             _worlds_mod = importlib.import_module(
@@ -1096,4 +1103,41 @@ def run(
     elapsed = time.monotonic() - t0
     log.info("", extra={"phase": f"Done — {total_syms} symbols, {total_refs} refs, {_fmt_dur(elapsed)}"})
     log.info("%d updated, %d unchanged, %d skipped  config_hash=%s", updated, unchanged, skipped, config_hash[:12])
+
+    # ── M7.3: M6 PRODUCTION INDEXING ────────────────────────────────────────
+    # After the legacy index completes, extract canonical M6 facts from
+    # the freshly-written legacy DB and populate the M6 Shared Fact Graph.
+    # This makes M6 the production WRITE authority (§8: production write →
+    # M6 indexing → M6 store population).
+    # When M6 write authority is disabled (FW_CONTEXT_M6_WRITE_AUTHORITY=0),
+    # this step is skipped (legacy/v2 remains write authority).
+    _m6_write_authority = os.environ.get(
+        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
+    ).strip() in ("1", "true", "yes", "on")
+    if _m6_write_authority:
+        try:
+            from fw_context_mcp.store_v2.m6_production_indexing import (
+                index_legacy_db_into_m6,
+            )
+            build_name = variant or image or "default"
+            if variant and image:
+                build_name = f"{variant}/{image}"
+            stats = index_legacy_db_into_m6(
+                legacy_db_path=db_path,
+                project_root=project_root,
+                build_name=build_name,
+            )
+            log.info(
+                "M6 production indexing: %d facts extracted for build '%s' "
+                "(M6 is now production write authority)",
+                stats.get("facts_total", 0), build_name,
+            )
+        except Exception as _m6_exc:
+            # M6 indexing failure is NOT silently swallowed — it is logged
+            # and (when M6 write authority is ON) raised as authoritative.
+            log.error("M6 production indexing FAILED: %s", _m6_exc)
+            raise IndexIntegrityError(
+                f"M6 production indexing failed (M6 is authoritative): "
+                f"{_m6_exc}") from _m6_exc
+
     return config_hash

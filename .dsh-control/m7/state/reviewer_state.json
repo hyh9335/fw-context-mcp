@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "frozen_at_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+    "description": "Reviewer state registry. Fresh reviews are mandatory at each stage boundary (M7.1-M7.5, Economic Closure, Original Goal Final Audit). Reviewer artifacts must record exact HEAD, dirty-state, gate version/hash, corpus manifest hash, timestamp."
+  },
+  "reviews": [
+    {
+      "stage": "BOOTSTRAP",
+      "review_type": "M5_fresh_verifier",
+      "reviewer_role": "independent_disproof_attempt",
+      "artifact": ".dsh-control/evidence/m5_verifier_20261009_143642b.json",
+      "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+      "verdict": "PASS",
+      "timestamp_utc": "2026-10-09T12:30:00Z",
+      "scope": "M5 milestone at HEAD 143642b (M7 bootstrap regression check)"
+    },
+    {
+      "stage": "BOOTSTRAP",
+      "review_type": "M5_fresh_guardian_G6",
+      "reviewer_role": "independent_G6_evaluation",
+      "artifact": ".dsh-control/evidence/m5_guardian_20261009_143642b_G6.json",
+      "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+      "verdict": "PENDING_ACCEPT",
+      "timestamp_utc": "2026-10-09T12:35:00Z",
+      "scope": "M5 milestone at HEAD 143642b; C37 now resolved by fresh verifier, Guardian re-evaluating for ACCEPT_COMPLETION"
+    }
+  ],
+  "pending_reviews": ["M7.1 Query Parity Critic", "M7.1 Fresh Verifier"]
+}

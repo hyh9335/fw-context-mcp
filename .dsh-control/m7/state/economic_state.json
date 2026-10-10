@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "frozen_at_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+    "description": "Economic state registry. Tracks the frozen baseline (pre-migration) and the migrated measurements (post-M7.5)."
+  },
+  "baseline_frozen": true,
+  "baseline_artifact": ".dsh-control/m7/baselines/production_baseline.json",
+  "baseline_summary": {
+    "frontend_share_at_16_builds": 0.694,
+    "note": "Frontend parsing dominates even at pre-migration baseline. This is the critical signal for the frontend-bottleneck classification decision at Economic Closure."
+  },
+  "migrated_measurements": null,
+  "economic_closure_verdict": "PENDING",
+  "frontend_bottleneck_classification": "PENDING"
+}

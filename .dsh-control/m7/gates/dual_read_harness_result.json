@@ -1,0 +1,227 @@
+{
+  "verdict": "M7_1_DUAL_READ_PASS",
+  "total_queries": 13,
+  "passed_queries": 13,
+  "parity_failures": 0,
+  "false_shared_semantic_facts": 0,
+  "gt_canon_count": 5736,
+  "m6_projection_count": 5736,
+  "test_build": "BASE",
+  "cross_build_builds": [
+    "NO_PREEMPT",
+    "NO_MUTEXES"
+  ],
+  "total_m6_facts": 176823,
+  "results": [
+    {
+      "query_id": "Q1",
+      "query_name": "lookup_symbol",
+      "args": [
+        "xTaskCreate"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 10,
+        "m6_count": 2,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q2",
+      "query_name": "find_callers",
+      "args": [
+        "vTaskDelay"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 0,
+        "m6_count": 0,
+        "parity": true,
+        "note": "both empty (no matching facts in source)"
+      }
+    },
+    {
+      "query_id": "Q3",
+      "query_name": "search_code",
+      "args": [
+        "queue"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 108,
+        "m6_count": 69,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q4",
+      "query_name": "get_symbol_context",
+      "args": [
+        "vQueueDelete"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "parity": true,
+        "details": {
+          "symbol": {
+            "gt_count": 2,
+            "m6_count": 1,
+            "parity": true
+          },
+          "calls": {
+            "gt_count": 0,
+            "m6_count": 0,
+            "parity": true
+          },
+          "references": {
+            "gt_count": 8,
+            "m6_count": 3,
+            "parity": true
+          }
+        }
+      }
+    },
+    {
+      "query_id": "Q5",
+      "query_name": "find_references",
+      "args": [
+        "uxBasePriority"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 11,
+        "m6_count": 6,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q6",
+      "query_name": "search_bodies",
+      "args": [
+        "xListRemove"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 8,
+        "m6_count": 8,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q7",
+      "query_name": "get_class_members",
+      "args": [
+        "xLIST"
+      ],
+      "build": "BASE",
+      "passed": true,
+      "comparison": {
+        "gt_count": 30,
+        "m6_count": 5,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q1",
+      "query_name": "lookup_symbol",
+      "args": [
+        "xTaskCreate"
+      ],
+      "build": "NO_PREEMPT",
+      "passed": true,
+      "comparison": {
+        "gt_count": 10,
+        "m6_count": 2,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q2",
+      "query_name": "find_callers",
+      "args": [
+        "vTaskDelay"
+      ],
+      "build": "NO_PREEMPT",
+      "passed": true,
+      "comparison": {
+        "gt_count": 0,
+        "m6_count": 0,
+        "parity": true,
+        "note": "both empty (no matching facts in source)"
+      }
+    },
+    {
+      "query_id": "Q3",
+      "query_name": "search_code",
+      "args": [
+        "queue"
+      ],
+      "build": "NO_PREEMPT",
+      "passed": true,
+      "comparison": {
+        "gt_count": 108,
+        "m6_count": 69,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q1",
+      "query_name": "lookup_symbol",
+      "args": [
+        "xTaskCreate"
+      ],
+      "build": "NO_MUTEXES",
+      "passed": true,
+      "comparison": {
+        "gt_count": 10,
+        "m6_count": 2,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    },
+    {
+      "query_id": "Q2",
+      "query_name": "find_callers",
+      "args": [
+        "vTaskDelay"
+      ],
+      "build": "NO_MUTEXES",
+      "passed": true,
+      "comparison": {
+        "gt_count": 0,
+        "m6_count": 0,
+        "parity": true,
+        "note": "both empty (no matching facts in source)"
+      }
+    },
+    {
+      "query_id": "Q3",
+      "query_name": "search_code",
+      "args": [
+        "queue"
+      ],
+      "build": "NO_MUTEXES",
+      "passed": true,
+      "comparison": {
+        "gt_count": 106,
+        "m6_count": 67,
+        "parity": true,
+        "note": "both non-empty"
+      }
+    }
+  ],
+  "m6_shadow_db": "C:\\Users\\h00969597\\AppData\\Local\\Temp\\tmp7p1zoo3e_m6_dual.db"
+}

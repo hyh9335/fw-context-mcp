@@ -1,0 +1,57 @@
+{
+  "verdict": "M7_3_WRITE_AUTHORITY_PASS",
+  "passed": 10,
+  "total": 10,
+  "results": [
+    {
+      "clause": "W1_PRODUCTION_M6_NATIVE_INDEX_ENTRYPOINTS_eq_8",
+      "passed": true,
+      "detail": "m6_entrypoints=8"
+    },
+    {
+      "clause": "W2_m6_production_indexing_integrated",
+      "passed": true,
+      "detail": "exists=True integrated=True"
+    },
+    {
+      "clause": "W3_materialization_proof",
+      "passed": true,
+      "detail": "m6_db exists=True size=4481024"
+    },
+    {
+      "clause": "W4_no_silent_write_fallback",
+      "passed": true,
+      "detail": "M6 indexing is primary write path"
+    },
+    {
+      "clause": "W5_normal_v2_writes_eq_0",
+      "passed": true,
+      "detail": "normal_old_v2_required_writes=0"
+    },
+    {
+      "clause": "W6_m6_store_interface_intact",
+      "passed": true,
+      "detail": "BuildSetStore methods present"
+    },
+    {
+      "clause": "W7_fresh_verifier",
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
+    },
+    {
+      "clause": "W8_fresh_guardian_g6",
+      "passed": true,
+      "detail": "ACCEPT artifact at 143642b"
+    },
+    {
+      "clause": "W9_M5_regression_intact",
+      "passed": true,
+      "detail": "M3B=True M4=True"
+    },
+    {
+      "clause": "W10_M7_1_M7_2_regression",
+      "passed": true,
+      "detail": "M7.1+M7.2 PASS"
+    }
+  ]
+}

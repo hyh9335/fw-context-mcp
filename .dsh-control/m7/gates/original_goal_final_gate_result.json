@@ -1,0 +1,65 @@
+{
+  "verdict": "ORIGINAL_GOAL_AUDIT_INCOMPLETE",
+  "passed": 9,
+  "total": 10,
+  "results": [
+    {
+      "clause": "F1_M7_1_PASS",
+      "passed": true,
+      "detail": "M7.1=PASS"
+    },
+    {
+      "clause": "F2_M7_2_PASS",
+      "passed": true,
+      "detail": "M7.2=PASS"
+    },
+    {
+      "clause": "F3_M7_3_PASS",
+      "passed": true,
+      "detail": "M7.3=PASS"
+    },
+    {
+      "clause": "F4_M7_4_PASS",
+      "passed": true,
+      "detail": "M7.4=PASS"
+    },
+    {
+      "clause": "F5_M7_5_PASS",
+      "passed": true,
+      "detail": "M7.5=PASS"
+    },
+    {
+      "clause": "F6_Economic_PASS",
+      "passed": true,
+      "detail": "Economic=PASS"
+    },
+    {
+      "clause": "F6_fresh_verifier",
+      "passed": false,
+      "detail": "PENDING"
+    },
+    {
+      "clause": "F7_fresh_guardian",
+      "passed": true,
+      "detail": "ACCEPT artifact at 143642b"
+    },
+    {
+      "clause": "F8_no_fabrication",
+      "passed": true,
+      "detail": "All gates ran against real code"
+    },
+    {
+      "clause": "F9_authority_priority",
+      "passed": true,
+      "detail": "\u00a72 priority maintained"
+    }
+  ],
+  "stage_pass": {
+    "M7.1": true,
+    "M7.2": true,
+    "M7.3": true,
+    "M7.4": true,
+    "M7.5": true,
+    "Economic": true
+  }
+}
