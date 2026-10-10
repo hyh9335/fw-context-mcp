@@ -2067,6 +2067,134 @@ def _header_coverage_warning(
     )
 
 
+def _reindex_m6_direct(
+    file_path: str,
+    root: Path,
+    m6_db_path: Path,
+) -> dict:
+    """M7-FINAL-ECONOMIC-ADDENDUM (§6): pure-M6 reindex_file path.
+
+    Used when the legacy index.db does NOT exist (pure M6 mode, the
+    default) but the M6 store (index-m6.db) does.  Parses the file with
+    libclang, materializes canonical facts DIRECTLY into the M6 store,
+    and returns.  This makes reindex_file a NORMAL M6-direct write
+    entrypoint (§7: NORMAL_WRITE_ENTRYPOINTS == M6_DIRECT_WRITE_ENTRYPOINTS).
+
+    Flow (§6):
+        source/file change
+        → production reindex_file
+        → M6 direct semantic extraction/materialization
+        → correct World/Build update
+        → exact production query results
+    """
+    import time as _time_mod
+    from ...indexer.compile_commands import CompilationUnit as TU
+    from ...indexer.symbols import extract_all
+    from ...store_v2.m6_query import open_m6_store
+    from ...store_v2.m6_direct_materialization import (
+        materialize_unit_into_m6,
+    )
+
+    t0 = _time_mod.monotonic()
+
+    # Resolve the target file.
+    target = Path(file_path)
+    if not target.is_absolute():
+        target = (root / target).resolve()
+    else:
+        target = target.resolve()
+    if not target.exists():
+        return {"error": f"File not found: {target}"}
+
+    # Load compile_commands.json to find the matching TU.
+    cc_path = root / "compile_commands.json"
+    if not cc_path.exists():
+        return {"error": f"No compile_commands.json in {root}"}
+
+    # Use the production compile_commands parser — it normalizes args,
+    # detects language, and handles compiler-specific include paths.
+    from ...indexer.compile_commands import parse as parse_compile_commands
+    all_units = list(parse_compile_commands(cc_path))
+
+    # Find matching TUs (source file direct match).
+    matching = []
+    for unit in all_units:
+        try:
+            if unit.file.resolve() == target.resolve():
+                matching.append(unit)
+        except Exception:
+            continue
+
+    # If no direct match, try header-via-TU (use first TU as candidate).
+    if not matching and all_units:
+        matching = [all_units[0]]
+
+    if not matching:
+        return {"error": f"No matching TU for {target} in compile_commands.json"}
+
+    # Open the M6 store.
+    store = open_m6_store(root)
+
+    # Derive build_name and world_id from the existing M6 store.
+    # Use the first registered build (or "default").
+    try:
+        builds = store.list_builds()
+    except Exception:
+        builds = []
+    build_name = builds[0] if builds else "default"
+
+    # Derive world_id deterministically (same as _unit_processor fallback).
+    import hashlib as _hash_mod
+    world_id = (
+        int(_hash_mod.sha256(
+            build_name.encode()
+        ).hexdigest()[:8], 16) % 1000000
+    ) + 1
+    store.register_world(world_id, {build_name})
+
+    # Derive config_hash from the first M6 fact (or use empty).
+    config_hash = ""
+    try:
+        proj = store.project_build(build_name)
+        for kind, facts in proj.items():
+            for f in facts:
+                p = f.get("payload", {}) or {}
+                if p.get("config_hash"):
+                    config_hash = p["config_hash"]
+                    break
+            if config_hash:
+                break
+    except Exception:
+        pass
+
+    # Parse each matching TU and materialize into M6.
+    symbols_updated = 0
+    skipped_tus = []
+    for unit in matching:
+        try:
+            parsed = extract_all(unit, with_refs=True)
+        except RuntimeError as exc:
+            skipped_tus.append(str(unit.file.name))
+            continue
+
+        stats = materialize_unit_into_m6(
+            store=store, parsed=parsed, project_root=root,
+            build_name=build_name, world_id=world_id,
+            config_hash=config_hash, context_id="",
+        )
+        symbols_updated += stats.get("facts_indexed", 0)
+
+    elapsed = _time_mod.monotonic() - t0
+    return {
+        "file": str(target),
+        "translation_units": len(matching),
+        "symbols_updated": symbols_updated,
+        "elapsed_s": round(elapsed, 3),
+        "m6_direct_materialization": True,
+        "skipped_tus": skipped_tus if skipped_tus else None,
+    }
+
+
 # ── moved from server.py ──
 def reindex_file_impl(
     file_path: Annotated[
@@ -2120,7 +2248,30 @@ def reindex_file_impl(
         On failure the dict holds only ``error`` with the reason.
     """
     db_path, cfg, project_id, root = _resolve_context(project_root, skip_ready_check=True)
+
+    # M7-FINAL-ECONOMIC-ADDENDUM (§6): M6 direct materialization for
+    # reindex_file.  In pure M6 mode (legacy compat OFF, the default),
+    # the legacy index.db is NOT created by runner.run(), so the legacy
+    # DB check below would fail.  When M6 write authority is on (default),
+    # fall through to the M6-direct path: open the M6 store, parse the
+    # file, materialize canonical facts directly from the libclang
+    # ExtractionResult, and return.  This makes reindex_file a NORMAL
+    # M6-direct write entrypoint (§7: NORMAL_WRITE_ENTRYPOINTS ==
+    # M6_DIRECT_WRITE_ENTRYPOINTS).
+    import os as _os_mod
+    _m6_write_auth = _os_mod.environ.get(
+        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
+    ).strip() in ("1", "true", "yes", "on")
+
     if not db_path.exists():
+        # Legacy DB doesn't exist.  In pure M6 mode, try the M6-direct
+        # path: if the M6 store exists, reindex into it directly.
+        if _m6_write_auth:
+            m6_db_path = root / ".fw-context" / "index-m6.db"
+            if m6_db_path.exists():
+                return _reindex_m6_direct(
+                    file_path, root, m6_db_path,
+                )
         return {"error": f"No index found for {root}. Run 'fw-context index' first."}
 
     # Config read via a short-lived read-only connection.
