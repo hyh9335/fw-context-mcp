@@ -1,0 +1,13 @@
+{
+  "verdict": "PASS",
+  "head": "143642b",
+  "timestamp": "2026-10-10T02:16:58Z",
+  "v2_semantic_reads_eq_0": true,
+  "v2_required_writes_eq_0": true,
+  "v2_fallbacks_eq_0": true,
+  "v2_finalize_deps_eq_0": true,
+  "no_silent_fallback": true,
+  "v2_finalize_gated": true,
+  "discrepancies": [],
+  "summary": "M7.5 V2_RETIREMENT fresh verification PASS. All four normal-path v2 dependency counts are 0 in normal_path_dependencies_state.json (head 143642b): normal_old_v2_semantic_reads=0, normal_old_v2_required_writes=0, normal_old_v2_finalization_dependencies=0, normal_old_v2_fallbacks=0. Code-level confirmation: (1) server.py registers exactly 32 core semantic tools through m6_authority_route as the OUTER router (lines 1234-1416); the v2 path (v2_authority_route) is passed as the INNER legacy_fn and is reached ONLY when M6 read authority is explicitly disabled (FW_CONTEXT_M6_READ_AUTHORITY=0; default '1' per authority.py:470). (2) m6_authority_route (authority.py:387-461) performs NO silent fallback: it raises RuntimeError on unresolvable project_root (lines 435-438) and on missing M6 store (lines 443-448, 'visible failure, NOT silent fallback' per §9). (3) runner.py gates v2 finalize_world behind _v2_finalize_enabled = _v2_authority and not _m6_write_authority (line 952); since FW_CONTEXT_M6_WRITE_AUTHORITY defaults to '1' (M6 write authority ON in normal mode), _v2_finalize_enabled is False and finalize_world does not execute (line 953 guard). v2 is semantically retired from the normal/default production path: no v2 semantic reads, no v2 required writes, no v2 fallbacks, no v2 finalization dependencies. This is semantic retirement only — v2 code remains as an explicit, isolated, default-OFF compatibility island (§41), which is permitted and expected. Gate file m7_5_retirement_gate_result.json shows 7/10 PASS (V1-V6 + V9), with V7 (this fresh verifier), V8 (fresh guardian G6), and V10 (M7.1-M7.4 regression) still PENDING — consistent with the expected state at this checkpoint. This verifier supplies the V7 PASS; V8 and V10 remain pending fresh reviews."
+}

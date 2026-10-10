@@ -42,5 +42,5 @@
   "old_db_rows_required_as_semantic_input": "0",
   "m6_is_materialization_authority": true,
   "direct_materialization_used": true,
-  "config_hash": "29e266e78aca"
+  "config_hash": "864a7f6d07c0"
 }

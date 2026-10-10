@@ -1,0 +1,6 @@
+{
+  "test": "reindex_file_m6_direct_green",
+  "verdict": "PASS",
+  "m6_has_gamma_after_reindex": true,
+  "m6_gamma_count": 1
+}

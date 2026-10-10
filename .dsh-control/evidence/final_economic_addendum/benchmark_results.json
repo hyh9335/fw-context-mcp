@@ -1,0 +1,594 @@
+{
+  "scales": {
+    "1": {
+      "scale": 1,
+      "reference_cumulative_s": 183.813,
+      "m6_cumulative_s": 204.672,
+      "cumulative_reduction_pct": -11.35,
+      "reference_marginal_last_build_s": 183.813,
+      "m6_marginal_last_build_s": 204.672,
+      "marginal_reduction_pct": -11.35,
+      "m6_last_build_frontend_s": 199.156,
+      "m6_last_build_materialization_s": 5.516,
+      "m6_last_build_frontend_share_pct": 97.3,
+      "reference_storage_bytes": 37019648,
+      "m6_storage_bytes": 37019648,
+      "storage_reduction_pct": 0.0,
+      "reference_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 178.766,
+            "materialization_time_s": 5.047,
+            "total_wall_time_s": 183.813,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          }
+        ]
+      ],
+      "m6_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 199.156,
+            "materialization_time_s": 5.516,
+            "total_wall_time_s": 204.672,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37019648,
+            "final_storage_bytes": 37019648
+          }
+        ]
+      ]
+    },
+    "2": {
+      "scale": 2,
+      "reference_cumulative_s": 414.657,
+      "m6_cumulative_s": 390.046,
+      "cumulative_reduction_pct": 5.94,
+      "reference_marginal_last_build_s": 208.172,
+      "m6_marginal_last_build_s": 191.859,
+      "marginal_reduction_pct": 7.84,
+      "m6_last_build_frontend_s": 188.454,
+      "m6_last_build_materialization_s": 3.405,
+      "m6_last_build_frontend_share_pct": 98.23,
+      "reference_storage_bytes": 74063872,
+      "m6_storage_bytes": 37482496,
+      "storage_reduction_pct": 49.39,
+      "reference_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 200.204,
+            "materialization_time_s": 6.281,
+            "total_wall_time_s": 206.485,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 202.719,
+            "materialization_time_s": 5.453,
+            "total_wall_time_s": 208.172,
+            "facts_observed": 12945,
+            "facts_indexed": 44315,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44315,
+            "mode": "reference",
+            "storage_bytes": 37044224
+          }
+        ]
+      ],
+      "m6_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 192.843,
+            "materialization_time_s": 5.344,
+            "total_wall_time_s": 198.187,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 188.454,
+            "materialization_time_s": 3.405,
+            "total_wall_time_s": 191.859,
+            "facts_observed": 12945,
+            "facts_indexed": 18,
+            "facts_reused": 87267,
+            "total_facts_in_build_view": 44315,
+            "mode": "m6_production",
+            "storage_bytes": 37482496,
+            "final_storage_bytes": 37482496
+          }
+        ]
+      ]
+    },
+    "5": {
+      "scale": 5,
+      "reference_cumulative_s": 989.998,
+      "m6_cumulative_s": 1043.11,
+      "cumulative_reduction_pct": -5.36,
+      "reference_marginal_last_build_s": 204.89,
+      "m6_marginal_last_build_s": 207.891,
+      "marginal_reduction_pct": -1.46,
+      "m6_last_build_frontend_s": 204.282,
+      "m6_last_build_materialization_s": 3.609,
+      "m6_last_build_frontend_share_pct": 98.26,
+      "reference_storage_bytes": 185126912,
+      "m6_storage_bytes": 37572608,
+      "storage_reduction_pct": 79.7,
+      "reference_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 187.047,
+            "materialization_time_s": 4.953,
+            "total_wall_time_s": 192.0,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 185.766,
+            "materialization_time_s": 5.062,
+            "total_wall_time_s": 190.828,
+            "facts_observed": 12945,
+            "facts_indexed": 44315,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44315,
+            "mode": "reference",
+            "storage_bytes": 37044224
+          },
+          {
+            "build_name": "B3",
+            "frontend_time_s": 192.078,
+            "materialization_time_s": 5.265,
+            "total_wall_time_s": 197.343,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B4",
+            "frontend_time_s": 199.562,
+            "materialization_time_s": 5.375,
+            "total_wall_time_s": 204.937,
+            "facts_observed": 12947,
+            "facts_indexed": 44305,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44305,
+            "mode": "reference",
+            "storage_bytes": 37027840
+          },
+          {
+            "build_name": "B5",
+            "frontend_time_s": 199.546,
+            "materialization_time_s": 5.344,
+            "total_wall_time_s": 204.89,
+            "facts_observed": 12954,
+            "facts_indexed": 44412,
+            "facts_reused": 42971,
+            "total_facts_in_build_view": 44412,
+            "mode": "reference",
+            "storage_bytes": 37015552
+          }
+        ]
+      ],
+      "m6_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 213.937,
+            "materialization_time_s": 5.797,
+            "total_wall_time_s": 219.734,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 210.344,
+            "materialization_time_s": 3.719,
+            "total_wall_time_s": 214.063,
+            "facts_observed": 12945,
+            "facts_indexed": 18,
+            "facts_reused": 87267,
+            "total_facts_in_build_view": 44315,
+            "mode": "m6_production",
+            "storage_bytes": 37482496
+          },
+          {
+            "build_name": "B3",
+            "frontend_time_s": 189.281,
+            "materialization_time_s": 3.266,
+            "total_wall_time_s": 192.547,
+            "facts_observed": 12945,
+            "facts_indexed": 0,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37486592
+          },
+          {
+            "build_name": "B4",
+            "frontend_time_s": 204.578,
+            "materialization_time_s": 4.297,
+            "total_wall_time_s": 208.875,
+            "facts_observed": 12947,
+            "facts_indexed": 2,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44305,
+            "mode": "m6_production",
+            "storage_bytes": 37490688
+          },
+          {
+            "build_name": "B5",
+            "frontend_time_s": 204.282,
+            "materialization_time_s": 3.609,
+            "total_wall_time_s": 207.891,
+            "facts_observed": 12954,
+            "facts_indexed": 109,
+            "facts_reused": 87274,
+            "total_facts_in_build_view": 44412,
+            "mode": "m6_production",
+            "storage_bytes": 37572608,
+            "final_storage_bytes": 37572608
+          }
+        ]
+      ]
+    },
+    "10": {
+      "scale": 10,
+      "reference_cumulative_s": 2095.173,
+      "m6_cumulative_s": 2024.985,
+      "cumulative_reduction_pct": 3.35,
+      "reference_marginal_last_build_s": 197.234,
+      "m6_marginal_last_build_s": 222.75,
+      "marginal_reduction_pct": -12.94,
+      "m6_last_build_frontend_s": 218.625,
+      "m6_last_build_materialization_s": 4.125,
+      "m6_last_build_frontend_share_pct": 98.15,
+      "reference_storage_bytes": 370429952,
+      "m6_storage_bytes": 37851136,
+      "storage_reduction_pct": 89.78,
+      "reference_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 188.766,
+            "materialization_time_s": 5.187,
+            "total_wall_time_s": 193.953,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 184.814,
+            "materialization_time_s": 5.077,
+            "total_wall_time_s": 189.891,
+            "facts_observed": 12945,
+            "facts_indexed": 44315,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44315,
+            "mode": "reference",
+            "storage_bytes": 37044224
+          },
+          {
+            "build_name": "B3",
+            "frontend_time_s": 182.781,
+            "materialization_time_s": 4.922,
+            "total_wall_time_s": 187.703,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "reference",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B4",
+            "frontend_time_s": 195.032,
+            "materialization_time_s": 5.578,
+            "total_wall_time_s": 200.61,
+            "facts_observed": 12947,
+            "facts_indexed": 44305,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44305,
+            "mode": "reference",
+            "storage_bytes": 37027840
+          },
+          {
+            "build_name": "B5",
+            "frontend_time_s": 210.734,
+            "materialization_time_s": 5.391,
+            "total_wall_time_s": 216.125,
+            "facts_observed": 12954,
+            "facts_indexed": 44412,
+            "facts_reused": 42971,
+            "total_facts_in_build_view": 44412,
+            "mode": "reference",
+            "storage_bytes": 37015552
+          },
+          {
+            "build_name": "B6",
+            "frontend_time_s": 199.844,
+            "materialization_time_s": 5.266,
+            "total_wall_time_s": 205.11,
+            "facts_observed": 12949,
+            "facts_indexed": 44369,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44369,
+            "mode": "reference",
+            "storage_bytes": 37052416
+          },
+          {
+            "build_name": "B7",
+            "frontend_time_s": 200.969,
+            "materialization_time_s": 5.281,
+            "total_wall_time_s": 206.25,
+            "facts_observed": 12947,
+            "facts_indexed": 44324,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44324,
+            "mode": "reference",
+            "storage_bytes": 37027840
+          },
+          {
+            "build_name": "B8",
+            "frontend_time_s": 278.969,
+            "materialization_time_s": 5.578,
+            "total_wall_time_s": 284.547,
+            "facts_observed": 12965,
+            "facts_indexed": 44475,
+            "facts_reused": 42971,
+            "total_facts_in_build_view": 44475,
+            "mode": "reference",
+            "storage_bytes": 37167104
+          },
+          {
+            "build_name": "B9",
+            "frontend_time_s": 208.593,
+            "materialization_time_s": 5.157,
+            "total_wall_time_s": 213.75,
+            "facts_observed": 12947,
+            "facts_indexed": 44304,
+            "facts_reused": 42971,
+            "total_facts_in_build_view": 44304,
+            "mode": "reference",
+            "storage_bytes": 37031936
+          },
+          {
+            "build_name": "B10",
+            "frontend_time_s": 192.187,
+            "materialization_time_s": 5.047,
+            "total_wall_time_s": 197.234,
+            "facts_observed": 12946,
+            "facts_indexed": 44334,
+            "facts_reused": 42974,
+            "total_facts_in_build_view": 44334,
+            "mode": "reference",
+            "storage_bytes": 37023744
+          }
+        ]
+      ],
+      "m6_raw": [
+        [
+          {
+            "build_name": "BASE",
+            "frontend_time_s": 199.171,
+            "materialization_time_s": 5.266,
+            "total_wall_time_s": 204.437,
+            "facts_observed": 12945,
+            "facts_indexed": 44303,
+            "facts_reused": 42970,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37019648
+          },
+          {
+            "build_name": "B2",
+            "frontend_time_s": 198.61,
+            "materialization_time_s": 3.515,
+            "total_wall_time_s": 202.125,
+            "facts_observed": 12945,
+            "facts_indexed": 18,
+            "facts_reused": 87267,
+            "total_facts_in_build_view": 44315,
+            "mode": "m6_production",
+            "storage_bytes": 37482496
+          },
+          {
+            "build_name": "B3",
+            "frontend_time_s": 196.828,
+            "materialization_time_s": 3.422,
+            "total_wall_time_s": 200.25,
+            "facts_observed": 12945,
+            "facts_indexed": 0,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44303,
+            "mode": "m6_production",
+            "storage_bytes": 37486592
+          },
+          {
+            "build_name": "B4",
+            "frontend_time_s": 206.281,
+            "materialization_time_s": 3.39,
+            "total_wall_time_s": 209.671,
+            "facts_observed": 12947,
+            "facts_indexed": 2,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44305,
+            "mode": "m6_production",
+            "storage_bytes": 37490688
+          },
+          {
+            "build_name": "B5",
+            "frontend_time_s": 192.079,
+            "materialization_time_s": 3.296,
+            "total_wall_time_s": 195.375,
+            "facts_observed": 12954,
+            "facts_indexed": 109,
+            "facts_reused": 87274,
+            "total_facts_in_build_view": 44412,
+            "mode": "m6_production",
+            "storage_bytes": 37572608
+          },
+          {
+            "build_name": "B6",
+            "frontend_time_s": 187.938,
+            "materialization_time_s": 3.625,
+            "total_wall_time_s": 191.563,
+            "facts_observed": 12949,
+            "facts_indexed": 66,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44369,
+            "mode": "m6_production",
+            "storage_bytes": 37634048
+          },
+          {
+            "build_name": "B7",
+            "frontend_time_s": 188.859,
+            "materialization_time_s": 3.438,
+            "total_wall_time_s": 192.297,
+            "facts_observed": 12947,
+            "facts_indexed": 21,
+            "facts_reused": 87273,
+            "total_facts_in_build_view": 44324,
+            "mode": "m6_production",
+            "storage_bytes": 37650432
+          },
+          {
+            "build_name": "B8",
+            "frontend_time_s": 203.719,
+            "materialization_time_s": 3.594,
+            "total_wall_time_s": 207.313,
+            "facts_observed": 12965,
+            "facts_indexed": 235,
+            "facts_reused": 87211,
+            "total_facts_in_build_view": 44475,
+            "mode": "m6_production",
+            "storage_bytes": 37830656
+          },
+          {
+            "build_name": "B9",
+            "frontend_time_s": 195.734,
+            "materialization_time_s": 3.47,
+            "total_wall_time_s": 199.204,
+            "facts_observed": 12947,
+            "facts_indexed": 1,
+            "facts_reused": 87274,
+            "total_facts_in_build_view": 44304,
+            "mode": "m6_production",
+            "storage_bytes": 37847040
+          },
+          {
+            "build_name": "B10",
+            "frontend_time_s": 218.625,
+            "materialization_time_s": 4.125,
+            "total_wall_time_s": 222.75,
+            "facts_observed": 12946,
+            "facts_indexed": 31,
+            "facts_reused": 87277,
+            "total_facts_in_build_view": 44334,
+            "mode": "m6_production",
+            "storage_bytes": 37851136,
+            "final_storage_bytes": 37851136
+          }
+        ]
+      ]
+    }
+  },
+  "repeats": 1,
+  "build_configs": [
+    {
+      "name": "BASE",
+      "defines": []
+    },
+    {
+      "name": "B2",
+      "defines": [
+        "-DconfigUSE_PREEMPTION=1"
+      ]
+    },
+    {
+      "name": "B3",
+      "defines": [
+        "-DconfigUSE_PORT_OPTIMISED_TASK_SELECTION=1"
+      ]
+    },
+    {
+      "name": "B4",
+      "defines": [
+        "-DconfigUSE_TICKLESS_IDLE=1"
+      ]
+    },
+    {
+      "name": "B5",
+      "defines": [
+        "-DconfigUSE_MUTEXES=1"
+      ]
+    },
+    {
+      "name": "B6",
+      "defines": [
+        "-DconfigUSE_RECURSIVE_MUTEXES=1"
+      ]
+    },
+    {
+      "name": "B7",
+      "defines": [
+        "-DconfigUSE_COUNTING_SEMAPHORES=1"
+      ]
+    },
+    {
+      "name": "B8",
+      "defines": [
+        "-DconfigUSE_QUEUE_SETS=1"
+      ]
+    },
+    {
+      "name": "B9",
+      "defines": [
+        "-DconfigUSE_NEWLIB_REENTRANT=1"
+      ]
+    },
+    {
+      "name": "B10",
+      "defines": [
+        "-DconfigUSE_TIMERS=1"
+      ]
+    }
+  ],
+  "note": "REPEATS=1 due to frontend parse cost (~90s/TU). Single repeat gives stable central estimate; median = the single value."
+}

@@ -1,0 +1,60 @@
+{
+  "guardian": "fresh_one_shot_G6",
+  "checkpoint": "G6",
+  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "head_short": "143642b",
+  "verdict": "CONTINUE",
+  "contract_complete": true,
+  "gate_clauses_count": 39,
+  "scanner_code_derived": true,
+  "self_tests_adversarial": true,
+  "baseline_red_evidence": true,
+  "m3b_regression": "PASS",
+  "m4_regression": "PASS",
+  "archaeology_accurate": true,
+  "blockers": [
+    {
+      "id": "G6-B1",
+      "clauses": ["C37"],
+      "severity": "blocking",
+      "title": "No fresh M5 Verifier artifact stamped head=143642b",
+      "evidence": "All m5_verifier_*.json artifacts carry head=a1b462b (latest: m5_verifier_20260930_205502_9082863.json and m5_verifier_20261008_154126_e1b3480.json, both head=a1b462b53a56451b0429f73020442166c90d5824). run_m5_stage_gate.py C37 requires v.get('head') == current_head (143642b...). The gate correctly fails C37 — this is S8 stale-artifact rejection working as designed. Substance is unchanged (git diff --name-only a1b462b..143642b -- src/ is EMPTY; commits 667bacf/4f2932b/143642b are M6.5 evidence-only). A separate Fresh Verifier role must mint an artifact with head field = 143642bfea6752b573c7b9cb56bfcf0c191b0d95. The Guardian cannot self-certify C38 (circular) nor mint the Verifier artifact (separate role).",
+      "fix": "Run a Fresh M5 Verifier against current HEAD 143642b and write m5_verifier_*_143642b.json with verdict=PASS and head=143642bfea6752b573c7b9cb56bfcf0c191b0d95."
+    },
+    {
+      "id": "G6-B2",
+      "clauses": ["C38"],
+      "severity": "blocking",
+      "title": "No fresh Guardian G6 ACCEPT_COMPLETION artifact stamped head=143642b (this artifact repairs C38 only if verdict=ACCEPT_COMPLETION; verdict is CONTINUE due to G6-B1)",
+      "evidence": "Latest guardian by mtime is m5_guardian_G0G1.json (verdict=CONTINUE, head=a1b462b). The m5_guardian_20261008074407Z_e1b3480d3f32.json (ACCEPT_COMPLETION) is also head=a1b462b, not 143642b. Gate C38 requires g.get('verdict')=='ACCEPT_COMPLETION' AND g.get('head')==current_head.",
+      "fix": "Once G6-B1 is repaired (fresh verifier at 143642b exists), a Fresh Guardian G6 must mint this artifact at 143642b with verdict=ACCEPT_COMPLETION. Per §23, both fresh Verifier AND fresh Guardian G6 must accept the EXACT durable HEAD."
+    }
+  ],
+  "normal_path_legacy_dependency": "none found",
+  "execution_path_trace": {
+    "index_command_to_world_finalization": {
+      "entry": "runner.run() at src/fw_context_mcp/indexer/runner.py:274",
+      "legacy_compat_decision": "_legacy_compat_on() at _unit_processor.py:148 — env FW_CONTEXT_LEGACY_COMPATIBILITY_MODE else config index.legacy_compatibility_mode, default False (C30 confirms: legacy_compat=False)",
+      "legacy_db_open": "runner.py:509-510 `if _legacy_compat: conn = open_db(db_path)` — ONLY in compat mode; else conn=None (L522-524 logs v2-only)",
+      "v2_world_context_build": "runner.py:744 `if _v2_shadow_flag_on():` → build_world_context (default True because _v2_write_authority_on() True implies shadow)",
+      "v2_finalization": "runner.py:945-991: open_v2_store_for_write → finalize_world(store, world_ctx) → worlds.py:714 UPDATE snapshot_builds SET world_status='active'; on _v2_authority and not fin.ok raises IndexIntegrityError (authoritative v2 success)",
+      "legacy_linker_asm_postprocess": "runner.py:997 `if _legacy_compat:` (linker), :1020 `if asm_units and _legacy_compat:` (asm), :1056 `if _legacy_compat: _run_postprocess(...)` — ALL gated, skipped in default"
+    },
+    "mcp_request_to_answer": {
+      "query_entry": "queryview.py — resolves active World for (namespace_id, snapshot_id)",
+      "active_world_select": "queryview.py:343-346 `SELECT ... WHERE namespace_id=? AND snapshot_id=? AND world_status='active'` against v2 snapshot_builds; :362-365 latest-active fallback also world_status='active'",
+      "incomplete_worlds_excluded": "Only 'active' is queryable (QUERYABLE_WORLD_STATUS={'active'}); unfinalized/failed/superseded/retired NOT queryable → INCOMPLETE_WORLDS_VISIBLE=0 (code-confirmed, not ledger)",
+      "no_legacy_fallback": "queryview.py:81 'do NOT fall back to legacy (P3 — no silent semantic fallback)'; legacy_config_hash_to_build_id (queryview.py:454) is a bridge invoked ONLY when a legacy config_hash is supplied, not in normal v2 operation"
+    },
+    "verdict": "Normal/default operation never reads/writes/creates/consults legacy semantic storage. Legacy is reachable ONLY via explicit FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 (default OFF, isolated, cannot affect v2 success/selection/reuse/lifecycle). §4 definition satisfied: no legacy dependency in normal path."
+  },
+  "goal_drift_detected": false,
+  "scope_expansion_detected": false,
+  "details": "G6 fresh one-shot evaluation at HEAD 143642b (dirty — M7.0A/M7.0B evidence + m6_research untracked; ZERO src/ changes vs a1b462b). Contract IMMUTABLE_M5_GOAL_CONTRACT.md is complete and unweakened: §1-§23 all present; §16 has 23 counters (9 legacy=0, 4 GC-violation=0, bugs=0, 7 PASS lanes, M3B/M4 PASS) all mapping to gate clauses; gate has exactly 39 clauses (19 numeric C1-C19 + 2 regression C20-C21 + 8 fault C22-C29 + 7 runtime C30-C36 + 3 acceptance C37-C39). Gate ADDS strengthening extras beyond §16 (C1/C2 entrypoint-existence, C11 shadow-dual-read, C12 temp-flags, C13 obsolete-clauses) — NO goal shrink. Scanner scan_m5_state.py uses ast.parse/ast.walk (code-derived, NOT ledgers); _in_compat_guard fails-closed (unknown guard => counted as normal-mode => conservative, anti-gaming). Re-ran scanner at 143642b: numeric_gate=PASS, all legacy categories=0, gc_impl=True, lifecycle_states=[active,failed,retained,retired,superseded,unfinalized], incomplete_visible=0, m3b=PASS, m4=PASS. Self-tests RE-RAN at 143642b (8/8 PASS, freshly stamped head=143642b): S1-S4 are TRUE fault-injection (mutate temp runner.py/authority.py copy injecting synthetic legacy call OUTSIDE compat guard, verify scanner DETECTS it — non-vacuous; weakening scanner would fail these); S5-S7 exercise REAL gc.py on temp DBs (shared state survives W2 ref, pinned World survives GC, current World queryable); S8 verifies gate head==current stale-rejection. Runtime tests RE-RAN at 143642b (7/7 PASS, freshly stamped head=143642b): C30 clears env overrides and reads shipped IndexConfig defaults (legacy_compat=False, v2_write_authority=True — NOT fixture-forced, §18 compliant); C32 actually runs runner.run() end-to-end, confirms NO legacy index.db created. GC reachability-based (GC_ROOT_STATUSES={active,retained}, GC_ELIGIBLE_STATUSES={failed,superseded,retired}, pinned_world_ids+active_build_world_ids roots, shared-state NOT EXISTS subquery, no age-only GC). Pin protection verified (S6). Legacy = explicit opt-in compat island (default OFF, isolated, cannot affect v2 success/selection/reuse/lifecycle/GC). M3B regression: CORE=29/V2_NATIVE_READ=29/LEGACY_EXEC=0 PASS. M4 regression: V2_PRIMARY=4/LEGACY_PRIMARY=0/V2_FINALIZATION_IS_AUTHORITY=True, 7/7 faults PASS. No goal drift (commits since a1b462b are M6.5 evidence/coverage, zero src/ changes; §41 stop boundary respected). No scope expansion. Execution-path trace CONFIRMS no normal-path legacy dependency: runner.run() opens legacy DB only inside `if _legacy_compat:` (default False); v2 finalize_world is authoritative; queryview selects world_status='active' from v2 store with no legacy fallback. BLOCKER: gate fails C37+C38 because NO verifier AND NO guardian artifact is stamped head=143642b (all carry head=a1b462b). This is S8 stale-rejection working correctly — the substance passes at 143642b (src/ byte-identical a1b462b→143642b), but §16 PLUS-clauses and §23 require fresh artifacts matching the EXACT durable HEAD. Per §23: 'No agent may declare the Goal complete unless the executable hard gate exits 0 against the current durable checkpoint AND a fresh Verifier + fresh Guardian G6 accepted that exact HEAD.' The hard gate does NOT exit 0 (C37/C38 fail), so ACCEPT_COMPLETION is FORBIDDEN. The Guardian cannot self-certify C38 (circular) nor mint the Verifier artifact (separate role). Verdict: CONTINUE — substance is complete and sound; only the fresh-artifact stamping at 143642b remains.",
+  "original_review_head": "143642b",
+  "head_applicability_notes": [
+    "Substance (src/fw_context_mcp/) is byte-for-byte unchanged a1b462b -> 143642b (git diff --name-only a1b462b..143642b -- src/ is EMPTY). All M5 code paths, scanner results, self-tests, runtime tests, M3B/M4 regressions are identical. Only evidence/M6.5 files differ (commits 667bacf relabel-to-a1b462b, 4f2932b update-coverage-JSON, 143642b harden-check_hard_constraints).",
+    "I independently RE-RAN scan_m5_state.py, m5_self_tests.py, run_m5_runtime_tests.py, scan_authority_state.py, scan_write_authority.py, and run_m5_stage_gate.py at HEAD 143642b myself. Scanner numeric_gate=PASS; self-tests 8/8 PASS freshly stamped head=143642b; runtime 7/7 PASS freshly stamped head=143642b; M3B PASS; M4 PASS; gate 37/39 PASS (C37/C38 fail on HEAD-stamp mismatch only).",
+    "The single blocking issue is procedural, not substantive: no Fresh Verifier artifact and no Fresh Guardian G6 artifact carry head=143642b. S8 confirms the gate correctly rejects stale-HEAD artifacts. A Fresh Verifier must mint an artifact at 143642b to repair C37; then a Fresh Guardian G6 (separate from this one) must mint ACCEPT_COMPLETION at 143642b to repair C38. This Guardian cannot issue ACCEPT_COMPLETION while C37 is unresolved (§23: gate must exit 0)."
+  ]
+}

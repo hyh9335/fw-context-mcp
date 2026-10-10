@@ -1,0 +1,109 @@
+{
+  "verdict": "ACCEPT",
+  "head": "143642b",
+  "timestamp": "2026-10-10T02:20:11Z",
+  "freertos_canary_real": true,
+  "multi_version_reuse": true,
+  "all_m7_stages_pass": true,
+  "acceptance_criteria": {
+    "freertos_canary_real_m6_facts": {
+      "status": "PASS",
+      "db_path": ".dsh-control/m6_research/corpus/FreeRTOS-Kernel/.fw-context/index-m6.db",
+      "db_size_bytes": 4481024,
+      "total_shared_facts": 5736,
+      "distinct_fact_canons": 5736,
+      "fact_kinds_distribution": {
+        "Reference": 2595,
+        "ConditionalState": 1009,
+        "Symbol": 777,
+        "Variable": 481,
+        "Call": 326,
+        "Function": 196,
+        "Body": 154,
+        "Type": 90,
+        "Field": 89,
+        "EnumConstant": 13,
+        "FileContent": 6
+      },
+      "sample_real_canons": [
+        "Symbol(FUNCTION_DECL,c:@F@malloc)",
+        "Symbol(FUNCTION_DECL,c:@F@free)",
+        "Symbol(FUNCTION_DECL,c:@F@memcpy)",
+        "Symbol(FUNCTION_DECL,c:@F@memset)",
+        "Symbol(FUNCTION_DECL,c:@F@memcmp)"
+      ],
+      "evidence": "Real libclang USRs (c:@F@malloc etc.) across 11 semantic fact kinds — NOT a stub."
+    },
+    "multi_version_reuse_architecture": {
+      "status": "PASS",
+      "code_path": "src/fw_context_mcp/store_v2/m6_store.py",
+      "architecture_verified": [
+        "BuildSet interning via SHA-256 over sorted build names (intern_buildset)",
+        "merge_buildset unions a fact's BuildSet with new builds (no duplication)",
+        "add_fact keyed by fact_canon — canonical dedup",
+        "project_build filters facts by build membership (O(1) via build→buildsets index)",
+        "World→Builds map (m6_world_builds) for GC reachability roots (§M1.1)",
+        "Reachability-based GC (gc_unreachable_facts): fact reachable iff BuildSet ∩ active_builds ≠ ∅",
+        "No age-only deletion (compliant with §2.7 immutable contract)",
+        "Per-World removal from BuildSets FORBIDDEN (§M1.5)",
+        "WAL + busy_timeout=30s + write_lock for safe concurrency (I3)"
+      ],
+      "economic_demonstration": {
+        "source": ".dsh-control/m7/state/economic_metrics_state.json",
+        "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+        "scaling_table": [
+          {"n_builds": 2, "total_facts": 13047, "unique_facts": 6545, "shared_facts": 6502, "distinct_buildsets": 3},
+          {"n_builds": 5, "total_facts": 32852, "unique_facts": 7380, "shared_facts": 5871, "distinct_buildsets": 13},
+          {"n_builds": 10, "total_facts": 56669, "unique_facts": 7620, "shared_facts": 3367, "distinct_buildsets": 35},
+          {"n_builds": 16, "total_facts": 87831, "unique_facts": 8225, "shared_facts": 3367, "distinct_buildsets": 52}
+        ],
+        "storage_reduction_at_16_builds": "87831 total facts stored as 8225 unique canons = ~90.6% dedup",
+        "verdict": "unique_facts plateaus (6545→8225) while total grows 13k→87k — genuine multi-version reuse + canonical dedup demonstrated."
+      }
+    },
+    "storage_efficiency_canonical_dedup": {
+      "status": "PASS",
+      "code_evidence": "_fact_cache keyed by fact_canon; add_fact reuses existing_fid and merges BuildSet instead of duplicating",
+      "measured_dedup": "unique_facts/total_facts at 16 builds = 8225/87831 = 9.4% — i.e. 90.6% storage saved vs naive per-build storage"
+    },
+    "frontend_share_lt_70": {
+      "status": "PASS",
+      "measured_value": 0.6939657996462032,
+      "threshold": 0.70,
+      "source": "economic_metrics_state.json#baseline_frontend_share_at_16_builds",
+      "margin": "0.61 percentage points below bottleneck threshold — real but slim; sustained frontend optimization recommended."
+    },
+    "all_m7_stages_pass": {
+      "status": "PASS",
+      "stages": {
+        "M7.1_DUAL_READ": {"verdict": "M7_1_DUAL_READ_PASS", "passed": 8, "total": 8, "parity_failures": 0, "false_shared": 0},
+        "M7.2_READ_AUTHORITY": {"verdict": "M7_2_READ_AUTHORITY_PASS", "passed": 10, "total": 10, "m6_native_read": 32, "old_v2_read": 0},
+        "M7.3_WRITE_AUTHORITY": {"verdict": "M7_3_WRITE_AUTHORITY_PASS", "passed": 10, "total": 10, "m6_entrypoints": 8, "m6_db_exists": true},
+        "M7.4_LIFECYCLE": {"verdict": "M7_4_LIFECYCLE_PASS", "passed": 10, "total": 10, "gc_reachability_based": true},
+        "M7.5_V2_RETIREMENT": {"verdict": "M7_5_V2_RETIREMENT_PASS", "passed": 10, "total": 10, "v2_reads": 0, "v2_writes": 0, "v2_fallbacks": 0}
+      },
+      "regression": "M3B=True M4=True across all stages — M5 immutable contract intact."
+    }
+  },
+  "economic_gate_status": {
+    "file": ".dsh-control/m7/gates/m7_economic_gate_result.json",
+    "passed": 6,
+    "total": 8,
+    "passed_clauses": ["E1_freertos_m6_gt_parity", "E2_multi_version_reuse", "E3_storage_efficiency", "E4_frontend_share_lt_70", "E5_semantic_materialization", "E6_all_m7_stages_pass"],
+    "pending_clauses": ["E7_fresh_verifier", "E8_fresh_guardian_g6"],
+    "note": "This Guardian G6 verdict closes E8. E7 (fresh verifier) is a separate role and remains pending in the gate file."
+  },
+  "concerns": [
+    "FreeRTOS canary DB itself contains only 1 buildset with 1 build ('BASE'). Multi-version reuse + canonical dedup are demonstrated via the separate scaling table in economic_metrics_state.json (2-16 builds), NOT within the canary DB alone. The canary proves real M6 facts flow; the scaling table proves the multi-build economics.",
+    "Dedicated I4 tables m6_body_facts, m6_file_content, and m6_certificates are empty (0 rows) in the canary DB. Semantic materialization is instead carried in m6_shared_facts (154 Body, 90 Type, 6 FileContent fact_kinds). This is an architecture/storage-layout detail, not a defect — but the certificate-based dependency reuse path (§M3) is not exercised by this canary.",
+    "Frontend share 69.4% is only 0.61 pp below the 70% bottleneck threshold — real but slim. Sustained frontend optimization is recommended to keep margin against drift.",
+    "canonical_dedup_ratio in the canary DB is 1.0 (5736 distinct / 5736 total) because there is only one build — no dedup opportunity exists in a single-build index. The dedup benefit is real but measured only at multi-build scale via the scaling table."
+  ],
+  "safety_verification": {
+    "gc_model": "Reachability-based (BuildSet ∩ active_builds ≠ ∅). No age-only deletion. Compliant with §2.7 of the immutable M5/M6 contract.",
+    "world_isolation": "Per-World removal from BuildSets is FORBIDDEN (§M1.5) — verified in code comments and gc_unreachable_facts only deletes fully-unreachable facts.",
+    "concurrency": "WAL journal mode + busy_timeout=30000ms + threading.RLock serializing writes (I3). Safe for concurrent read/write.",
+    "regression": "M3B (native v2 read engine) and M4 (v2 write finalization) authority intact across all M7 stages."
+  },
+  "summary": "ACCEPT. The M6 migration's economic benefits are GENUINE and SAFE. The FreeRTOS canary holds 5,736 real M6 facts with authentic libclang USRs across 11 semantic fact kinds. The M6 BuildSetStore architecture (canonical dedup, multi-version reuse, reachability-based GC, World→Builds map) is correctly implemented and compliant with the immutable contract. Multi-version reuse and canonical dedup are genuinely demonstrated at 2-16 build scale (~90.6% storage reduction). Frontend share 69.4% is below the 70% threshold. All M7.1-M7.5 stages PASS with M3B/M4 regression intact. Concerns are limited to: (1) the canary DB is single-build so it does not by itself exercise multi-build dedup — that proof lives in the scaling table; (2) the dedicated I4 body/file/certificate tables are empty in the canary (semantic facts live in m6_shared_facts instead); (3) frontend margin is slim (0.61 pp). None of these invalidate the economic closure."
+}

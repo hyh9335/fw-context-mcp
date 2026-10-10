@@ -1,0 +1,290 @@
+{
+  "verifier": "M5 Fresh Verifier (independent disproof attempt)",
+  "verdict": "PASS",
+  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "head_short": "143642b",
+  "head_dirty": true,
+  "head_dirty_note": "Dirty changes confined to .dsh-control/ evidence/state files + multi_version_index_review test fixtures + untracked M7.0A/M7.0B evidence files. git diff --name-only a1b462b..143642b -- src/ = 0 files (zero production source changes since the prior verifier at a1b462b).",
+  "contract": ".dsh-control/contracts/IMMUTABLE_M5_GOAL_CONTRACT.md",
+  "scanner_result": "PASS",
+  "scanner_output_summary": {
+    "head": "143642b",
+    "legacy_db_reads": 0,
+    "legacy_db_writes": 0,
+    "legacy_db_creations": 0,
+    "legacy_postprocess_calls": 0,
+    "legacy_fallbacks": 0,
+    "legacy_mirror_runs": 0,
+    "legacy_active_config_deps": 0,
+    "legacy_lifecycle_deps": 0,
+    "scaffolding_shadow_dual_read": 0,
+    "scaffolding_temp_flags": 0,
+    "scaffolding_dual_write": 0,
+    "lifecycle_states": [
+      "active",
+      "failed",
+      "retained",
+      "retired",
+      "superseded",
+      "unfinalized"
+    ],
+    "gc_impl": true,
+    "incomplete_visible": 0,
+    "unresolved_bugs": "0/0",
+    "m3b_regression": "PASS",
+    "m4_regression": "PASS",
+    "numeric_gate": "PASS"
+  },
+  "gate_result": "C1-C36 PASS; C37/C38 FAIL (stale verifier/guardian artifacts from HEAD a1b462b -- C37 is satisfied by THIS artifact; C38 requires a separate fresh Guardian G6 artifact)",
+  "self_tests": "8/8",
+  "self_test_details": {
+    "S1_FORGED_STATUS": "PASS -- scanner detected injected legacy DB access (creations=1); code-derived truth wins",
+    "S2_HIDDEN_MIRROR": "PASS -- scanner detected 1 injected legacy mirror run",
+    "S3_HIDDEN_FALLBACK": "PASS -- scanner detected 1 injected legacy fallback",
+    "S4_LEGACY_POSTPROCESS": "PASS -- scanner detected 1 injected legacy postprocess call",
+    "S5_SHARED_STATE_PREMATURE_DELETION": "PASS -- real GC: W1 deleted, shared state survives (W2 references it)",
+    "S6_PINNED_WORLD_DELETION": "PASS -- real GC: pinned W1 survives GC",
+    "S7_CURRENT_WORLD_DELETION": "PASS -- queryview selects world_status=active; current completed World queryable",
+    "S8_STALE_VERIFIER_GUARDIAN": "PASS -- gate uses head==current comparison; stale wrong-HEAD artifacts rejected"
+  },
+  "runtime_tests": "7/7",
+  "runtime_test_details": {
+    "C30_PRODUCTION_DEFAULT_TEST_LANE": "PASS -- production defaults correct: legacy_compat=False, v2_write_authority=True",
+    "C31_CLEAN_PROJECT_V2_ONLY": "PASS -- _legacy_compat_on() returns False in default mode -> v2-only",
+    "C32_LEGACY_UNAVAILABLE_NORMAL_MODE": "PASS -- runner.run() completed in default v2-only mode (no legacy DB)",
+    "C33_UPGRADE_EXISTING_PROJECT": "PASS -- FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path -> existing projects can upgrade to v2",
+    "C34_GC_DRY_RUN": "PASS -- analyze_gc: eligible=[1], protected=[2]",
+    "C35_GC_APPLY": "PASS -- apply_gc: deleted 1 World, 0 States; W2+state100 preserved; verify OK",
+    "C36_GC_RESTART_INTEGRITY": "PASS -- after restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
+  },
+  "m3b_regression": "PASS",
+  "m3b_scanner_output": "CORE=29 V2_ROUTED=29 V2_NATIVE_READ=29 LEGACY_EXEC=0 UNSAFE_FALLBACK=0 UNRESOLVED_BUGS=0 -- M3B numeric gate: PASS",
+  "m4_regression": "PASS",
+  "m4_scanner_output": "NORMAL_ENTRYPOINTS=4 V2_PRIMARY=4 LEGACY_PRIMARY=0; V2_FINALIZATION_IS_AUTHORITY=True; LEGACY_WRITE_REQ=0 LEGACY_POSTPROCESS_REQ=0 LEGACY_DB_REQ=0; INCOMPLETE_EXPOSURE=0; all 7 fault tests PASS; machine_gate=PASS",
+  "legacy_db_in_default_mode": false,
+  "gc_reachability_based": true,
+  "pin_protection": true,
+  "shared_state_gc": true,
+  "legacy_compat_audit": "PASS -- 9/9 OK: v2 store exists, legacy DB does not exist (pure v2), _legacy_compat_on()=False, v2_write_authority=True, v2_authority_route importable",
+  "code_reconstruction": {
+    "settings_defaults": {
+      "file": "src/fw_context_mcp/config/settings.py",
+      "v2_write_authority": {
+        "line": 517,
+        "default": true,
+        "evidence": "v2_write_authority: bool = True  # M4-7: v2 World finalization is the authoritative success criterion (default ON)"
+      },
+      "legacy_compatibility_mode": {
+        "line": 518,
+        "default": false,
+        "evidence": "legacy_compatibility_mode: bool = False  # M5-1: explicit compat island -- default OFF (v2-only normal mode)"
+      },
+      "runtime_confirmation": "IndexConfig() => v2_write_authority=True, legacy_compatibility_mode=False"
+    },
+    "legacy_compat_flag": {
+      "file": "src/fw_context_mcp/indexer/_unit_processor.py",
+      "function": "_legacy_compat_on()",
+      "lines": "148-167",
+      "default": false,
+      "evidence": "env FW_CONTEXT_LEGACY_COMPATIBILITY_MODE unset -> config legacy_compatibility_mode (default False) -> returns False; runtime confirmation: _legacy_compat_on()=False, _v2_write_authority_on()=True, _v2_shadow_flag_on()=True"
+    },
+    "runner_legacy_db_gating": {
+      "file": "src/fw_context_mcp/indexer/runner.py",
+      "legacy_db_open": {
+        "line": 510,
+        "gate": "if _legacy_compat: (line 509)",
+        "evidence": "conn = open_db(db_path) ONLY when _legacy_compat_on() is True; else conn stays None (line 524 debug log only)"
+      },
+      "legacy_postprocess": {
+        "line": 1057,
+        "gate": "if _legacy_compat: (line 1056)",
+        "evidence": "_run_postprocess(...) ONLY in compat mode; legacy postprocess steps skipped in v2-only default"
+      },
+      "legacy_linker_scripts": {
+        "line": 998,
+        "gate": "if _legacy_compat: (line 997)",
+        "evidence": "_store_linker_scripts ONLY in compat mode"
+      },
+      "legacy_assembly": {
+        "line": 1020,
+        "gate": "if asm_units and _legacy_compat: (line 1020)",
+        "evidence": "legacy assembly store ONLY in compat mode"
+      },
+      "existing_files_load": {
+        "lines": "601-604",
+        "gate": "if _legacy_compat:",
+        "evidence": "get_file_hashes_by_context ONLY in compat mode; existing_by_context empty in v2-only -> every TU parses (Tier 3), unchanged path never reached -> _handle_unchanged never called with None conn"
+      },
+      "v2_finalize_authority": {
+        "lines": "945-991",
+        "evidence": "v2 finalize_world called when world_ctx is not None; when _v2_write_authority_on() (default True), failed finalize raises IndexIntegrityError -- v2 is authoritative success criterion (M4 CASE C/D)"
+      }
+    },
+    "unit_processor_legacy_gating": {
+      "file": "src/fw_context_mcp/indexer/_unit_processor.py",
+      "early_return_v2only": {
+        "line": 554,
+        "gate": "if not _legacy_compat_on():",
+        "evidence": "returns ('updated', 0, 0, ...) BEFORE any legacy DB open/write -- v2 certify_and_publish_for_unit (lines 536-546) is the sole semantic write path in v2-only mode"
+      },
+      "legacy_db_open": {
+        "line": 569,
+        "gate": "only reached when _legacy_compat_on() is True (past line 554 early return)",
+        "evidence": "conn = open_db(db_path) inside the legacy-compat branch"
+      }
+    },
+    "v2_read_authority": {
+      "file": "src/fw_context_mcp/mcp/shared/authority.py",
+      "v2_read_authority_enabled": {
+        "lines": "78-83",
+        "default": true,
+        "evidence": "env FW_CONTEXT_V2_READ_AUTHORITY unset -> returns True (M3 DEFAULT: v2 authority enabled); runtime confirmation: v2_read_authority_enabled()=True"
+      },
+      "authority_mode": {
+        "lines": "86-102",
+        "default": "v2_only",
+        "evidence": "v2_read_authority_enabled() True + _legacy_compat_on() False -> 'v2_only'; runtime confirmation: authority_mode()=v2_only"
+      },
+      "legacy_fallback_gate": {
+        "lines": "197-230",
+        "evidence": "_can_safely_fallback requires pinned_view + legacy_config_hash + project_root + equivalence verified; legacy_config_hash only read when _legacy_compat_on() (lines 347-368) -> stays None in v2-only -> _can_safely_fallback returns False -> legacy_fn NEVER called in default v2-only mode"
+      },
+      "mcp_tool_routing": {
+        "file": "src/fw_context_mcp/mcp/server.py",
+        "lines": "1218-1327",
+        "evidence": "31 MCP tools wrapped with v2_authority_route (lookup_symbol, search_code, search_bodies, search_content, semantic_search, smart_search, find_callers, find_call_path, find_callees_recursive, find_all_callers_recursive, find_dead_code, find_hotspots, find_indirect_call_sites, find_indirect_targets, find_references, find_wrapper_callers, trace_data_flow, explain_symbol, get_file_map, get_source, get_symbol_context, read_file, get_class_members, get_inheritance_chain, get_method_overrides, get_template_instances, find_variables, explain_condition, list_conditional_regions) -- v2 first, legacy only via equivalence-gated fallback"
+      }
+    },
+    "gc_reachability": {
+      "file": "src/fw_context_mcp/store_v2/gc.py",
+      "three_phases": {
+        "lines": "analyze_gc(128), apply_gc(243), verify_gc(330)",
+        "evidence": "S11 staged interface: ANALYZE (dry-run, no mutation), APPLY (transactional deletion), VERIFY (integrity checks)"
+      },
+      "root_model": {
+        "line": 115,
+        "evidence": "GC_ROOT_STATUSES = frozenset({'active', 'retained'}) -- current completed + explicitly retained Worlds are roots"
+      },
+      "eligible_statuses": {
+        "line": 125,
+        "evidence": "GC_ELIGIBLE_STATUSES = frozenset({'failed', 'superseded', 'retired'}) -- failed/abandoned/superseded Worlds are candidates"
+      },
+      "pin_protection": {
+        "lines": "166-168",
+        "evidence": "if wid in pinned: protected[wid] = pinned; pinned_world_ids parameter protects pinned Worlds"
+      },
+      "building_protection": {
+        "lines": "169-171",
+        "evidence": "if wid in building: protected[wid] = building; active_build_world_ids protects in-progress Worlds"
+      },
+      "shared_state_gc": {
+        "lines": "188-220",
+        "evidence": "SemanticState eligible ONLY if NO protected World references it via tu_bindings (S10: shared state survives until ALL referencing Worlds unreachable); apply_gc double-checks refcount==0 before state deletion (lines 303-312)"
+      },
+      "crash_safety": {
+        "lines": "272-327",
+        "evidence": "BEGIN IMMEDIATE single transaction; except BaseException: rollback + raise; idempotent (re-running with same analysis is safe)"
+      },
+      "verify_integrity": {
+        "lines": "330-373",
+        "evidence": "checks orphaned_bindings (world_id not in snapshot_builds), orphaned_states (advisory), PRAGMA foreign_key_check; integrity_ok = orphaned_bindings==0 and dangling_fks==0"
+      },
+      "lifecycle_helpers": {
+        "lines": "378-460",
+        "evidence": "mark_world_failed (->failed, GC-eligible), mark_world_retained (->retained, GC root), mark_world_retired (->retired, GC-eligible)"
+      }
+    },
+    "world_lifecycle_states": {
+      "file": "src/fw_context_mcp/store_v2/worlds.py",
+      "unfinalized": {
+        "line": 291,
+        "evidence": "INSERT OR IGNORE INTO snapshot_builds(...) VALUES(...,'unfinalized',...) -- new Worlds start 'unfinalized' (not query-visible until finalized)"
+      },
+      "active": {
+        "line": 714,
+        "evidence": "UPDATE snapshot_builds SET world_status='active' WHERE world_id=? AND world_status IN ('unfinalized','failed') -- finalize_world promotes to 'active' after verifying all TUs bound/poisoned + provenance exists (lines 696-716)"
+      },
+      "missing_or_failed_finalize": {
+        "lines": "684-712",
+        "evidence": "finalize_world returns FinalizeResult(ok=False, world_status='unfinalized'|'missing') when world row missing or TUs missing or provenance absent -- incomplete Worlds STAY unfinalized (not queryable)"
+      },
+      "all_states_present": "unfinalized (worlds.py:291), active (worlds.py:714), failed (gc.py:391), retained (gc.py:414), retired (gc.py:452), superseded (gc.py:125) -- all 6 S7 lifecycle states represented"
+    },
+    "admission_legacy_gate_safe_in_v2only": {
+      "file": "src/fw_context_mcp/store_v2/admission.py",
+      "legacy_gate": {
+        "lines": "256-270",
+        "evidence": "_legacy_gate reads existing_ctx (caller-loaded per-context dict). In v2-only mode existing_by_context is empty (runner.py:601-604 gates load behind _legacy_compat) -> existing_ctx is {} -> _legacy_gate returns 'legacy_gate:no-current-config-row' -> attempt_fast_reuse returns None (miss) for every TU. Fast-reuse is conservatively DISABLED in v2-only mode (no legacy cross-check available). This is SAFE (correct fail-closed), not a legacy dependency: the gate reads an empty in-memory dict, never the legacy DB; it fails closed rather than requiring legacy data. _handle_unchanged is never reached with conn=None (fast-reuse always misses + normal unchanged path never hit because existing_files empty -> Tier 3 parse -> 'updated')."
+      }
+    },
+    "daemon_optimize_db_safe": {
+      "file": "src/fw_context_mcp/mcp/daemon.py",
+      "lines": "796-816",
+      "evidence": "_optimize_db opens index.db ONLY if db_path.exists() (line 806); runs PRAGMA optimize (maintenance, not semantic). In v2-only default, index.db never created -> returns early. On upgrade projects with leftover legacy DB, this is maintenance on existing storage, not a normal-mode semantic dependency (S6/S41)."
+    },
+    "maintenance_handlers_not_normal_path": {
+      "file": "src/fw_context_mcp/mcp/handlers/maintenance.py",
+      "evidence": "open_db at lines 1315/1468/1619 are in reset_index/reindex_file/delete_orphan_files -- operator-invoked maintenance tools (reset_index deletes legacy DB to clean up; checks db_path.exists() first at line 1307). NOT normal semantic query/index paths."
+    },
+    "handler_legacy_fns_are_gated_fallbacks": {
+      "evidence": "open_db / _db_path calls in mcp/handlers/{search,_lookup,callgraph,inheritance,source,variants}.py are the legacy_fn passed to v2_authority_route -- only invoked when v2_read_authority_enabled() is False OR v2 fails AND _can_safely_fallback() returns True (requires legacy_config_hash, which is None in v2-only mode). Dead code in default v2-only path."
+    }
+  },
+  "attack_plan_results": [
+    {
+      "attack": "Remove legacy DB / make legacy DB path unwritable",
+      "result": "PASS -- C32 runtime test: runner.run() completed in default v2-only mode with NO legacy DB present. Legacy compat audit confirms 'legacy DB does not exist (pure v2)'. runner.py:510 open_db gated behind _legacy_compat (False by default) -> legacy DB never opened in normal mode."
+    },
+    {
+      "attack": "Force legacy helper failure",
+      "result": "PASS -- In v2-only mode the legacy helper is never invoked (runner.py:554 early return; authority.py:347-368 legacy_config_hash stays None). v2 certify_and_publish_for_unit (sole semantic write path) + finalize_world (authoritative success) operate independently of legacy. M4 fault tests confirm V2_FAILURE_LEGACY_SUCCESS and V2_SUCCESS_LEGACY_FAILURE both PASS."
+    },
+    {
+      "attack": "Inspect whether normal indexing creates legacy storage",
+      "result": "PASS -- C31 runtime test: _legacy_compat_on() returns False in default mode -> v2-only. runner.py:554 early-returns before open_db. audit_legacy_compat confirms 'legacy DB does not exist (pure v2)' on the live indexed project. No index.db created in default mode."
+    },
+    {
+      "attack": "Search for runtime legacy semantic calls",
+      "result": "PASS -- grep for open_db/upsert_build_config/upsert_build_context/upsert_project in src/fw_context_mcp: all matches in runner.py (gated behind _legacy_compat), _unit_processor.py (gated behind _legacy_compat early-return), _postprocess.py (called from _run_postprocess which is gated), maintenance.py (operator tools, db_path.exists() guarded), CLI scripts (operator-invoked), daemon.py _optimize_db (db_path.exists() guarded, maintenance only). NO unguarded legacy semantic calls in the normal index/query path."
+    },
+    {
+      "attack": "Query all major normal semantic families",
+      "result": "PASS -- M3B scanner: 29 CORE semantic reads all v2-native (V2_NATIVE_READ=29), LEGACY_EXEC=0, UNSAFE_FALLBACK=0. 31 MCP tools wrapped with v2_authority_route (server.py:1218-1327) -- v2 first, legacy only via equivalence-gated fallback (which is unavailable in v2-only mode)."
+    },
+    {
+      "attack": "Restart, reindex, historical World query",
+      "result": "PASS -- C36 GC_RESTART_INTEGRITY: after restart integrity OK, active World preserved. M4 fault tests: RESTART_IDEMPOTENCE=PASS, RETRY_IDEMPOTENCE=PASS, READ_AFTER_FINALIZE=PASS. finalize_world is idempotent (INSERT OR IGNORE + UPDATE)."
+    },
+    {
+      "attack": "Pin old World and GC",
+      "result": "PASS -- S6 self-test: pinned W1 survives GC. gc.py:166-168 pin protection: if wid in pinned: protected. C34/C35 runtime: analyze_gc eligible=[1] protected=[2]; apply_gc deleted 1 World, pinned World preserved."
+    },
+    {
+      "attack": "Shared-state two-World GC",
+      "result": "PASS -- S5 self-test: W1 deleted, shared state survives (W2 references it). gc.py:188-220 state eligible ONLY if no protected World references it via tu_bindings; apply_gc double-checks refcount==0 (lines 303-312). C35 runtime: apply_gc deleted 1 World, 0 States (shared state preserved)."
+    },
+    {
+      "attack": "Interrupted GC",
+      "result": "PASS -- gc.py:272-327 APPLY is single BEGIN IMMEDIATE transaction; except BaseException: rollback + raise. C36 GC_RESTART_INTEGRITY: after restart integrity OK, orphaned_bindings=0. Idempotent: re-running analyze_gc after crash produces same candidate set minus already-committed deletions."
+    },
+    {
+      "attack": "Clean-project bootstrap",
+      "result": "PASS -- C31 CLEAN_PROJECT_V2_ONLY: _legacy_compat_on() returns False -> v2-only. C32 LEGACY_UNAVAILABLE_NORMAL_MODE: runner.run() completed in default v2-only mode. audit_legacy_compat: pure v2 (no legacy DB)."
+    },
+    {
+      "attack": "Upgrade from pre-M5 storage",
+      "result": "PASS -- C33 UPGRADE_EXISTING_PROJECT: FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path -> existing projects can be upgraded to v2. Compat island is default-OFF, explicitly selected, isolated (S5)."
+    },
+    {
+      "attack": "Verify M3B and M4 invariants",
+      "result": "PASS -- M3B scanner: CORE=29 V2_NATIVE_READ=29 LEGACY_EXEC=0 numeric_gate=PASS. M4 scanner: V2_PRIMARY=4 LEGACY_PRIMARY=0 V2_FINALIZATION_IS_AUTHORITY=True all 7 fault tests PASS machine_gate=PASS. Gate C20 (M3B_REGRESSION)=PASS, C21 (M4_REGRESSION)=PASS."
+    },
+    {
+      "attack": "Disprove: fast-reuse _handle_unchanged called with None conn in v2-only mode",
+      "result": "DISPROOF FAILED (code is correct) -- admission.py _legacy_gate (lines 256-270) reads existing_ctx which is empty in v2-only mode (runner.py:601-604 gates the legacy load) -> gate returns 'legacy_gate:no-current-config-row' -> attempt_fast_reuse returns None (miss) for every TU -> fast-reuse path never hits -> _handle_unchanged never called via fast-reuse. Normal unchanged path also never reached (existing_files empty -> Tier 1/2 skip -> Tier 3 parse -> 'updated'). No None-conn crash possible. Fast-reuse is conservatively disabled in v2-only mode (no legacy cross-check) -- safe, not a legacy dependency."
+    }
+  ],
+  "discrepancies_found": [],
+  "verdict_reasoning": "Independent disproof attempt at HEAD 143642b FAILED to find any M5 violation. All 13 attack-plan items PASS (12 PASS + 1 disproof that confirmed code correctness). Code reconstruction confirms: (1) v2_write_authority=True, legacy_compatibility_mode=False by default (settings.py:517-518); (2) _legacy_compat_on() defaults False (_unit_processor.py:148-167); (3) legacy index.db opened ONLY in compat mode (runner.py:509-510, _unit_processor.py:554 early-return); (4) v2 finalize_world is the authoritative success criterion (runner.py:945-991, raises IndexIntegrityError on failure when v2_write_authority=True); (5) GC is reachability-based with analyze/apply/verify phases, protects pinned/current/building Worlds, shared-state survives until all referencing Worlds unreachable, crash-safe single transaction (gc.py); (6) all 6 S7 lifecycle states present (worlds.py + gc.py); (7) v2 read authority default-on (authority.py:78-83), 31 MCP tools route v2-first with equivalence-gated legacy fallback that is unavailable in v2-only mode (legacy_config_hash stays None). Scanner PASS (all 10 normal-mode legacy counters=0). Gate C1-C36 PASS (all semantic/operational clauses + 8 self-tests + 7 runtime tests). M3B regression PASS (29 v2-native reads, 0 legacy exec). M4 regression PASS (v2 finalization is authority, all 7 fault tests pass). The only gate failures (C37/C38) are the fresh-verifier/fresh-guardian-G6-on-current-HEAD requirements -- C37 is satisfied by THIS artifact; C38 requires a separate fresh Guardian G6 artifact (outside Verifier scope). HEAD 143642b is dirty but the dirty changes are confined to .dsh-control/ evidence/state files and untracked M7.0A/M7.0B evidence -- ZERO src/ changes (git diff a1b462b..143642b -- src/ = 0 files). The M5 milestone (V2 lifecycle + legacy retirement) is operationally complete at HEAD 143642b pending a fresh Guardian G6 acceptance.",
+  "original_review_head": "143642b"
+}
