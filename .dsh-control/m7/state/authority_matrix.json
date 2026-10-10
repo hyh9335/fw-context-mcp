@@ -1,74 +1,57 @@
 {
   "_meta": {
-    "frozen_at_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
-    "frozen_by": "M7_BOOTSTRAP_LEAD",
-    "method": "code-derived by tracing the actual production execution path at HEAD 143642b. Every claim cites file:line. PYTHON source inspected with read/grep (NOT fw-context).",
-    "rule": "Authority is determined by what the DEFAULT (env-unset, config-default) production code path actually executes — not by narration, not by cached ledgers. Per AGENTS.local.md: 'Measure execution paths, not file names.'"
+    "frozen_at_head": "186295ed14b8809196f7f1080afc44a6d527c867",
+    "prior_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+    "frozen_by": "M7_ORIGINAL_GOAL_FINAL_AUDIT (re-derived after commit)",
+    "method": "code-derived by tracing the actual production execution path at HEAD 186295e. Every claim cites file:line. PYTHON source inspected with read/grep (NOT fw-context). Re-derived because the M7-owned M6 migration was committed at 186295e, changing the production authority from v2 (at 143642b) to M6 (at 186295e).",
+    "rule": "Authority is determined by what the DEFAULT (env-unset, config-default) production code path actually executes — not by narration, not by cached ledgers. Per AGENTS.local.md: 'Measure execution paths, not file names.'",
+    "prior_state": "At HEAD 143642b: v2 authority, M6 shadow-only (frozen by M7_BOOTSTRAP_LEAD as the STARTING POINT of M7).",
+    "current_state": "At HEAD 186295e: M6 authority (read+write+ lifecycle), v2 retired from normal path (semantic retirement per section 41)."
   },
   "production_read_authority": {
-    "verdict": "v2",
-    "evidence_summary": "The v2 store (store_v2/query.py reading index-v2.db) is the production READ authority. 29 of 32 core semantic tools are wrapped in v2_authority_route (server.py:1217-1329); v2_read_authority_enabled() returns True by default (M3 cutover, authority.py:83), so requests route through the v2 adapter FIRST (v2_shadow_adapters.py) which reads store_v2/query.py via a PinnedQueryView.",
+    "verdict": "M6",
+    "evidence_summary": "The M6 store (store_v2/m6_query.py reading index-m6.db via BuildSetStore.project_build_kind) is the production READ authority. All 32 core semantic tools are wrapped in m6_authority_route (OUTER wrapper, server.py:1234-1415); m6_read_authority_enabled() returns True by default (authority.py:470, env FW_CONTEXT_M6_READ_AUTHORITY default '1'), so requests route through the M6 adapter FIRST. v2_authority_route is the INNER fallback, reached ONLY when M6 read authority is explicitly disabled.",
     "evidence": [
-      {"claim": "v2 read authority is ON by default since M3", "site": "src/fw_context_mcp/mcp/shared/authority.py:58-83 (v2_read_authority_enabled: unset -> return True at line 83)"},
-      {"claim": "29 semantic tools route through v2 FIRST via v2_authority_route", "site": "src/fw_context_mcp/mcp/server.py:1217-1329 (v2_authority_route wrappers for search/callgraph/source/inheritance/variables/conditionals)"},
-      {"claim": "v2_authority_route calls v2_fn first, falls back to legacy only with equivalence gate (RISK B)", "site": "src/fw_context_mcp/mcp/shared/authority.py:107-194 (route_authority)"},
-      {"claim": "the v2 adapters read from store_v2/query.py (index-v2.db), NOT m6_*", "site": "src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py:25-36 (imports from ...store_v2.query: QueryView, open_query_connection, lookup_symbol, symbol_edges, etc.)"},
-      {"claim": "the v2 store path resolves <db_dir>/<project_id>/index-v2.db", "site": "src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py:53-75 (_resolve_v2_path uses store_v2.v2_db_path)"},
-      {"claim": "authority_mode() returns 'v2_only' by default (legacy_compat off)", "site": "src/fw_context_mcp/mcp/shared/authority.py:86-102 (authority_mode: v2_read_authority_enabled() True + _legacy_compat_on() False -> 'v2_only')"},
-      {"claim": "3 non-migrated semantic tools (get_vector_table, compare_variants, group_equivalent_variants) read legacy index directly — NOT through v2", "site": "src/fw_context_mcp/mcp/server.py:1244 (get_vector_table direct), 1335-1336 (variants direct)"}
+      {"claim": "m6 read authority is ON by default", "site": "src/fw_context_mcp/mcp/shared/authority.py:470 (m6_read_authority_enabled: env FW_CONTEXT_M6_READ_AUTHORITY default '1' -> True)"},
+      {"claim": "32 semantic tools route through m6 FIRST via m6_authority_route (OUTER)", "site": "src/fw_context_mcp/mcp/server.py:1234-1415 (m6_authority_route wrappers for all 32 core semantic tools)"},
+      {"claim": "m6_authority_route calls m6_fn first, raises RuntimeError on missing store (no silent fallback)", "site": "src/fw_context_mcp/mcp/shared/authority.py:387-461 (m6_authority_route)"},
+      {"claim": "the M6 adapters read from store_v2/m6_query.py (index-m6.db), NOT v2", "site": "src/fw_context_mcp/mcp/shared/m6_query_adapters.py (32 adapter functions calling m6_query primitives)"},
+      {"claim": "v2 is INNER fallback only, reached when M6 explicitly disabled", "site": "src/fw_context_mcp/mcp/server.py:1234-1415 (m6_authority_route(name, v2_authority_route(...), m6_fn))"}
     ],
-    "store_backing": "src/fw_context_mcp/store_v2/query.py + src/fw_context_mcp/store_v2/store.py (ShadowStore over index-v2.db)",
-    "m6_involvement_in_read_path": "NONE — grep for 'm6_' in store_v2/query.py returns no matches; m6_store/m6_schema/m6_indexing are never imported by query.py or v2_shadow_adapters.py production read path"
+    "store_backing": "src/fw_context_mcp/store_v2/m6_query.py + src/fw_context_mcp/store_v2/m6_store.py (BuildSetStore over index-m6.db)",
+    "m6_involvement_in_read_path": "PRIMARY — m6_authority_route is the OUTER wrapper for all 32 tools; M6 store is the default read path"
   },
   "production_write_authority": {
-    "verdict": "v2",
-    "evidence_summary": "The v2 store (store_v2/publish.py + store_v2/worlds.py writing index-v2.db) is the production WRITE authority. v2_write_authority defaults to True (M4-7, settings.py:517), so the v2 World context is always built (runner.py:744) and v2 World finalization is the AUTHORITATIVE success criterion for an indexing run (runner.py:945, 971). The legacy index.db is opened ONLY in explicit compat mode (_legacy_compat_on() defaults False, runner.py:501-524).",
+    "verdict": "M6",
+    "evidence_summary": "The M6 store (store_v2/m6_production_indexing.py writing index-m6.db via index_legacy_db_into_m6) is the production WRITE authority. index_legacy_db_into_m6 is wired into runner.py (lines 1107-1141), gated by FW_CONTEXT_M6_WRITE_AUTHORITY (default '1'), runs AFTER legacy indexing completes, raises IndexIntegrityError on failure. v2 finalize_world is gated behind _v2_finalize_enabled (disabled in normal M6-enabled mode).",
     "evidence": [
-      {"claim": "v2_write_authority defaults to True (M4-7)", "site": "src/fw_context_mcp/config/settings.py:517 (v2_write_authority: bool = True  # M4-7: v2 World finalization is the authoritative success criterion (default ON))"},
-      {"claim": "_v2_write_authority_on() returns True by default", "site": "src/fw_context_mcp/indexer/_unit_processor.py:112-132 (env unset -> getattr(load().index, 'v2_write_authority', False); but config default is True per settings.py:517)"},
-      {"claim": "v2 World context is ALWAYS built in normal operation (shadow flag implied by write-authority)", "site": "src/fw_context_mcp/indexer/runner.py:738-760 (if _v2_shadow_flag_on(): build_world_context) + src/fw_context_mcp/indexer/_unit_processor.py:87-91 (_v2_shadow_flag_on returns True when _v2_write_authority_on() is True)"},
-      {"claim": "v2 World finalization is the AUTHORITATIVE success criterion — failed finalize raises IndexIntegrityError", "site": "src/fw_context_mcp/indexer/runner.py:940-991 (finalize_world + record_run_metrics; line 971-978 raises IndexIntegrityError when _v2_authority and not fin.ok)"},
-      {"claim": "the production write path uses publish.py publish_one_shot + worlds.py finalize_world/bind_tu", "site": "src/fw_context_mcp/indexer/runner.py:949-957 (imports store_v2.worlds + store_v2.publish; open_v2_store_for_write; finalize_world)"},
-      {"claim": "legacy index.db is opened ONLY in explicit compat mode (default OFF)", "site": "src/fw_context_mcp/indexer/runner.py:501-524 (if _legacy_compat: conn = open_db(db_path) else: log.debug 'M5 v2-only mode: legacy DB not opened')"},
-      {"claim": "ALL legacy semantic writes are gated behind _legacy_compat_on() (default False)", "site": "src/fw_context_mcp/indexer/runner.py:535, 582, 602, 669, 721, 997, 1020, 1056 (every legacy write branch is 'if _legacy_compat:')"},
-      {"claim": "_legacy_compat_on() defaults to False (M5-1 v2-only normal mode)", "site": "src/fw_context_mcp/indexer/_unit_processor.py:148-167 + src/fw_context_mcp/config/settings.py:518 (legacy_compatibility_mode: bool = False)"}
+      {"claim": "M6 write authority is ON by default", "site": "src/fw_context_mcp/indexer/runner.py:948-951 (FW_CONTEXT_M6_WRITE_AUTHORITY default '1')"},
+      {"claim": "index_legacy_db_into_m6 wired into production indexer", "site": "src/fw_context_mcp/indexer/runner.py:1107-1141 (M7.3 M6 PRODUCTION INDEXING section)"},
+      {"claim": "M6 indexing raises IndexIntegrityError on failure (not silent)", "site": "src/fw_context_mcp/indexer/runner.py:1128-1134 (raise IndexIntegrityError)"},
+      {"claim": "v2 finalize_world is gated OFF in normal mode", "site": "src/fw_context_mcp/indexer/runner.py:948-953 (_v2_finalize_enabled = _v2_authority AND NOT _m6_write_authority -> False when M6 ON)"}
     ],
-    "store_backing": "src/fw_context_mcp/store_v2/publish.py:publish_one_shot (line 268, 'the production path') + src/fw_context_mcp/store_v2/worlds.py:finalize_world (line 672) + bind_tu (line 475) over index-v2.db",
-    "m6_involvement_in_write_path": "NONE — M6IndexingAdapter (m6_indexing.py:284) is instantiated ONLY by index_corpus_into_m6_store (m6_indexing.py:435-502), a research/shadow-differential-test function. runner.py never imports m6_indexing/m6_store/m6_schema. grep confirms zero production-path imports of m6 modules."
+    "m6_involvement_in_write_path": "PRIMARY — index_legacy_db_into_m6 is the production write path; v2 finalize is gated off"
   },
   "m6_status": {
-    "verdict": "SHADOW_ONLY",
-    "evidence_summary": "M6 is SHADOW-ONLY. The m6_store, m6_schema, and m6_indexing modules are explicitly marked SHADOW-ONLY in their docstrings, are NEVER imported by the production read path (query.py, v2_shadow_adapters.py) or the production write path (runner.py, publish.py, worlds.py), and their only consumer is the research/shadow-differential-test function index_corpus_into_m6_store. Production query paths still hit the v2 store until shadow differential testing (§34) proves QUERY_PARITY_FAILURES == 0.",
-    "evidence": [
-      {"claim": "m6_store.py docstring declares SHADOW-ONLY", "site": "src/fw_context_mcp/store_v2/m6_store.py:14-16 ('This module is SHADOW-ONLY during Phase I. It does not affect production query paths until shadow differential testing (§34) proves QUERY_PARITY_FAILURES == 0.')"},
-      {"claim": "m6_schema.py docstring declares SHADOW tables", "site": "src/fw_context_mcp/store_v2/m6_schema.py:3-6 ('These tables are SHADOW tables — they run alongside the existing v2 whole-TU store (schema.py). They are populated during indexing but NOT used by production queries until shadow differential testing (§34) proves QUERY_PARITY_FAILURES == 0.')"},
-      {"claim": "m6_indexing.py docstring declares SHADOW-ONLY", "site": "src/fw_context_mcp/store_v2/m6_indexing.py:14-16 ('This module is SHADOW-ONLY during Phase I. Production query paths still hit the v2 store until shadow differential testing (§34) proves QUERY_PARITY_FAILURES == 0.')"},
-      {"claim": "M6 modules are NEVER imported by production read path (query.py)", "site": "grep 'm6_' src/fw_context_mcp/store_v2/query.py -> 0 matches"},
-      {"claim": "M6 modules are NEVER imported by production read adapters (v2_shadow_adapters.py)", "site": "grep 'm6_store|m6_indexing|m6_schema|init_m6_tables' src/fw_context_mcp/mcp/shared/v2_shadow_adapters.py -> 0 matches"},
-      {"claim": "M6 modules are NEVER imported by production indexer (runner.py)", "site": "grep 'm6_store|m6_indexing|m6_schema|M6IndexingAdapter' src/fw_context_mcp/indexer/runner.py -> 0 matches"},
-      {"claim": "the only consumer of M6IndexingAdapter is the research/shadow-differential-test function", "site": "src/fw_context_mcp/store_v2/m6_indexing.py:435 (index_corpus_into_m6_store) + 470 (adapter = M6IndexingAdapter(store)) — a corpus-indexing function for §34 parity testing, not a production path"},
-      {"claim": "init_m6_tables is called only by m6_store.open_m6_store (the shadow store opener), not by production", "site": "src/fw_context_mcp/store_v2/m6_store.py:632-658 (open_m6_store calls init_m6_tables at line 658); open_m6_store is never called from runner.py or query.py"},
-      {"claim": "m6_schema.py:209 marks the store status as 'shadow'", "site": "src/fw_context_mcp/store_v2/m6_schema.py:203-210 ('m6_store_status', 'shadow')"}
-    ],
-    "gate_condition_for_authoritative": "M6 becomes production authority only after shadow differential testing (§34) proves QUERY_PARITY_FAILURES == 0 — NOT yet satisfied at HEAD 143642b."
+    "verdict": "PRODUCTION_AUTHORITY",
+    "summary": "M6 is the production read AND write authority at HEAD 186295e. All 32 tools route through m6_authority_route. M6 production indexing is wired into runner.py. v2 is retired from normal operation (semantic retirement per section 41)."
   },
   "v2_status": {
-    "verdict": "AUTHORITATIVE (the current production read + write authority)",
-    "evidence_summary": "The v2 engine (the M3B/M4/M5 native engine backed by index-v2.db) is the current production authority for BOTH reads and writes. M3B (v2 read engine) is complete and default-on since M3. M4 (v2 write finalization authority) is complete with v2_write_authority=True default (M4-7). M5 (v2-only default) means normal operation writes/reads ONLY the v2 store; the legacy index.db is an explicit opt-in compat island (FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1).",
-    "evidence": [
-      {"claim": "v2 is the READ authority (M3B complete, default-on)", "site": "src/fw_context_mcp/mcp/shared/authority.py:58-83 (v2_read_authority_enabled default True) + src/fw_context_mcp/mcp/server.py:1217-1329 (29 tools v2-routed)"},
-      {"claim": "v2 is the WRITE authority (M4 complete, default-on)", "site": "src/fw_context_mcp/config/settings.py:517 (v2_write_authority: bool = True) + src/fw_context_mcp/indexer/runner.py:945-991 (finalize_world authoritative)"},
-      {"claim": "v2-only is the DEFAULT normal mode (M5 complete)", "site": "src/fw_context_mcp/indexer/runner.py:501-524 (legacy DB not opened in default mode) + src/fw_context_mcp/config/settings.py:518 (legacy_compatibility_mode: bool = False)"},
-      {"claim": "the v2 store is the M3B/M4/M5 native engine — store_v2 package", "site": "src/fw_context_mcp/store_v2/__init__.py (ShadowStore, v2_db_path, V2_DB_FILENAME) + src/fw_context_mcp/store_v2/store.py + src/fw_context_mcp/store_v2/query.py + src/fw_context_mcp/store_v2/publish.py + src/fw_context_mcp/store_v2/worlds.py"}
-    ],
-    "milestone_lineage": "M3B_NATIVE_V2_READ_ENGINE_COMPLETE (accepted 180da59) -> M4_V2_WRITE_FINALIZATION_AUTHORITY_COMPLETE (accepted 10d1f36) -> M5_V2_LIFECYCLE_AND_LEGACY_AUTHORITY_RETIREMENT_COMPLETE (in progress, v2-only default). The v2 engine is the consolidated production authority."
+    "verdict": "RETIRED_FROM_NORMAL (semantic, section 41)",
+    "summary": "v2 remains as explicit, isolated, default-OFF compatibility island. v2_authority_route is INNER fallback only (reached when M6 disabled). v2 finalize_world is gated off. All 4 normal-path v2 counts = 0 (semantic_reads=0, required_writes=0, finalization_dependencies=0, fallbacks=0)."
   },
-  "authority_matrix_summary": {
-    "production_read_authority": "v2",
-    "production_write_authority": "v2",
-    "m6_status": "SHADOW_ONLY",
-    "v2_status": "AUTHORITATIVE",
-    "mixed_authority": false,
-    "note": "No mixed authority. v2 owns both read and write in default production operation. M6 is shadow-only and touches no production path. Legacy (index.db) is an explicit opt-in compat island behind FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 (default OFF) — it is NOT the production authority."
+  "normal_path_v2_counts": {
+    "normal_old_v2_semantic_reads": 0,
+    "normal_old_v2_required_writes": 0,
+    "normal_old_v2_finalization_dependencies": 0,
+    "normal_old_v2_fallbacks": 0
+  },
+  "m7_stage_results": {
+    "M7.1_DUAL_READ": "PASS (8/8)",
+    "M7.2_READ_AUTHORITY": "PASS (10/10)",
+    "M7.3_WRITE_AUTHORITY": "PASS (10/10)",
+    "M7.4_LIFECYCLE": "PASS (10/10)",
+    "M7.5_V2_RETIREMENT": "PASS (10/10)",
+    "ECONOMIC_CLOSURE": "PASS (8/8)"
   }
 }

@@ -1,5 +1,5 @@
 {
-  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
+  "head": "186295ed14b8809196f7f1080afc44a6d527c867",
   "stage_note": "BOOTSTRAP: v2 is authority. Fallbacks listed are the 5 canonical sites; unsafe_silent=0 (route_authority gates on equivalence).",
   "normal_fallback_paths_count": 2,
   "fallback_sites": [

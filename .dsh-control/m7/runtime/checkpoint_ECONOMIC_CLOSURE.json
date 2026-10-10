@@ -1,0 +1,19 @@
+{
+  "stage": "ECONOMIC_CLOSURE",
+  "verdict": "PASS (8/8)",
+  "head": "186295ed14b8809196f7f1080afc44a6d527c867",
+  "timestamp": "2026-10-10T10:20:00Z",
+  "gate_file": ".dsh-control/m7/gates/run_m7_economic_gate.py",
+  "gate_result": ".dsh-control/m7/gates/m7_economic_gate_result.json",
+  "evidence": {
+    "verifier": ".dsh-control/evidence/m7_economic_verifier_20261010_143642b.json",
+    "guardian": ".dsh-control/evidence/m7_economic_guardian_20261010_143642b.json"
+  },
+  "metrics": {
+    "freertos_canary_facts": 5736,
+    "fact_kinds": 11,
+    "frontend_share": 0.694,
+    "frontend_threshold": 0.70,
+    "storage_dedup_at_16_builds": 0.906
+  }
+}

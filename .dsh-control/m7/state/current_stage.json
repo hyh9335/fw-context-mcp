@@ -4,17 +4,17 @@
         "head_at_init": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
         "init_timestamp_utc": "2026-10-09T12:00:00Z"
     },
-    "stage": "ECONOMIC_CLOSURE",
-    "stage_status": "IN_PROGRESS",
-    "prior_stage": "M7.5_V2_RETIREMENT",
-    "prior_stage_verdict": "PASS (10/10)",
-    "current_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
-    "last_accepted_head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
-    "attempt_count": 1,
+    "stage": "COMPLETE",
+    "stage_status": "M7_PROGRAM_COMPLETE",
+    "prior_stage": "ORIGINAL_GOAL_FINAL_AUDIT",
+    "prior_stage_verdict": "PASS (committed at 186295e)",
+    "current_head": "186295ed14b8809196f7f1080afc44a6d527c867",
+    "last_accepted_head": "186295ed14b8809196f7f1080afc44a6d527c867",
+    "attempt_count": 2,
     "open_defects": 0,
-    "last_gate": "M7.5_V2_RETIREMENT_GATE",
+    "last_gate": "ORIGINAL_GOAL_FINAL_AUDIT_GATE",
     "last_gate_result": "PASS (10/10, exit 0)",
-    "next_action": "Economic Closure + Original Goal Final Audit: fresh reviewers running. Then COMPLETE.",
+    "next_action": "TERMINAL STATE — M7 program complete. M6 is production authority.",
     "prior_milestones_accepted": {
         "M3B": {"head": "180da59", "status": "ARCHIVED_COMPLETE"},
         "M4": {"head": "10d1f36", "status": "ARCHIVED_COMPLETE"},
@@ -55,7 +55,8 @@
         "M7.3_WRITE_AUTHORITY": "PASS (10/10)",
         "M7.4_LIFECYCLE": "PASS (10/10)",
         "M7.5_V2_RETIREMENT": "PASS (10/10)",
-        "ECONOMIC_CLOSURE": "IN_PROGRESS"
+        "ECONOMIC_CLOSURE": "PASS (8/8)",
+        "ORIGINAL_GOAL_FINAL_AUDIT": "PASS (10/10)"
     },
     "bootstrap_gate_results": {
         "M3B_scanner": "PASS (29/29/29/0/0/0)",
