@@ -1,0 +1,63 @@
+{
+  "verdict": "PASS",
+  "head": "bb2b8db",
+  "head_full": "bb2b8db75232a3d12fd7bafc1ff003dbf5b21010",
+  "timestamp": "2026-10-10T02:38:12Z",
+  "m6_code_committed": true,
+  "contract_layer_committed": true,
+  "contract_and_gates_agree": true,
+  "all_m7_stages_pass": true,
+  "no_fabrication": true,
+  "authority_priority_maintained": true,
+  "discrepancies": [],
+  "summary": "ORIGINAL GOAL FINAL AUDIT — PASS at HEAD bb2b8db (third attempt, fresh verifier). The original multi-version reuse goal is DURABLY achieved: (1) M6 code is committed at HEAD — server.py has 35 matches of m6_authority_route (>=32 required), runner.py contains index_legacy_db_into_m6 wired into the production indexer at lines 1107-1141 (gated by FW_CONTEXT_M6_WRITE_AUTHORITY default '1', raises IndexIntegrityError on failure), and store_v2/m6_production_indexing.py exists. (2) The contract layer is re-derived and committed at HEAD bb2b8db — commit bb2b8db ('M7: re-derive authority matrix at HEAD 186295e (contract+gates agreement)') is a pure contract/evidence re-derivation commit on top of 186295e (the M6 code commit); it changed ZERO production source files (0 files under src/). authority_matrix.json declares M6 as BOTH production read and write authority (frozen_at_head=186295e, which the task spec explicitly accepts, and which accurately describes the production code since bb2b8db touched no src/ files); production_authority_state.json shows m6_native_read_tools=32, old_v2_read_authority=0, head=186295e. (3) All six M7 stage gates PASS with exact required counts: M7.1 dual_read 8/8, M7.2 read_authority 10/10, M7.3 write_authority 10/10, M7.4 lifecycle 10/10, M7.5 retirement 10/10, M7 economic 8/8. (4) No fabrication: every cited code site was verified against committed code — m6_authority_route OUTER wrappers at server.py:1234-1415 (v2 is INNER fallback only), the M7.3 M6 PRODUCTION INDEXING block at runner.py:1107-1141, class BuildSetStore in m6_store.py, m6_query_adapters.py committed. The materialization proof is an EXACT match: index-m6.db size 4481024 bytes matches the gate's W3 claim precisely. Decisively, RE-RUNNING the M7.2 scanner (scan_production_authority.py) against HEAD bb2b8db reproduced M6_NATIVE_READ=32, OLD_V2_AUTHORITY=0, UNSAFE_FALLBACK=0, denominator_stable=True (exit 0) — identical to the committed gate result. (5) Authority priority §2 maintained: the master contract's §2 'Authority of truth (priority order, highest first)' is intact, and the contract (M6 authority) and the gates (M6 authority: m6_native_read=32, m6_entrypoints=8) AGREE. The original_goal_final_gate_result.json shows 9/10 with only F6_fresh_verifier PENDING — the clause this very verdict now resolves. Working-tree dirt is confined to .dsh-control/evidence/, .dsh-control/m6_research/ (research/prototypes/ground_truth/corpus), and one harness result; NONE of the production code files nor the committed contract layer are dirty, so authority determination is unaffected. The two prior failures are resolved: M6 code uncommitted at 143642b is now committed; contract layer reflecting v2 baseline at 186295e is now re-derived (M6) and committed at bb2b8db. The original multi-version reuse goal is durably achieved at HEAD bb2b8db.",
+  "verification_details": {
+    "head_verified": "bb2b8db75232a3d12fd7bafc1ff003dbf5b21010 (matches expected bb2b8db)",
+    "commit_lineage": "bb2b8db (parent=186295e) is a pure contract/evidence re-derivation commit; 186295e is the M6 code commit; 186295e is an ancestor of bb2b8db",
+    "m6_code_evidence": {
+      "server_py_m6_authority_route_matches": 35,
+      "runner_py_has_index_legacy_db_into_m6": true,
+      "m6_production_indexing_py_exists_at_HEAD": true,
+      "server_py_wrapper_pattern_verified": "m6_authority_route(name, v2_authority_route(...), m6_fn) — M6 is OUTER, v2 is INNER fallback (server.py:1234-1415)",
+      "runner_py_m6_indexing_block_verified": "runner.py:1107-1141 — FW_CONTEXT_M6_WRITE_AUTHORITY default '1', index_legacy_db_into_m6 wired in, raises IndexIntegrityError on failure",
+      "buildsetstore_class_in_m6_store_py": true,
+      "m6_query_adapters_py_committed": true
+    },
+    "contract_layer_evidence": {
+      "authority_matrix_json": {
+        "committed_at_HEAD": true,
+        "frozen_at_head": "186295ed14b8809196f7f1080afc44a6d527c867",
+        "production_read_authority_verdict": "M6",
+        "production_write_authority_verdict": "M6",
+        "m6_status": "PRODUCTION_AUTHORITY",
+        "v2_status": "RETIRED_FROM_NORMAL (semantic, section 41)",
+        "normal_path_v2_counts_all_zero": true
+      },
+      "production_authority_state_json": {
+        "committed_at_HEAD": true,
+        "head": "186295ed14b8809196f7f1080afc44a6d527c867",
+        "core_semantic_tools": 32,
+        "m6_native_read_tools": 32,
+        "old_v2_read_authority": 0,
+        "unsafe_or_silent_fallback": 0,
+        "denominator_stable": true
+      }
+    },
+    "m7_stage_gates": {
+      "m7_1_dual_read": {"passed": 8, "total": 8, "verdict": "PASS"},
+      "m7_2_read_authority": {"passed": 10, "total": 10, "verdict": "M7_2_READ_AUTHORITY_PASS", "key_clauses": "R1 m6_native_read=32, R2 old_v2_read=0, R3 unsafe_silent=0"},
+      "m7_3_write_authority": {"passed": 10, "total": 10, "verdict": "M7_3_WRITE_AUTHORITY_PASS", "key_clauses": "W1 m6_entrypoints=8, W2 m6_production_indexing integrated, W3 m6_db exists size=4481024 (EXACT match), W5 normal_v2_writes=0"},
+      "m7_4_lifecycle": {"passed": 10, "total": 10, "verdict": "PASS"},
+      "m7_5_retirement": {"passed": 10, "total": 10, "verdict": "PASS"},
+      "m7_economic": {"passed": 8, "total": 8, "verdict": "PASS"}
+    },
+    "original_goal_final_gate": {"passed": 9, "total": 10, "only_pending_clause": "F6_fresh_verifier (PENDING — resolved by this verdict)", "F8_no_fabrication": true, "F9_authority_priority": true},
+    "no_fabrication_proof": {
+      "cited_code_sites_verified_real": true,
+      "materialization_proof_exact_match": "index-m6.db size 4481024 bytes == gate W3 claim (exact)",
+      "scanner_rerun_at_HEAD_bb2b8db": "scan_production_authority.py reproduced M6_NATIVE_READ=32, OLD_V2_AUTHORITY=0, UNSAFE_FALLBACK=0, denominator_stable=True (exit 0) — identical to committed gate result"
+    },
+    "authority_priority_section_2": "§2 'Authority of truth (priority order, highest first)' present in IMMUTABLE_M7_MASTER_GOAL.md; contract (M6) and gates (M6) AGREE",
+    "working_tree_dirt_assessment": "Dirty files confined to .dsh-control/evidence/, .dsh-control/m6_research/ (research/prototypes/ground_truth/corpus), and dual_read_harness_result.json. NO production code (src/) and NO committed contract layer (m7/state/authority_matrix.json, m7/state/production_authority_state.json) are dirty. Authority determination unaffected."
+  }
+}
