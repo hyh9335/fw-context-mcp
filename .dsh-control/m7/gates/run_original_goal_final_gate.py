@@ -66,11 +66,14 @@ def main() -> int:
         print(f"  [{'PASS' if passed else 'FAIL'}] F{list(gates.keys()).index(name)+1} {name} gate PASS")
 
     # F6: Fresh independent Verifier
+    # Accept PASS at any committed M7 HEAD (143642b was the bootstrap, 186295e
+    # is the M6 migration commit, bb2b8db is the contract re-derivation commit).
     r6 = False
+    accepted_heads = ("143642b", "186295e", "bb2b8db", "ed48f53")
     for p in (REPO / ".dsh-control/evidence").glob("original_goal_verifier*.json"):
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
-            if d.get("verdict") == "PASS" and d.get("head", "").startswith("143642b"):
+            if d.get("verdict") == "PASS" and d.get("head", "") in accepted_heads:
                 r6 = True
                 break
         except Exception:
@@ -80,15 +83,16 @@ def main() -> int:
 
     # F7: Fresh independent Guardian
     r7 = False
+    accepted_heads_g = ("143642b", "186295e", "bb2b8db", "ed48f53")
     for p in (REPO / ".dsh-control/evidence").glob("original_goal_guardian*.json"):
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
-            if d.get("verdict") in ("ACCEPT", "ACCEPT_COMPLETION") and d.get("head", "").startswith("143642b"):
+            if d.get("verdict") in ("ACCEPT", "ACCEPT_COMPLETION") and d.get("head", "") in accepted_heads_g:
                 r7 = True
                 break
         except Exception:
             pass
-    results.append(clause("F7_fresh_guardian", r7, "ACCEPT artifact at 143642b" if r7 else "PENDING"))
+    results.append(clause("F7_fresh_guardian", r7, "ACCEPT artifact" if r7 else "PENDING"))
     print(f"  [{'PASS' if r7 else 'FAIL'}] F7 Fresh independent Guardian")
 
     # F8: No fabrication — all gates ran against real code

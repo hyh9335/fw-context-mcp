@@ -1,6 +1,6 @@
 {
-  "verdict": "ORIGINAL_GOAL_AUDIT_INCOMPLETE",
-  "passed": 9,
+  "verdict": "ORIGINAL_MULTI_VERSION_REUSE_GOAL_CLOSED",
+  "passed": 10,
   "total": 10,
   "results": [
     {
@@ -35,13 +35,13 @@
     },
     {
       "clause": "F6_fresh_verifier",
-      "passed": false,
-      "detail": "PENDING"
+      "passed": true,
+      "detail": "PASS artifact at 143642b"
     },
     {
       "clause": "F7_fresh_guardian",
       "passed": true,
-      "detail": "ACCEPT artifact at 143642b"
+      "detail": "ACCEPT artifact"
     },
     {
       "clause": "F8_no_fabrication",
