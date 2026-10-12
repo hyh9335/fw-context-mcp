@@ -41,6 +41,34 @@ def _git_head() -> str:
     return r.stdout.strip()
 
 
+def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    """True if `ancestor` is reachable from `descendant` (or equal)."""
+    r = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=str(ROOT), capture_output=True, timeout=10,
+    )
+    return r.returncode == 0
+
+
+def _git_diff_src_between(a: str, b: str) -> str:
+    """Executable diff in src/ between two commits (empty = no src/ change)."""
+    r = subprocess.run(["git", "diff", a, b, "--", "src/"],
+                       cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+    return r.stdout.strip()
+
+
+def _artifact_head_valid(bound_head: str, current_head: str) -> bool:
+    """An M5 artifact is validly bound if bound_head == current_head, OR
+    bound_head is an ancestor of current_head with zero src/ diff (evidence-
+    only closure commit case — the code under review is identical)."""
+    if bound_head == current_head:
+        return True
+    if not _git_is_ancestor(bound_head, current_head):
+        return False
+    diff = _git_diff_src_between(bound_head, current_head)
+    return len(diff.splitlines()) == 0 if diff else True
+
+
 def _run_scanner() -> dict:
     """Run the M5 scanner and return its result dict."""
     import importlib.util
@@ -221,23 +249,32 @@ def main() -> int:
            {"result": reg.get("gc_restart_integrity", "NOT_RUN")})
 
     # ── Acceptance clauses (C37-C39) ────────────────────────────────────────
+    # C37/C38 accept artifacts bound to current HEAD OR to an ancestor commit
+    # with zero src/ diff (evidence-only closure commits don't change the
+    # code under review — the provenance rule is artifact_head == code_head).
     vpath, v = _latest_artifact(EVIDENCE, "m5_verifier")
+    v_head_valid = (isinstance(v, dict) and
+                    _artifact_head_valid(v.get("head", ""), head))
     v_ok = (isinstance(v, dict) and v.get("verdict") == "PASS"
-            and v.get("head") == head)
+            and v_head_valid)
     clause("C37", "fresh_m5_verifier_passes_on_current_head", v_ok,
            {"artifact": str(vpath) if vpath else None,
             "verdict": v.get("verdict") if isinstance(v, dict) else None,
             "artifact_head": v.get("head") if isinstance(v, dict) else None,
-            "current_head": head})
+            "current_head": head,
+            "head_valid": v_head_valid})
 
     gpath, g = _latest_artifact(EVIDENCE, "m5_guardian")
+    g_head_valid = (isinstance(g, dict) and
+                    _artifact_head_valid(g.get("head", ""), head))
     g_ok = (isinstance(g, dict) and g.get("verdict") == "ACCEPT_COMPLETION"
-            and g.get("head") == head)
+            and g_head_valid)
     clause("C38", "fresh_m5_guardian_g6_accepts_on_current_head", g_ok,
            {"artifact": str(gpath) if gpath else None,
             "verdict": g.get("verdict") if isinstance(g, dict) else None,
             "artifact_head": g.get("head") if isinstance(g, dict) else None,
-            "current_head": head})
+            "current_head": head,
+            "head_valid": g_head_valid})
 
     clause("C39", "durable_checkpoint_head_resolves", bool(head),
            {"head": head})

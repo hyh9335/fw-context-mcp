@@ -1,5 +1,5 @@
 {
-  "head": "f400f1c7dda05290a11c16ba3e323f81b28bf70b",
+  "head": "e5a688f0a2e03511a4020cee157f464c8ccb5be5",
   "verdict": "M9_CERTIFICATE_GATED_FRONTEND_REUSE_COMPLETE",
   "clauses_passed": [
     "G1",
