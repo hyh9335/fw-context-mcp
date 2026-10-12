@@ -1,0 +1,395 @@
+{
+  "generated_at": "2026-10-12T08:30:00Z",
+  "current_head": "99d8932f95cd6dcc0835f02d92edbec9e97e1ad4",
+  "head_short": "99d8932",
+  "m9_executable_diff_digest": {
+    "certificate_py_sha256": "04D810CC3B522E4B7425AC54620285ED5BD6DEDCACE1245FD93D07E60E9D48F1",
+    "certificate_py_lines": 518,
+    "unit_processor_diff_sha256": "BF0C39CD4C6A651E139B27D15CFD5C1AD4D726A21FC5E0985585AE5B4BF9C67B"
+  },
+  "files": [
+    {
+      "path": "src/fw_context_mcp/indexer/certificate.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": true,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_PRODUCTION_CODE_NEW",
+      "description": "Certificate module: CertificateCache, compute_bucket_key, extract_closure_from_parsed, verify_closure_content, m9_reuse_enabled, two-level L3 cache"
+    },
+    {
+      "path": "src/fw_context_mcp/indexer/_unit_processor.py",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": true,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_PRODUCTION_CODE_MODIFIED",
+      "description": "Tier 2.5 intercept: pre-parse bucket-key consultation + post-parse closure caching, fully gated by m9_reuse_enabled()"
+    },
+    {
+      "path": "src/fw_context_mcp/indexer/workload_probe.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_SKELETON_NOT_WIRED",
+      "description": "Workload probe skeleton — NOT imported by certificate.py or _unit_processor.py. Drafted during M9 design but never wired into production. Contract does not require automatic probe (default-OFF opt-in is sufficient). ACTION: move to .dsh-control/m9_frontend_reuse/reference/ as design reference, remove from src/"
+    },
+    {
+      "path": ".dsh-control/gates/run_m9_final_gate.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_GATE_SCRIPT",
+      "description": "M9 final hard gate (11 clauses G1-G11). Required for reproducibility — the acceptance verdict depends on this gate exiting 0."
+    },
+    {
+      "path": ".dsh-control/gates/run_m6_5_validation_gate.py",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_GATE_MODIFICATION",
+      "description": "C1/C4/C5 refined to measure execution paths (AGENTS.local.md principle) instead of file names. Needed for M6.5 gate to pass, which M9 gate G1 requires. Decision logged in DECISION_LOG.md."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/tests/test_red_safety_gate.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_PERMANENT_REGRESSION_TEST",
+      "description": "22 tests: 16 adversarial attacks + 1 positive control + 5 mutation tests. Permanent regression suite."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/contracts/IMMUTABLE_M9_GOAL.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_CONTRACT",
+      "description": "Immutable M9 goal contract"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/contracts/M9_COMPLETION_FORMULA.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_CONTRACT",
+      "description": "M9 completion formula"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/contracts/M9_SAFETY_CONTRACT.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_CONTRACT",
+      "description": "M9 safety contract"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/FINAL_GATE_SPEC.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_SPEC",
+      "description": "Final hard gate spec"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/WORKLOAD_PROBE_SPEC.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_SPEC",
+      "description": "Workload probe spec"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/bench/m9_performance_validation.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_BENCH_SCRIPT",
+      "description": "Performance validation script (W1+W2). Needed to reproduce performance evidence."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/bench/m9_baseline_freeze.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_BENCH_SCRIPT",
+      "description": "Baseline freeze script"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/bench/generate_evidence.py",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_EVIDENCE_GENERATOR",
+      "description": "Generates gate-expected JSON schemas from bench results"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/state/baseline_freeze_thresholds.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_FROZEN_STATE",
+      "description": "Frozen thresholds (W1≤5%, W2≥30%, cert≤1ms, FFR/CFA/GTP=0)"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/state/workload_probe.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_FROZEN_STATE",
+      "description": "Workload probe policy: DISABLE (default-OFF, opt-in via FW_CONTEXT_M9_REUSE=1)"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/state/certificate_coverage.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_FROZEN_STATE",
+      "description": "Certificate dependency coverage (16 dependencies)"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/state/open_defects.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_STATE",
+      "description": "Open defects (empty)"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/state/current_stage.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_STATE",
+      "description": "Current stage tracking"
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/evidence/*.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M9_EVIDENCE",
+      "description": "Generated evidence artifacts (performance, mutation, GT parity, production integration, etc.). Reproducible via bench scripts. Committed for provenance."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/evidence/*.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M9_EVIDENCE",
+      "description": "Evidence reports (RED safety gate, performance validation, completion report). Committed for provenance."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/reviews/*.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": false,
+      "classification": "M9_HISTORICAL_REVIEWS",
+      "description": "Previous reviews bound to HEAD 99d8932 (pre-commit). Will be superseded by fresh reviews bound to the committed HEAD. Preserved as historical evidence."
+    },
+    {
+      "path": ".dsh-control/m9_frontend_reuse/STATUS.md",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_STATUS",
+      "description": "M9 status tracking document"
+    },
+    {
+      "path": ".dsh-control/state/DECISION_LOG.md",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": false,
+      "generated_reproducible": false,
+      "classification": "M9_DECISION_LOG",
+      "description": "M9 decision entries (M6.5 C1 execution-path refinement, etc.)"
+    },
+    {
+      "path": ".dsh-control/evidence/m5_verifier_20261012_080235_99d8932.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M5_FRESH_VERIFIER",
+      "description": "Fresh M5 verifier artifact bound to HEAD 99d8932. Will need re-binding to new committed HEAD."
+    },
+    {
+      "path": ".dsh-control/evidence/m5_guardian_20261012_080235_99d8932_G6_ACCEPT.json",
+      "tracked": false,
+      "modified": false,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": true,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M5_FRESH_GUARDIAN",
+      "description": "Fresh M5 guardian artifact bound to HEAD 99d8932. Will need re-binding to new committed HEAD."
+    },
+    {
+      "path": ".dsh-control/evidence/authority_state.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M5_CACHE_REGENERATION",
+      "description": "M5 scanner cache regeneration (timing drift). NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/evidence/m5_state.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M5_CACHE_REGENERATION",
+      "description": "M5 state cache regeneration. NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/evidence/write_authority_state.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M5_CACHE_REGENERATION",
+      "description": "M5 write authority cache regeneration. NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/gates/m6_5_hard_gate_result.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M6_5_GATE_RESULT_REGENERATION",
+      "description": "M6.5 gate result regeneration. NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/m6_research/ground_truth/FREERTOS_gt.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M6_GT_CACHE_REGENERATION",
+      "description": "M6 GT timing drift (0.166→0.17s). NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/m6_research/ground_truth/MBEDTLS_gt.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M6_GT_CACHE_REGENERATION",
+      "description": "M6 GT timing drift. NOT M9 code."
+    },
+    {
+      "path": ".dsh-control/m6_research/prototypes/performance_baseline.json",
+      "tracked": true,
+      "modified": true,
+      "contains_m9_executable_logic": false,
+      "must_commit_for_durable_acceptance": false,
+      "evidence_only": true,
+      "generated_reproducible": true,
+      "classification": "M6_BASELINE_CACHE_REGENERATION",
+      "description": "M6 performance baseline timing drift. NOT M9 code."
+    }
+  ],
+  "files_to_discard_or_move": [
+    {
+      "path": "src/fw_context_mcp/indexer/workload_probe.py",
+      "action": "MOVE_TO_REFERENCE",
+      "target": ".dsh-control/m9_frontend_reuse/reference/workload_probe_skeleton.py",
+      "reason": "Not imported by any production code. Contract does not require automatic probe. Classify as future usability work."
+    }
+  ],
+  "files_NOT_to_commit": [
+    ".dsh-control-acl-repair/",
+    ".dsh-control/.dsh-control/",
+    ".dsh-control/m8_frontend_reuse/",
+    "gate_run.log",
+    "m65_gate_final.log",
+    "m65_gate_v2.log",
+    "m6_gate.log",
+    "m6_gate_v2.log",
+    "multi_version_index_review/phase2_experiments/s5/gitrepo",
+    "multi_version_index_review/phase2_experiments/verifier/s5/gitrepo"
+  ]
+}

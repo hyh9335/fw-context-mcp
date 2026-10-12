@@ -1,0 +1,9 @@
+M9 single-entry usage
+
+1. Extract this archive into the fw-context repository root.
+2. Preserve `.dsh-control/m9_frontend_reuse/`.
+3. In the existing DSH fw-context project/session invoke:
+
+   @.dsh-control/m9_frontend_reuse/ENTRY.md
+
+The Controller should autonomously run the full M9 program.

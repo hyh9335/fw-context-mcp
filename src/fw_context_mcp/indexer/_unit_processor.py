@@ -174,6 +174,13 @@ def _reset_legacy_compat_cache() -> None:
 
 
 from ..utils import MTIME_TOLERANCE_S, SAFE_EXCEPT, compute_source_hash, is_fatal
+from .certificate import (
+    compute_bucket_key,
+    extract_closure_from_parsed,
+    get_certificate_cache,
+    m9_reuse_enabled,
+    verify_closure_content,
+)
 from .config_hash import compute_flags_hash, compute_tu_content_hash
 from .db import (
     open_db,
@@ -309,6 +316,34 @@ def _check_and_parse_unit(
     # ── Tier 3: libclang parse ──
     from .symbols import extract_all
 
+    # ── Tier 2.5 (M9): cross-Build certificate reuse ──
+    # When FW_CONTEXT_M9_REUSE=1, consult the process-global certificate
+    # cache BEFORE invoking the expensive libclang parse. On HIT (bucket
+    # key match + closure content re-verification), reuse the cached
+    # ExtractionResult. On MISS, fall through to the normal parse and
+    # cache the result. Default OFF — zero behavior change when disabled.
+    # See `.dsh-control/m9_frontend_reuse/` for the full safety contract.
+    if m9_reuse_enabled():
+        try:
+            bucket_key = compute_bucket_key(
+                unit, project_root, skip_files=skip_files, with_refs=index_refs,
+            )
+        except Exception:
+            bucket_key = ""  # any failure → safe MISS (fall through to parse)
+
+        if bucket_key and not bucket_key.startswith("FORCE_MISS"):
+            cache = get_certificate_cache()
+            cached = cache.get(bucket_key)
+            if cached is not None:
+                # Bucket HIT — re-verify closure content (c4 leg)
+                if verify_closure_content(cached):
+                    # Safe HIT — reuse cached parsed result
+                    t_hit = time.monotonic()
+                    return ("updated", cached.parsed, (t_hit, t_hit), hashes)
+                else:
+                    # c4 rejected — header content changed
+                    cache.record_c4_rejection()
+
     t_parse_start = time.monotonic()
     try:
         parsed = extract_all(
@@ -341,6 +376,24 @@ def _check_and_parse_unit(
         log.warning("skip TU %s: %s", unit.file.name, exc)
         return ("skipped", None, None, None)
     t_parse_end = time.monotonic()
+
+    # ── Tier 2.5 (M9): cache the parse result for future reuse ──
+    if m9_reuse_enabled() and bucket_key and not bucket_key.startswith("FORCE_MISS"):
+        try:
+            closure_files, closure_hash = extract_closure_from_parsed(parsed)
+            cache = get_certificate_cache()
+            cache.put(
+                key=bucket_key,
+                parsed=parsed,
+                full_kb_c_root="",  # not needed for reuse decision
+                closure_file_list=closure_files,
+                closure_content_hash=closure_hash,
+                extraction_params=(frozenset(skip_files) if skip_files else frozenset(), index_refs),
+                build_name=str(config_hash),
+            )
+        except Exception:
+            pass  # caching failure must not break indexing
+
     return ("updated", parsed, (t_parse_start, t_parse_end), hashes)
 
 

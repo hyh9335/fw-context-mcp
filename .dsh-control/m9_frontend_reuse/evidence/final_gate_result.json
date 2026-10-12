@@ -1,0 +1,19 @@
+{
+  "head": "99d8932f95cd6dcc0835f02d92edbec9e97e1ad4",
+  "verdict": "M9_CERTIFICATE_GATED_FRONTEND_REUSE_COMPLETE",
+  "clauses_passed": [
+    "G1",
+    "G2",
+    "G3",
+    "G4",
+    "G5",
+    "G6",
+    "G7",
+    "G8",
+    "G9",
+    "G10",
+    "G11"
+  ],
+  "clauses_failed": [],
+  "all_passed": true
+}

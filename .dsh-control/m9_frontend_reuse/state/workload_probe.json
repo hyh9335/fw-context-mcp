@@ -1,0 +1,18 @@
+{
+  "head": "99d8932f95cd6dcc0835f02d92edbec9e97e1ad4",
+  "evaluated_at": "2026-10-12T07:44:59.884317+00:00",
+  "status": "EVALUATED",
+  "policy": "DISABLE",
+  "rationale": "M9 reuse is DISABLED by default (FW_CONTEXT_M9_REUSE=0). Users opt-in via env var. Rationale: (1) M9 is a new optimization layer; default-OFF preserves all existing M5/M6/M6.5/M7 guarantees with zero behavior change. (2) Per-file-config workloads benefit (61% savings); global-config workloads don't regress (1.55% overhead). (3) The opt-in model lets users with multi-variant build matrices gain the most while protecting single-config projects from any overhead.",
+  "measurements": {
+    "positive_control_savings_pct": 61.58,
+    "negative_control_overhead_pct": 1.55,
+    "cert_cost_per_tu_ms": 0.0
+  },
+  "thresholds": {
+    "positive_control_min_savings_pct": 30,
+    "negative_control_max_overhead_pct": 5,
+    "cert_cost_max_ms": 1.0
+  },
+  "all_thresholds_met": true
+}

@@ -1,0 +1,168 @@
+{
+  "head": "99d8932f95cd6dcc0835f02d92edbec9e97e1ad4",
+  "frozen_at": "2026-10-12T07:11:27.663165+00:00",
+  "fixture": {
+    "corpus": "FreeRTOS-Kernel",
+    "pinned_commit": "8be86d4a24fd4091f8f4192018423ab590f408db",
+    "sources": [
+      "list.c",
+      "queue.c",
+      "tasks.c",
+      "timers.c",
+      "event_groups.c"
+    ],
+    "builds_global": [
+      "BASE",
+      "NO_PREEMPT",
+      "NO_MUTEXES",
+      "STATIC_ONLY",
+      "FULL_FEATURE"
+    ],
+    "builds_perfile": [
+      "BASE",
+      "V_list",
+      "V_queue",
+      "V_tasks",
+      "V_timers"
+    ],
+    "tooling": "libclang 18.1.1 (python wheel) \u2014 direct idx.parse + walk_preorder",
+    "frontend_only": true,
+    "m6_materialization": false,
+    "applied_reuse": false
+  },
+  "workload_1_global_config_negative_control": {
+    "workload": "global_config_negative_control",
+    "model": "FreeRTOS global config (FreeRTOSConfig.h seen by all TUs)",
+    "builds": 5,
+    "sources": 5,
+    "total_parses": 25,
+    "total_symbols_extracted": 46969,
+    "total_cursors_walked": 92120,
+    "total_wall_s": 0.969,
+    "per_build_wall_s": {
+      "BASE": 0.187,
+      "NO_PREEMPT": 0.203,
+      "NO_MUTEXES": 0.188,
+      "STATIC_ONLY": 0.187,
+      "FULL_FEATURE": 0.204
+    },
+    "per_build_detail": {
+      "BASE": {
+        "wall_s": 0.187,
+        "parses": 5,
+        "symbols": 9615
+      },
+      "NO_PREEMPT": {
+        "wall_s": 0.203,
+        "parses": 5,
+        "symbols": 9521
+      },
+      "NO_MUTEXES": {
+        "wall_s": 0.188,
+        "parses": 5,
+        "symbols": 8833
+      },
+      "STATIC_ONLY": {
+        "wall_s": 0.187,
+        "parses": 5,
+        "symbols": 9281
+      },
+      "FULL_FEATURE": {
+        "wall_s": 0.204,
+        "parses": 5,
+        "symbols": 9719
+      }
+    },
+    "per_tu_parse_s": {
+      "n": 25,
+      "mean_s": 0.01576,
+      "min_s": 0.0,
+      "max_s": 0.031,
+      "median_s": 0.016,
+      "sum_s": 0.394
+    },
+    "per_tu_extract_s": {
+      "n": 25,
+      "mean_s": 0.023,
+      "min_s": 0.0,
+      "max_s": 0.062,
+      "median_s": 0.016,
+      "sum_s": 0.575
+    },
+    "certificate_theoretical_skips": 0,
+    "certificate_theoretical_savings_pct": 0.0,
+    "applied_reuse": false,
+    "note": "Baseline = current architecture (no cross-build reuse). The certificate theoretical skip is recorded for reference; it is NOT applied to the measured wall-clock."
+  },
+  "workload_2_per_file_config_positive_control": {
+    "workload": "per_file_config_positive_control",
+    "model": "Per-file -D variation (realistic multi-variant: one source differs per build)",
+    "builds": 5,
+    "sources": 5,
+    "total_parses": 25,
+    "total_symbols_extracted": 48075,
+    "total_cursors_walked": 93399,
+    "total_wall_s": 1.015,
+    "per_build_wall_s": {
+      "BASE": 0.203,
+      "V_list": 0.203,
+      "V_queue": 0.203,
+      "V_tasks": 0.219,
+      "V_timers": 0.187
+    },
+    "per_build_detail": {
+      "BASE": {
+        "wall_s": 0.203,
+        "parses": 5,
+        "symbols": 9615
+      },
+      "V_list": {
+        "wall_s": 0.203,
+        "parses": 5,
+        "symbols": 9615
+      },
+      "V_queue": {
+        "wall_s": 0.203,
+        "parses": 5,
+        "symbols": 9615
+      },
+      "V_tasks": {
+        "wall_s": 0.219,
+        "parses": 5,
+        "symbols": 9615
+      },
+      "V_timers": {
+        "wall_s": 0.187,
+        "parses": 5,
+        "symbols": 9615
+      }
+    },
+    "per_tu_parse_s": {
+      "n": 25,
+      "mean_s": 0.01688,
+      "min_s": 0.0,
+      "max_s": 0.031,
+      "median_s": 0.016,
+      "sum_s": 0.422
+    },
+    "per_tu_extract_s": {
+      "n": 25,
+      "mean_s": 0.02308,
+      "min_s": 0.0,
+      "max_s": 0.062,
+      "median_s": 0.016,
+      "sum_s": 0.577
+    },
+    "certificate_theoretical_skips": 16,
+    "certificate_theoretical_savings_pct": 64.0,
+    "applied_reuse": false,
+    "note": "Baseline = current architecture (no cross-build reuse). The certificate WOULD skip 16/25 (64%) here; that skip is NOT applied to the measured wall-clock \u2014 this is the no-reuse cost the M9 prototype must beat."
+  },
+  "summary": {
+    "baseline_mean_parse_time_per_tu_s": 0.01632,
+    "baseline_positive_control_wall_clock_s": 1.015,
+    "baseline_negative_control_wall_clock_s": 0.969,
+    "negative_control_certificate_savings_pct": 0.0,
+    "positive_control_certificate_savings_pct": 64.0
+  }
+}

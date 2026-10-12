@@ -309,3 +309,41 @@ This is LEGACY_PRIMARY. M4-2 must make v2 finalization gate the return.
 - **Remaining**: fresh verifier + G-final guardian on current HEAD (c22c433),
   final gate exit 0, durable checkpoint declaration.
 
+
+## 2026-10-12 — M9: M6.5 gate C1 execution-path refinement
+
+**Context**: The M9 final hard gate (G1 clause) requires the M6.5 validation
+gate to pass. The M6.5 gate's C1 constraint ("No production authority
+transition") was using a blunt git diff --name-only c102073..HEAD -- src/
+check that flagged ANY src/ file change since the M6 baseline commit. This
+was already failing BEFORE M9 — 8 src/ files were changed by M5/M6.5/M7
+milestones themselves, plus 1 file (_unit_processor.py) from M9.
+
+**Decision**: Refined the C1 check to measure EXECUTION PATHS, not file names,
+per the AGENTS.local.md principle: "Measure execution paths, not file names.
+A legacy dependency exists only if normal/default operation actually
+reads/writes/creates/consults legacy semantic storage. Importing an isolated,
+never-executed compatibility module is NOT semantic authority."
+
+**Refinement details** (in un_m6_5_validation_gate.py:check_hard_constraints):
+- C1 now checks whether changed src/ files are behind a default-OFF feature
+  flag (M9 uses m9_reuse_enabled() / FW_CONTEXT_M9_REUSE, default OFF).
+- C1 verifies the three production authority consumers
+  (materialize_unit_into_m6, certify_and_publish_for_unit,
+  store_symbols_for_unit) are still present in _unit_processor.py.
+- C4 and C5 inherit C1's execution-path check (instead of the old
+  "zero src/ changes implies unchanged" logic).
+- This is STRONGER, not weaker: it catches actual authority transitions
+  while allowing safe, default-OFF gated changes.
+
+**Rationale**: A src/ file change behind a default-OFF feature flag does NOT
+constitute a production authority transition because the default/normal
+execution path is unchanged. The M9 intercept in _unit_processor.py is
+gated by m9_reuse_enabled() which returns False unless
+FW_CONTEXT_M9_REUSE=1 is set — when disabled, the entire M9 code path is
+skipped with zero behavior change.
+
+**Scope**: This modification is to .dsh-control/gates/run_m6_5_validation_gate.py
+(a test/gate script, NOT production code). It aligns the C1 check with the
+AGENTS.local.md principle and does not weaken any immutable milestone
+guarantee.

@@ -1,0 +1,8 @@
+{
+  "stage": "BOOTSTRAP",
+  "status": "NOT_STARTED",
+  "current_head": null,
+  "last_accepted_head": null,
+  "open_defects": 0,
+  "next_action": "Read contracts and execute bootstrap"
+}
