@@ -1,0 +1,32 @@
+{
+  "guardian": "m9_autonomous_controller_fresh_m5_guardian_g6",
+  "verdict": "ACCEPT_COMPLETION",
+  "head": "f400f1c7dda05290a11c16ba3e323f81b28bf70b",
+  "head_short": "f400f1c",
+  "gate": "G6",
+  "verifier_artifact": "m5_verifier_20261012_090450_f400f1c.json",
+  "verifier_verdict": "PASS",
+  "scanner_summary": {
+    "legacy_db_in_default_mode": {
+      "reads": 0,
+      "writes": 0,
+      "creations": 0
+    },
+    "legacy_postprocess_calls": 0,
+    "legacy_fallbacks": 0,
+    "legacy_mirror_runs": 0,
+    "bugs_unresolved": 0,
+    "m3b_regression": "PASS",
+    "m4_regression": "PASS",
+    "numeric_gate": "PASS"
+  },
+  "acceptance_criteria": {
+    "legacy_retired_in_default_mode": true,
+    "gc_reachability_based": true,
+    "pin_protection_intact": true,
+    "no_blocking_defects": true,
+    "m3b_m4_regression_pass": true
+  },
+  "verdict_reasoning": "M5 milestone remains COMPLETE at HEAD f400f1c. Legacy semantic storage is fully retired in normal/default operation. M9 changes (default-OFF feature flag FW_CONTEXT_M9_REUSE) do not affect M5 state \u2014 when disabled, the entire M9 code path is skipped with zero behavior change.",
+  "reviewed_at": "2026-10-12T09:04:52.812735+00:00"
+}

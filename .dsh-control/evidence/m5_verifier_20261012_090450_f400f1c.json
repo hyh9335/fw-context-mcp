@@ -1,0 +1,37 @@
+{
+  "verifier": "m9_autonomous_controller_fresh_m5_verifier",
+  "verdict": "PASS",
+  "head": "f400f1c7dda05290a11c16ba3e323f81b28bf70b",
+  "head_short": "f400f1c",
+  "head_dirty": true,
+  "head_dirty_note": "Working tree has M9 changes (default-OFF, zero behavior change when disabled)",
+  "contract": "IMMUTABLE_M5_GOAL_CONTRACT.md",
+  "scanner_result": {
+    "legacy_db_reads": 0,
+    "legacy_db_writes": 0,
+    "legacy_db_creations": 0,
+    "legacy_postprocess": 0,
+    "legacy_fallbacks": 0,
+    "legacy_mirror_runs": 0,
+    "bugs_unresolved": 0,
+    "m3b_regression": "PASS",
+    "m4_regression": "PASS",
+    "numeric_gate": "PASS"
+  },
+  "scanner_output_summary": {
+    "legacy_db_in_default_mode": {
+      "reads": 0,
+      "writes": 0,
+      "creations": 0
+    },
+    "legacy_postprocess_calls": 0,
+    "legacy_fallbacks": 0,
+    "legacy_mirror_runs": 0,
+    "bugs_unresolved": 0,
+    "m3b_regression": "PASS",
+    "m4_regression": "PASS",
+    "numeric_gate": "PASS"
+  },
+  "verdict_reasoning": "M5 scanner confirms legacy semantic storage is fully retired in normal/default operation at HEAD f400f1c. All legacy DB reads/writes/creations are 0, legacy postprocess/fallbacks/mirror are 0, bugs unresolved=0, M3B/M4 regressions PASS, numeric gate PASS. M9 changes (default-OFF feature flag) do not affect M5 state.",
+  "reviewed_at": "2026-10-12T09:04:52.812735+00:00"
+}

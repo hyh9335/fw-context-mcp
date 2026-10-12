@@ -1,0 +1,68 @@
+{
+  "head": "f400f1c7dda05290a11c16ba3e323f81b28bf70b",
+  "m9_final_code_head": "a965c871f3e3e2b8a15cce894a34f6cf2e0bbef1",
+  "verdict": "M9_CERTIFICATE_GATED_FRONTEND_REUSE_COMPLETE",
+  "all_passed": true,
+  "checks": [
+    {
+      "name": "M9_EXECUTABLE_CODE_COMMITTED",
+      "passed": true,
+      "detail": "certificate.py committed=True, _unit_processor.py committed=True"
+    },
+    {
+      "name": "UNCOMMITTED_M9_EXECUTABLE_DIFF",
+      "passed": true,
+      "detail": "uncommitted src/ diff lines: 0"
+    },
+    {
+      "name": "M9_CODE_REACHABLE_FROM_HEAD",
+      "passed": true,
+      "detail": "a965c87 is ancestor of HEAD=True, src/ diff a965c87..HEAD lines=0"
+    },
+    {
+      "name": "WORKLOAD_PROBE_CONTRACT",
+      "passed": true,
+      "detail": "audit exists=True, status=EVALUATED, policy=DISABLE"
+    },
+    {
+      "name": "M9_FINAL_GATE",
+      "passed": true,
+      "detail": "verdict=M9_CERTIFICATE_GATED_FRONTEND_REUSE_COMPLETE, all_passed=True"
+    },
+    {
+      "name": "FRESH_SAFETY_VERIFIER",
+      "passed": true,
+      "detail": "review_head=a965c87, final_m9_code_head=a965c87, verdict=PASS, head_match=True"
+    },
+    {
+      "name": "FRESH_ECONOMICS_VERIFIER",
+      "passed": true,
+      "detail": "review_head=a965c87, final_m9_code_head=a965c87, verdict=PASS, head_match=True"
+    },
+    {
+      "name": "FRESH_GUARDIAN",
+      "passed": true,
+      "detail": "review_head=a965c87, final_m9_code_head=a965c87, verdict=ACCEPT, head_match=True"
+    },
+    {
+      "name": "REVIEW_HEAD_MATCH",
+      "passed": true,
+      "detail": "all review heads == final_m9_code_head a965c87: True"
+    },
+    {
+      "name": "FFR",
+      "passed": true,
+      "detail": "frontend_false_reuse=0"
+    },
+    {
+      "name": "CFA",
+      "passed": true,
+      "detail": "certificate_false_accept=0"
+    },
+    {
+      "name": "GTP",
+      "passed": true,
+      "detail": "gt_parity_failures=0"
+    }
+  ]
+}

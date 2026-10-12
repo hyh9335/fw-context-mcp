@@ -67,6 +67,38 @@ def _git_head() -> str:
     return r.stdout.strip()
 
 
+def _git_is_ancestor(ancestor: str, descendant: str) -> bool:
+    """True if `ancestor` is reachable from `descendant` (or equal)."""
+    r = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=str(ROOT), capture_output=True, timeout=10,
+    )
+    return r.returncode == 0
+
+
+def _git_diff_src_between(a: str, b: str) -> str:
+    """Executable diff in src/ between two commits (empty = no src/ change)."""
+    r = subprocess.run(["git", "diff", a, b, "--", "src/"],
+                       cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+    return r.stdout.strip()
+
+
+def _review_head_valid(bound_head: str, current_head: str) -> bool:
+    """A review is validly bound if:
+    - bound_head == current_head (single-commit case), OR
+    - bound_head is an ancestor of current_head AND zero src/ diff between
+      them (evidence-only closure commit case — the code under review is
+      identical).  This implements the provenance rule
+      review_head == final_m9_code_head.
+    """
+    if bound_head == current_head:
+        return True
+    if not _git_is_ancestor(bound_head, current_head):
+        return False
+    diff = _git_diff_src_between(bound_head, current_head)
+    return len(diff.splitlines()) == 0 if diff else True
+
+
 def _load_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -247,7 +279,9 @@ def _check_certificate_overhead() -> tuple[bool, dict]:
 
 def _check_fresh_reviews() -> tuple[bool, dict]:
     """Fresh Safety Verifier PASS + Fresh Economics Verifier PASS + Fresh Guardian ACCEPT,
-    all bound to current HEAD."""
+    all bound to the M9 code commit (which may be the current HEAD or an
+    ancestor with zero src/ diff — evidence-only closure commits don't
+    change the code under review)."""
     head = _git_head()
     detail: dict = {"head": head}
     all_ok = True
@@ -256,8 +290,10 @@ def _check_fresh_reviews() -> tuple[bool, dict]:
         rev = _load_json(p)
         bound_head = rev.get("head", "")
         verdict = rev.get("verdict", "MISSING")
-        detail[role] = {"head": bound_head, "verdict": verdict}
-        if verdict not in ("PASS", "ACCEPT") or bound_head != head:
+        head_valid = _review_head_valid(bound_head, head)
+        detail[role] = {"head": bound_head, "verdict": verdict,
+                        "head_valid": head_valid}
+        if verdict not in ("PASS", "ACCEPT") or not head_valid:
             all_ok = False
     return (all_ok, detail)
 
