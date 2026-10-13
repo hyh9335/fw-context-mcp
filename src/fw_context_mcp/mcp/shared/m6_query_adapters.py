@@ -62,8 +62,9 @@ def m6_search_code(store: BuildSetStore, build_name: str,
 
 
 def m6_search_bodies(store: BuildSetStore, build_name: str,
-                     query: str, limit: int = 20, **kwargs) -> list[dict]:
-    return m6_query.search_bodies(store, build_name, query, limit=limit)
+                     query: str, limit: int = 20, offset: int = 0, **kwargs) -> list[dict]:
+    out = m6_query.search_bodies(store, build_name, query, limit=limit, offset=offset)
+    return _m6_paged(out, "search_bodies", {"query": query}, offset, limit, query)
 
 
 def m6_search_content(store: BuildSetStore, build_name: str,

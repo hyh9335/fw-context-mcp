@@ -792,6 +792,7 @@ def search_bodies(
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
     kind: Annotated[str | None, Field(description="Optional kind filter: function, method, class, etc.")] = None,
     limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
+    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a body match.")] = 0,
     project_only: Annotated[bool, Field(description="Exclude vendor SDK code. When True, only application code. Default False.")] = False,
     variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
     image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,

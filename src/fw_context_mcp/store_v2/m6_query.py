@@ -428,28 +428,36 @@ def get_class_members(store: BuildSetStore, build_name: str,
 
 
 def search_bodies(store: BuildSetStore, build_name: str,
-                  query: str, limit: int = 20) -> list[dict]:
-    """M6 implementation of search_bodies — search body text."""
-    results = []
+                  query: str, limit: int = 20, offset: int = 0) -> dict:
+    """M6 implementation of search_bodies — search body text.
+
+    Reads the ifdef-filtered bodies from ``m6_body_facts``
+    (``body_facts_for_build``), the dedicated I4 table that the body read
+    path uses, not the canonical ``m6_shared_facts``.
+
+    Returns ``{rows, total, offset, shown}`` so the caller can page: the
+    full matched set is materialized, then ``_paginate`` slices it.  An
+    explicit *offset* reads the next page; ``total`` stays stable across
+    pages because no early ``limit`` break truncates the match scan.
+    """
     query_lower = query.lower()
-    count = 0
+    try:
+        facts = store.body_facts_for_build(build_name)
+    except Exception:
+        facts = []
 
-    facts = store.project_build_kind(build_name, "Body")
+    results = []
     for f in facts:
-        payload = f.get("payload", {})
-        body_text = payload.get("body_text", "").lower()
-        if query_lower in body_text:
+        body_text = (f.get("body_text") or "")
+        if query_lower in body_text.lower():
             results.append({
-                "name": payload.get("func_name", ""),
-                "file": payload.get("file", ""),
-                "line": payload.get("start_line", 0),
-                "source": payload.get("body_text", "")[:2000],
+                "name": f.get("symbol_usr", ""),
+                "file": "",
+                "line": f.get("line_start", 0),
+                "source": body_text[:2000],
             })
-            count += 1
-            if count >= limit:
-                break
 
-    return results
+    return _paginate(results, offset, limit)
 
 
 def get_file_map(store: BuildSetStore, build_name: str,
