@@ -262,6 +262,61 @@ class BuildSetStore:
             })
         return result
 
+    def body_facts_for_build(self, build_name: str) -> list[dict]:
+        """Project I4 body facts visible in a build (m6_body_facts).
+
+        A body fact is visible in build B iff B ∈ fact.BuildSet.  Mirrors
+        ``project_build_kind`` but against the ``m6_body_facts`` table
+        (whose body text lives in a separate table from the canonical
+        ``m6_shared_facts`` — see M6 schema §I4).
+
+        Returns a list of dicts: {body_id, symbol_usr, body_text,
+        line_start, line_end, buildset_id}.
+        """
+        candidate_bsids = self._build_to_buildsets.get(build_name, set())
+        if not candidate_bsids:
+            return []
+        placeholders = ",".join("?" * len(candidate_bsids))
+        rows = self._conn.execute(
+            f"""
+            SELECT body_id, symbol_usr, body_text, line_start, line_end, buildset_id
+            FROM m6_body_facts
+            WHERE buildset_id IN ({placeholders})
+            """,
+            tuple(candidate_bsids)
+        )
+        return [
+            {
+                "body_id": body_id, "symbol_usr": symbol_usr,
+                "body_text": body_text, "line_start": line_start,
+                "line_end": line_end, "buildset_id": buildset_id,
+            }
+            for body_id, symbol_usr, body_text, line_start, line_end, buildset_id
+            in rows
+        ]
+
+    def file_content_for_build(self, build_name: str) -> list[dict]:
+        """Project I4 file-content facts visible in a build (m6_file_content)."""
+        candidate_bsids = self._build_to_buildsets.get(build_name, set())
+        if not candidate_bsids:
+            return []
+        placeholders = ",".join("?" * len(candidate_bsids))
+        rows = self._conn.execute(
+            f"""
+            SELECT content_id, file_path, content_text, buildset_id
+            FROM m6_file_content
+            WHERE buildset_id IN ({placeholders})
+            """,
+            tuple(candidate_bsids)
+        )
+        return [
+            {
+                "content_id": content_id, "file_path": file_path,
+                "content_text": content_text, "buildset_id": buildset_id,
+            }
+            for content_id, file_path, content_text, buildset_id in rows
+        ]
+
     # ── World→Builds map (§M1.1) ─────────────────────────────────────────
 
     def register_world(self, world_id: int, build_names: Iterable[str]) -> None:

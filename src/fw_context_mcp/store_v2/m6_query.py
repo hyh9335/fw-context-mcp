@@ -229,15 +229,41 @@ def get_symbol_context(store: BuildSetStore, build_name: str,
     symbol = lookup_symbol(store, build_name, name, exact=False, limit=1)
     callers = find_callers(store, build_name, name)
     refs = find_references(store, build_name, name)
+    body = get_source(store, build_name, name)
+    # get_source returns {"error": ...} when absent; keep source key always.
+    source = body.get("source", "") if "error" not in body else ""
+    callees = _m6_callees(store, build_name, name)
 
     return {
         "name": name,
         "symbol": symbol[0] if symbol else None,
         "callers": callers,
-        "callees": [],
+        "callees": callees,
         "references": refs,
-        "source": "",
+        "source": source,
     }
+
+
+def _m6_callees(store: BuildSetStore, build_name: str, name: str) -> list[dict]:
+    """Outgoing call edges for *name* from M6 Call facts (caller_usr == usr)."""
+    usr = ""
+    for sym in lookup_symbol(store, build_name, name, exact=False, limit=5):
+        if sym.get("name", "").lower() == name.lower():
+            usr = sym.get("usr", "") or ""
+            break
+    if not usr:
+        return []
+    out = []
+    for f in store.project_build_kind(build_name, "Call"):
+        p = f.get("payload", {}) or {}
+        if p.get("caller_usr", "") == usr and p.get("callee_name", ""):
+            out.append({
+                "name": p.get("callee_name", ""),
+                "usr": p.get("callee_usr", ""),
+                "file": p.get("file", ""),
+                "line": p.get("line", 0),
+            })
+    return out
 
 
 def get_class_members(store: BuildSetStore, build_name: str,
@@ -321,20 +347,31 @@ def get_file_map(store: BuildSetStore, build_name: str,
 
 def get_source(store: BuildSetStore, build_name: str,
                name: str) -> dict:
-    """M6 implementation of get_source — function body."""
-    facts = store.project_build_kind(build_name, "Body")
+    """M6 implementation of get_source — function body.
+
+    The body text lives in ``m6_body_facts`` (I4), keyed by ``symbol_usr``.
+    Resolve the name to a usr first (via lookup_symbol), then return the
+    stored body for that usr.
+    """
+    hits = lookup_symbol(store, build_name, name, exact=False, limit=10)
+    usr = ""
+    resolved = None
     name_lower = name.lower()
-    for f in facts:
-        payload = f.get("payload", {})
-        func_name = payload.get("func_name", "").lower()
-        if name_lower in func_name:
-            return {
-                "name": name,
-                "source": payload.get("body_text", ""),
-                "file": payload.get("file", ""),
-                "line": payload.get("start_line", 0),
-                "end_line": payload.get("end_line", 0),
-            }
+    for h in hits:
+        if name_lower in (h.get("name", "") or "").lower():
+            resolved = h
+            usr = h.get("usr", "") or ""
+            break
+    if usr:
+        for bf in store.body_facts_for_build(build_name):
+            if bf.get("symbol_usr") == usr:
+                return {
+                    "name": name,
+                    "source": bf.get("body_text", ""),
+                    "file": (resolved or {}).get("file", ""),
+                    "line": bf.get("line_start", 0),
+                    "end_line": bf.get("line_end", 0),
+                }
     return {"name": name, "source": "", "error": "symbol not found"}
 
 

@@ -347,3 +347,29 @@ skipped with zero behavior change.
 (a test/gate script, NOT production code). It aligns the C1 check with the
 AGENTS.local.md principle and does not weaken any immutable milestone
 guarantee.
+
+## 2026-10-13 — M6 body 通道修复（v2-only 生产读退化的 M5 目标内修复）
+
+**决定**：修复 M6 body/file-content 读写通道，使 v2-only 生产索引下的核心语义
+读取工具（get_source / get_symbol_context / read_file）不再返回空 body。恢复
+compare_variants 的 body_fingerprint 维度数据基础。
+
+**依据（M5 契约 §1）**：M5 目标是 "Make normal fw-context operation fully
+v2-native across semantic reads"。v2-only 索引下 body 读取退化为空，属于
+该目标未完成部分，而非新增特性（§20 停车边界不适用——非完成后的新功能）。
+
+**根因（三处断开）**：
+1. m6_direct_materialization.materialize_unit_into_m6 从不调用
+   add_body_fact / add_file_content_fact（grep 全库零调用）→ m6_body_facts /
+   m6_file_content 恒为空。
+2. add_body_fact / add_file_content_fact 只写专属表，不同步 m6_shared_facts
+   的 "Body"/"FileContent" kind。
+3. m6_query.get_source 从 m6_shared_facts 查 "Body"，而 body 存于
+   m6_body_facts —— 查询目标表错位，即使有数据也读不到。
+
+**改动范围**：store_v2/m6_direct_materialization.py + store_v2/m6_query.py
+（get_source / get_symbol_context / read_file 改查 m6_body_facts 表）。
+不触碰 legacy、不削弱任何 milestone、不增新表/新特性。
+
+**验证**：官方 v2-only 索引真实项目（2 变体 test-firmware），wire 断言
+get_source 恢复 body、compare_variants 维度完整。

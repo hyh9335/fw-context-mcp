@@ -45,8 +45,10 @@ from fw_context_mcp.store_v2.ncc import canonicalize, SEP  # noqa: E402
 
 def _load_frozen_prototype():
     """The D5a-accepted S2 canonicalizer, VERBATIM (read-only reference)."""
-    path = REPO / "multi_version_index_review" / "phase2_experiments" / \
-        "key_candidates.py"
+    # The throwaway prototype moved out of tracking with the archive (the
+    # multi_version_index_review tree is no longer in git); the exact same
+    # blob lives on as the frozen ref copy under tests/store_v2_ref/.
+    path = REPO / "tests" / "store_v2_ref" / "key_candidates.py"
     spec = importlib.util.spec_from_file_location("kc_frozen_ref", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["kc_frozen_ref"] = mod          # dataclass __module__ lookup

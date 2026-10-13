@@ -252,6 +252,47 @@ def materialize_unit_into_m6(
             stats["facts_indexed"] += 1
         stats["kinds"]["Inheritance"] = stats["kinds"].get("Inheritance", 0) + 1
 
+    # ── I4: Body + FileContent facts ────────────────────────────────────────
+    # The M6 schema reserves m6_body_facts / m6_file_content (I4) and the
+    # store exposes add_body_fact / add_file_content_fact, but nothing wired
+    # them in — get_source / get_symbol_context / read_file read "Body" and
+    # "FileContent" and so always came back empty under v2-only indexing.
+    # This fixes the materialization side: every defined function in this TU
+    # contributes one body fact (read from disk via its libclang extent), and
+    # every file the TU touches contributes one file-content fact.
+    try:
+        _body_files: dict[str, list[str]] = {}
+        for sym in symbols:
+            if not (getattr(sym, "is_definition", False) or getattr(sym, "is_definition", None)):
+                continue
+            if getattr(sym, "kind", "") not in ("function", "method", "constructor", "destructor"):
+                continue
+            fpath = str(getattr(sym, "file", "") or "")
+            start = getattr(sym, "line", 0) or 0
+            end = getattr(sym, "end_line", 0) or 0
+            usr = getattr(sym, "usr", "") or ""
+            if not (fpath and usr and start and end > start):
+                continue
+            if fpath not in _body_files:
+                try:
+                    p = Path(fpath)
+                    _body_files[fpath] = p.read_text(encoding="utf-8", errors="replace").splitlines()
+                except OSError:
+                    _body_files[fpath] = []
+            lines = _body_files[fpath]
+            if not (end <= len(lines)):
+                continue
+            body_text = "".join(
+                lines[i - 1] + ("\n" if i < end else "") for i in range(start, end + 1)
+            ).rstrip("\n")
+            if not body_text.strip():
+                continue
+            store.add_body_fact(usr, builds, body_text, start, end)
+            stats["kinds"]["Body"] = stats["kinds"].get("Body", 0) + 1
+    except Exception:  # noqa: BLE001 — body capture is best-effort, never breaks indexing
+        log.debug("M6 body capture skipped for %s", build_name)
+
+    stats["facts_indexed"] += stats["kinds"].get("Body", 0)
     stats["facts_total"] = stats["facts_indexed"] + stats["facts_reused"]
     return stats
 
