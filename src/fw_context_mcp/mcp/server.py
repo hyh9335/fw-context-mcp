@@ -1218,7 +1218,7 @@ from .shared.m6_query_adapters import (
     m6_get_class_members, m6_get_inheritance_chain, m6_get_method_overrides,
     m6_get_template_instances,
     m6_find_variables, m6_explain_condition, m6_list_conditional_regions,
-    m6_get_vector_table, m6_compare_variants, m6_group_equivalent_variants,
+    m6_get_vector_table,
 )
 
 # ── M7.2: M6 READ AUTHORITY ────────────────────────────────────────────────
@@ -1407,13 +1407,17 @@ mcp.tool()(_with_project_selector(_wrap_tool(
 # variants.py — variant behavior grouping + structural build comparison
 # (W6 / AUD-R5): textual/structural comparison of stored index records;
 # only the body-fingerprint dimension is fingerprint-based.
-# M7.2: now M6-native (routed through m6_authority_route).
+# These two tools read the DB-layer index (sqlite index.db) by
+# variant/config_hash — their dimensions (body_fingerprint, conditions,
+# defines) require stored body/source/condition facts that the M6 store
+# does not carry.  They stay OUT of m6_authority_route on purpose: the
+# DB-layer handlers ARE the full accepted-design contract (W6), and the
+# M6 adapters were a reduced kind-count approximation that broke them.
 mcp.tool()(_with_project_selector(_wrap_tool(
-    m6_authority_route("compare_variants", variants.compare_variants, m6_compare_variants)
+    variants.compare_variants
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
-    m6_authority_route("group_equivalent_variants", variants.group_equivalent_variants,
-                       m6_group_equivalent_variants)
+    variants.group_equivalent_variants
 )))
 
 # ── MCP Resources ──────────────────────────────────────────────────────────
