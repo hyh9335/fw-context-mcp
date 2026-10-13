@@ -68,20 +68,29 @@ def m6_search_bodies(store: BuildSetStore, build_name: str,
 
 
 def m6_search_content(store: BuildSetStore, build_name: str,
-                      query: str, limit: int = 20, **kwargs) -> list[dict]:
-    """M6 adapter for search_content — searches file content facts."""
-    results = []
+                      query: str, limit: int = 20, offset: int = 0, **kwargs) -> list[dict]:
+    """M6 adapter for search_content — searches file content facts.
+
+    Reads the dedicated ``m6_file_content`` table via
+    ``file_content_for_build`` (the I4 read path), not the canonical
+    ``m6_shared_facts`` which the file-content write path never fills.
+    Paged like the other searches: page_notice header + past-end row.
+    """
     query_lower = query.lower()
-    facts = store.project_build_kind(build_name, "FileContent")
-    for f in facts[:limit]:
-        payload = f.get("payload", {})
-        content = payload.get("content", "").lower()
-        if query_lower in content:
-            results.append({
-                "file": payload.get("file", ""),
+    full = []
+    try:
+        facts = store.file_content_for_build(build_name)
+    except Exception:
+        facts = []
+    for f in facts:
+        content = (f.get("content_text") or "")
+        if query_lower in content.lower():
+            full.append({
+                "file": (f.get("file_path") or ""),
                 "_match_snippet": content[:200],
             })
-    return results
+    out = m6_query._paginate(full, offset, limit)
+    return _m6_paged(out, "search_content", {"query": query}, offset, limit, query)
 
 
 def m6_semantic_search(store: BuildSetStore, build_name: str,
