@@ -95,6 +95,16 @@ def m6_smart_search(store: BuildSetStore, build_name: str,
     return m6_query.search_code(store, build_name, query, limit=limit)
 
 
+def m6_list_build_health(store: BuildSetStore, build_name: str = "",
+                         **kwargs) -> dict:
+    """M6 adapter for get_build_health — per-build indexed-state report.
+
+    ``build_name`` is unused: the report spans every build of the project,
+    as the legacy staleness-of-each-build report does.
+    """
+    return m6_query.list_build_health(store)
+
+
 # ── Call graph adapters ───────────────────────────────────────────────────
 
 def m6_find_all_callers_recursive(store: BuildSetStore, build_name: str,

@@ -214,7 +214,8 @@ def test_W6a_wire_registry_has_compare_and_group_tools() -> None:
 
     Pre-fix (bdc282a): 40 tools, neither name registered (AUD-R5: 0 hits of
     ``compare_variants|semantic_diff`` in src/).  Post-fix: 42 — the design
-    grows the registry by exactly these two.
+    grows the registry by exactly these two.  Later fusions add more:
+    the M6 per-build health report (fusion A3) is the 43rd.
     """
     names = wire_names()
     assert "compare_variants" in names, (
@@ -225,8 +226,11 @@ def test_W6a_wire_registry_has_compare_and_group_tools() -> None:
         f"AUD-R5 gap not closed: group_equivalent_variants absent from the wire "
         f"registry. Have {sorted(names)}"
     )
-    assert len(names) == 42, (
-        f"registry grew 40 -> 42 by design; got {len(names)}: {sorted(names)}"
+    assert len(names) >= 42, (
+        f"registry grew 40 -> 42 by design, then fusions beyond; got {len(names)}: {sorted(names)}"
+    )
+    assert "get_build_health" in names, (
+        f"fusion A3 get_build_health absent from the wire registry. Have {sorted(names)}"
     )
 
 

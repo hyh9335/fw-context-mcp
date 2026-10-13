@@ -109,6 +109,56 @@ def list_builds(store: BuildSetStore) -> list[str]:
         return []
 
 
+def list_build_health(store: BuildSetStore) -> dict:
+    """Report the indexed state of every build of the project (per-build view).
+
+    This is the M6-native counterpart of the main-branch "staleness of
+    each build" report.  Where the legacy path judges staleness against
+    stored file hashes, the M6 store records which build each World
+    encompassed and how many facts it holds — the evidence that the
+    data is current enough to read.  A build that more than one World
+    references was indexed more than once (an update replaced it); a
+    build whose facts are empty has a World but no semantic rows.
+
+    Returns ``{"builds": [...], "total_facts": int}``.  Each build:
+    ``{"build_name", "facts", "worlds", "stale"}`` — *stale* is True when
+    the build appears in more than one World (an upgraded/duplicated
+    index), or carries no facts (a finalization gap).
+    """
+    builds = list_builds(store)
+    # world → per-build reference counts, straight from the map table.
+    world_counts: dict[str, int] = {}
+    try:
+        rows = store._conn.execute(
+            "SELECT build_name, COUNT(world_id) FROM m6_world_builds GROUP BY build_name"
+        ).fetchall()
+        world_counts = {r[0]: r[1] for r in rows}
+    except Exception:
+        pass
+
+    out = []
+    total_facts = 0
+    for name in builds:
+        n_facts = 0
+        try:
+            proj = store.project_build(name)
+            n_facts = sum(len(v) for v in proj.values())
+        except Exception:
+            pass
+        total_facts += n_facts
+        worlds = world_counts.get(name, 0)
+        # A factual stale signal from the store alone: re-indexed more
+        # than once, or a finalization gap (world without facts).
+        stale = bool(worlds > 1) or (worlds >= 1 and n_facts == 0)
+        out.append({
+            "build_name": name,
+            "facts": n_facts,
+            "worlds": worlds,
+            "stale": stale,
+        })
+    return {"builds": out, "total_facts": total_facts}
+
+
 # ── Semantic query primitives ───────────────────────────────────────────────
 
 def lookup_symbol(store: BuildSetStore, build_name: str,

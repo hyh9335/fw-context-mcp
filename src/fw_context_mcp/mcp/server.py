@@ -1218,7 +1218,7 @@ from .shared.m6_query_adapters import (
     m6_get_class_members, m6_get_inheritance_chain, m6_get_method_overrides,
     m6_get_template_instances,
     m6_find_variables, m6_explain_condition, m6_list_conditional_regions,
-    m6_get_vector_table,
+    m6_get_vector_table, m6_list_build_health,
 )
 
 # ── M7.2: M6 READ AUTHORITY ────────────────────────────────────────────────
@@ -1275,6 +1275,25 @@ mcp.tool()(_with_project_selector(_wrap_tool(
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
     m6_authority_route("get_vector_table", callgraph.get_vector_table, m6_get_vector_table)
+)))
+
+
+def get_build_health(
+    project_root: str | None = None, fast: bool = True,
+) -> dict:
+    """Legacy fallback for get_build_health when M6 authority is off.
+
+    The per-build indexed-state report is an M6-native read: it needs the
+    M6 store (index-m6.db), which the legacy path does not populate.  When
+    M6 authority is disabled the answer is an empty report with a note,
+    never a fabricated one.
+    """
+    del project_root, fast
+    return {"builds": [], "note": "M6-only report (M6 read authority is off)"}
+
+
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("get_build_health", get_build_health, m6_list_build_health)
 )))
 mcp.tool()(_with_project_selector(_wrap_tool(
     m6_authority_route("find_callees_recursive",
