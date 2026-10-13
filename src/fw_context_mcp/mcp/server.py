@@ -1,6 +1,6 @@
 """fw-context MCP server — build-aware code intelligence for embedded C/C++ projects.
 
-Serves 42 MCP tools and 4 MCP resources via FastMCP (stdio transport).
+Serves 45 MCP tools and 4 MCP resources via FastMCP (stdio transport).
 
 **Error contract (ADR-006 c):** a handler that reports a business error
 (a top-level ``"error"`` dict/list record) or RAISES an exception leaves the

@@ -4,7 +4,7 @@ fw-context-mcp is an MCP (Model Context Protocol) server. fw-context-mcp exposes
 
 ## What it is
 
-Your AI assistant (for example, Claude Code or OpenCode) starts fw-context-mcp as a persistent subprocess. fw-context-mcp provides **42 tools** to navigate embedded firmware codebases:
+Your AI assistant (for example, Claude Code or OpenCode) starts fw-context-mcp as a persistent subprocess. fw-context-mcp provides **45 tools** to navigate embedded firmware codebases:
 
 | Category | Tools |
 |----------|-------|
@@ -15,6 +15,7 @@ Your AI assistant (for example, Claude Code or OpenCode) starts fw-context-mcp a
 | **Conditional compilation** | `explain_condition`, `list_conditional_regions` |
 | **Variant analysis** | `compare_variants`, `group_equivalent_variants` |
 | **Index maintenance** | `get_active_build`, `get_environment_status`, `check_dependencies`, `configure_llm`, `reindex_file`, `reset_index`, `list_projects`, `list_variants`, `get_project_info`, `check_ollama` |
+| **Build / project state** | `get_project_status`, `get_build_info`, `get_build_health` |
 
 For the full tool reference, with schemas and examples, see **[Tools Reference](docs/tools.md)**.
 

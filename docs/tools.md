@@ -565,6 +565,27 @@ A multi-variant result annotates each record with its `variant` and
 `image`. Call `get_active_build` to see the variants and images that
 fw-context has indexed.
 
+### Build / project state
+
+#### `get_project_status`
+
+Project-level overview: the builds the project holds, which one a query
+without an explicit selector reads (`active`), each build's indexed-state
+(`facts`/`worlds`/`stale`) and the total facts.  A pure M6-store read,
+usable on v2-only indexes that keep no legacy `build_configs`.
+
+#### `get_build_info`
+
+Detail of one build: its `facts` count, `fact_kinds` breakdown, how many
+Worlds reference it, and its `stale` flags.  Unknown builds return a
+named error with the accepted names.
+
+#### `get_build_health`
+
+Per-build indexed-state report for every build of the project
+(`build_name`/`facts`/`worlds`/`stale`).  `stale` is True when a build
+was re-indexed more than once or carries no facts.
+
 ### Search & lookup
 
 #### `search_code`
