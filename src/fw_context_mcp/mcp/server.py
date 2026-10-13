@@ -1219,6 +1219,7 @@ from .shared.m6_query_adapters import (
     m6_get_template_instances,
     m6_find_variables, m6_explain_condition, m6_list_conditional_regions,
     m6_get_vector_table, m6_list_build_health,
+    m6_project_status, m6_build_info,
 )
 
 # ── M7.2: M6 READ AUTHORITY ────────────────────────────────────────────────
@@ -1295,6 +1296,50 @@ def get_build_health(
 mcp.tool()(_with_project_selector(_wrap_tool(
     m6_authority_route("get_build_health", get_build_health, m6_list_build_health)
 )))
+
+
+def get_project_status(
+    project_root: str | None = None,
+    fast: bool = True,
+) -> dict:
+    """Legacy fallback for get_project_status when M6 authority is off.
+
+    The project-level overview is an M6-native read (v2-only indexing
+    keeps no legacy build_configs).  When M6 authority is disabled the
+    answer is an empty overview with a note, never a fabricated one.
+    """
+    del project_root, fast
+    return {"builds": [], "note": "M6-only report (M6 read authority is off)"}
+
+
+def get_build_info(
+    project_root: str | None = None,
+    variant: str | None = None,
+    image: str | None = None,
+    fast: bool = True,
+) -> dict:
+    """Legacy fallback for get_build_info when M6 authority is off.
+
+    The one-build detail is an M6-native read.  When M6 authority is
+    disabled the answer is an empty detail with a note, never fabricated.
+    """
+    del project_root, variant, image, fast
+    return {"error": "M6-only report (M6 read authority is off)"}
+
+
+mcp.tool()(_with_project_selector(_wrap_tool(
+    m6_authority_route("get_project_status", get_project_status, m6_project_status)
+)))
+
+
+def _make_get_build_info_routes():
+    """Register get_build_info through M6 authority."""
+    mcp.tool()(_with_project_selector(_wrap_tool(
+        m6_authority_route("get_build_info", get_build_info, m6_build_info)
+    )))
+
+
+_make_get_build_info_routes()
 mcp.tool()(_with_project_selector(_wrap_tool(
     m6_authority_route("find_callees_recursive",
         v2_authority_route("find_callees_recursive", callgraph.find_callees_recursive,

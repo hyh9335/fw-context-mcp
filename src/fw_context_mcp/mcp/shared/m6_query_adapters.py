@@ -105,6 +105,18 @@ def m6_list_build_health(store: BuildSetStore, build_name: str = "",
     return m6_query.list_build_health(store)
 
 
+def m6_project_status(store: BuildSetStore, build_name: str = "",
+                      **kwargs) -> dict:
+    """M6 adapter for get_project_status — project-level overview."""
+    return m6_query.project_status(store, active=build_name)
+
+
+def m6_build_info(store: BuildSetStore, build_name: str = "",
+                  **kwargs) -> dict:
+    """M6 adapter for get_build_info — detail of one build."""
+    return m6_query.build_info(store, build_name)
+
+
 # ── Call graph adapters ───────────────────────────────────────────────────
 
 def m6_find_all_callers_recursive(store: BuildSetStore, build_name: str,

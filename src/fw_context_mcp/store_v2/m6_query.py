@@ -159,6 +159,52 @@ def list_build_health(store: BuildSetStore) -> dict:
     return {"builds": out, "total_facts": total_facts}
 
 
+def project_status(store: BuildSetStore, active: str = "") -> dict:
+    """Project-level overview: every build with its health (conflict-4/5, stage 1).
+
+    Composes ``list_build_health`` into the shape of a project status: the
+    list of builds the project holds, which one a query without an explicit
+    selector reads (*active*), and the total facts.  Pure M6 read — the
+    v2-only index carries no legacy build_configs, so the overview comes
+    from the shared store alone (no per-build DB, per the blueprint).
+    """
+    health = list_build_health(store)
+    return {
+        "active": active,
+        "builds": health["builds"],
+        "total_facts": health["total_facts"],
+        "multi": len(health["builds"]) > 1,
+    }
+
+
+def build_info(store: BuildSetStore, build_name: str) -> dict:
+    """Detail of ONE build: facts, kinds, worlds, stale (conflict-4/5, stage 1).
+
+    The per-build view over the shared M6 store.  *facts* counts the rows
+    the build sees, *fact_kinds* breaks them by kind, *worlds* how many
+    Worlds reference the build, *stale* carries the flags of
+    ``list_build_health`` (re-indexed more than once, or a finalization
+    gap).
+    """
+    health = list_build_health(store)
+    detail = {}
+    for b in health["builds"]:
+        if b["build_name"] == build_name:
+            detail = b
+            break
+    if not detail:
+        return {"error": f"build {build_name!r} not found in the M6 store",
+                "build_name": build_name}
+    kinds: dict[str, int] = {}
+    try:
+        proj = store.project_build(build_name)
+        for kind, facts in proj.items():
+            kinds[kind] = len(facts)
+    except Exception:
+        pass
+    return {**detail, "fact_kinds": kinds}
+
+
 # ── Semantic query primitives ───────────────────────────────────────────────
 
 def lookup_symbol(store: BuildSetStore, build_name: str,
