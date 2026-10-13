@@ -1,5 +1,0 @@
-{
-  "name": "C35_GC_APPLY_PASS",
-  "result": "PASS",
-  "detail": "apply_gc: deleted 1 Worlds, 0 States; W2+state100 preserved; verify OK"
-}

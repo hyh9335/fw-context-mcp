@@ -1,6 +1,0 @@
-{
-  "verdict": "PASS",
-  "head": "c22c433e8f7da9a3c4ac1a322cf966738b5567a1",
-  "timestamp": "2026-09-30T07:16:58Z",
-  "detail": "Postprocess abort degradation guard detected in code (CASE B: legacy fail \u2192 SUCCESS + DEGRADED)"
-}

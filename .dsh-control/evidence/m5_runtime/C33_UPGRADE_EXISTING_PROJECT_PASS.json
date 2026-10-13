@@ -1,5 +1,0 @@
-{
-  "name": "C33_UPGRADE_EXISTING_PROJECT_PASS",
-  "result": "PASS",
-  "detail": "FW_CONTEXT_LEGACY_COMPATIBILITY_MODE=1 enables legacy path \u2014 existing projects can be upgraded to v2 with legacy mirror"
-}

@@ -1,5 +1,0 @@
-{
-  "name": "C30_PRODUCTION_DEFAULT_TEST_LANE_PASS",
-  "result": "PASS",
-  "detail": "Production defaults correct: legacy_compat=False, v2_write_authority=True"
-}

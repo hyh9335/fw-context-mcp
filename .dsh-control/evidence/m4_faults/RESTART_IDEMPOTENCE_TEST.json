@@ -1,6 +1,0 @@
-{
-  "verdict": "PASS",
-  "head": "c22c433e8f7da9a3c4ac1a322cf966738b5567a1",
-  "timestamp": "2026-09-30T07:16:58Z",
-  "detail": "finalize_world transition 'unfinalized'\u2192'active' is conditional; SemanticStates are content-addressed; restart is idempotent"
-}

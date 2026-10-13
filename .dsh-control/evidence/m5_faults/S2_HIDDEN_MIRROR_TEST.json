@@ -1,6 +1,0 @@
-{
-  "test": "S2_HIDDEN_MIRROR_TEST",
-  "verdict": "PASS",
-  "head": "143642bfea6752b573c7b9cb56bfcf0c191b0d95",
-  "detail": "Scanner detected 1 injected legacy mirror runs"
-}

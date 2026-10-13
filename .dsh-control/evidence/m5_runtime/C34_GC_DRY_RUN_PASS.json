@@ -1,5 +1,0 @@
-{
-  "name": "C34_GC_DRY_RUN_PASS",
-  "result": "PASS",
-  "detail": "analyze_gc: eligible=[1], protected=[2]"
-}

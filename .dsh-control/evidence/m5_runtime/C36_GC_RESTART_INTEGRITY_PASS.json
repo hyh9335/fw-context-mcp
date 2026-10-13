@@ -1,5 +1,0 @@
-{
-  "name": "C36_GC_RESTART_INTEGRITY_PASS",
-  "result": "PASS",
-  "detail": "After restart: integrity OK, W2 (active) preserved, orphaned_bindings=0"
-}

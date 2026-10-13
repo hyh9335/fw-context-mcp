@@ -116,6 +116,10 @@ KNOWN_LIMITATIONS.md
 .dsh-control/
 .dsh-control-acl-repair/
 packaging/.venv-resolve/
+# dsh controller — evidence / research corpora stay OUT of git (truth source kept)
+.dsh-control/evidence/
+.dsh-control/m6_research/
+.dsh-control/m8_frontend_reuse/
 /gate_run.log
 /m6_gate.log
 /m6_gate_v2.log
