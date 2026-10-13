@@ -1,6 +1,12 @@
 # 本地 v2 融合 — 冲突项 4/5 架构蓝图与迁移计划
 
-> 状态:规划文档(未实施)。关联 docs/v2-main-branch-fusion-report.md。范围:主分支最新(turbyho/fw-context-mcp HEAD 0ff02e00)与本地 v2 直接冲突的架构演进。
+> 状态:阶段 1/2 已实施(bfee9263 / 0bd32540),阶段 3 部分达成。关联 docs/v2-main-branch-fusion-report.md。范围:主分支最新(turbyho/fw-context-mcp HEAD 0ff02e00)与本地 v2 直接冲突的架构演进。
+
+## 实施记录(2026-10-13)
+
+- **阶段 1**(`bfee9263`):新增 get_project_status(项目级概览:active/builds/total_facts/multi)与 get_build_info(单 build 详情:facts/fact_kinds/worlds/stale),均走 M6 authority 路由,v2-only 索引可用,向后兼容。真实 FreeRTOS 3-build 验证。
+- **阶段 2**(`0bd32540`):resolve_build_name 精确模式,`FW_CONTEXT_M6_STRICT_SCOPE` 可开关;开启后多 build 无显式 variant 报错列候选,单 build/显式 variant/variant="*" 不受影响,默认关闭不破坏。
+- **阶段 3**:查询选择路径已确认**不读 config default_variant**(resolve_build_name 基于 M6 build 注册序)。剩余"从 active world 精确推导"列 backlog(需 v2 查询层跨层传入 active_world_ids,避免过度设计)。
 
 ## 冲突总览
 
