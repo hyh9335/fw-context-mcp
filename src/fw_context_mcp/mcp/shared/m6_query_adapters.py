@@ -21,14 +21,44 @@ log = logging.getLogger(__name__)
 
 # ── Symbol/navigation adapters ─────────────────────────────────────────────
 
+def _m6_paged(out: dict, tool: str, hint_args: dict, offset: int, limit: int,
+              query_for_past_end: str) -> list[dict]:
+    """Assemble a paged M6 answer: page_notice header + row slice.
+
+    *out* is the ``{rows, total, offset, shown}`` dict from an M6 query
+    primitive.  *hint_args* names the arguments that fixed the answer (for
+    example ``{"name": "xQueue", "exact": True}``); the next-page hint is
+    that call plus ``offset=N``.  *query_for_past_end* appears in the
+    past-end row when the page starts past the last row, so "no such code"
+    stays distinct from "the answer is shorter than the offset".
+    """
+    from fw_context_mcp.mcp.shared.paging import (
+        clamp_offset, page_hint, page_notice, past_end_info,
+    )
+
+    off = clamp_offset(offset)
+    rows = out.get("rows", [])
+    total = out.get("total", len(rows))
+    shown = out.get("shown", len(rows))
+    hint = page_hint(tool, **hint_args, next_offset=off + shown)
+    if not rows and off and off >= total:
+        return [past_end_info(f"matches for {query_for_past_end!r}", off, total)]
+    return [page_notice(total, off, shown, hint=hint), *rows]
+
+
 def m6_lookup_symbol(store: BuildSetStore, build_name: str,
-                     name: str, exact: bool = False, limit: int = 50, **kwargs) -> list[dict]:
-    return m6_query.lookup_symbol(store, build_name, name, exact=exact, limit=limit)
+                     name: str, exact: bool = False, limit: int = 50,
+                     offset: int = 0, **kwargs) -> list[dict]:
+    out = m6_query.lookup_symbol(store, build_name, name, exact=exact,
+                                 limit=limit, offset=offset)
+    extra = {"name": name, "exact": exact} if exact else {"name": name}
+    return _m6_paged(out, "lookup_symbol", extra, offset, limit, name)
 
 
 def m6_search_code(store: BuildSetStore, build_name: str,
-                   query: str, limit: int = 20, **kwargs) -> list[dict]:
-    return m6_query.search_code(store, build_name, query, limit=limit)
+                   query: str, limit: int = 20, offset: int = 0, **kwargs) -> list[dict]:
+    out = m6_query.search_code(store, build_name, query, limit=limit, offset=offset)
+    return _m6_paged(out, "search_code", {"query": query}, offset, limit, query)
 
 
 def m6_search_bodies(store: BuildSetStore, build_name: str,

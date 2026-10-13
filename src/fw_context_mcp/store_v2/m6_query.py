@@ -112,19 +112,18 @@ def list_builds(store: BuildSetStore) -> list[str]:
 # ── Semantic query primitives ───────────────────────────────────────────────
 
 def lookup_symbol(store: BuildSetStore, build_name: str,
-                  name: str, exact: bool = False, limit: int = 50) -> list[dict]:
+                  name: str, exact: bool = False, limit: int = 50,
+                  offset: int = 0) -> dict:
     """M6 implementation of lookup_symbol.
 
     Projects Symbol+Function+Variable+Type facts and filters by name.
+    Returns ``{rows, total, offset, shown}`` for the adapter to page.
     """
     results = []
     name_lower = name.lower() if not exact else None
     name_exact = name if exact else None
-    count = 0
 
     for kind in ("Symbol", "Function", "Variable", "Type"):
-        if count >= limit:
-            break
         facts = store.project_build_kind(build_name, kind)
         for f in facts:
             payload = f.get("payload", {})
@@ -136,24 +135,37 @@ def lookup_symbol(store: BuildSetStore, build_name: str,
                 if name_lower and name_lower not in sym_name.lower():
                     continue
             results.append(_format_symbol_result(payload))
-            count += 1
-            if count >= limit:
-                break
 
-    return results
+    return _paginate(results, offset, limit)
+
+
+def _paginate(results: list, offset: int, limit: int) -> dict:
+    """Split a full matched list into ``{rows, total, offset, shown}``.
+
+    *offset* counts rows already returned by earlier pages; *limit* is the
+    page size the caller asked for.  The full match list is sliced — the
+    caller materializes candidates once and this decides what the page
+    shows, keeping the count stable across pages.
+    """
+    total = len(results)
+    page = results[offset: offset + limit]
+    return {"rows": page, "total": total, "offset": offset, "shown": len(page)}
 
 
 def search_code(store: BuildSetStore, build_name: str,
-                query: str, limit: int = 20) -> list[dict]:
-    """M6 implementation of search_code — symbol name search."""
+                query: str, limit: int = 20,
+                offset: int = 0) -> dict:
+    """M6 implementation of search_code — symbol name search.
+
+    Returns a dict ``{rows, total, offset, shown}`` so the adapter can
+    build a paged answer (page_notice header + row slice).  ``offset``
+    pages over the full matched set, which the caller materializes once.
+    """
     # Split query into terms (like FTS5 would)
     terms = query.lower().split()
     results = []
-    count = 0
 
     for kind in ("Symbol", "Function", "Variable", "Type"):
-        if count >= limit:
-            break
         facts = store.project_build_kind(build_name, kind)
         for f in facts:
             payload = f.get("payload", {})
@@ -161,11 +173,8 @@ def search_code(store: BuildSetStore, build_name: str,
             # OR-join: match if ANY term is in the name
             if any(term in sym_name for term in terms):
                 results.append(_format_symbol_result(payload))
-                count += 1
-                if count >= limit:
-                    break
 
-    return results
+    return _paginate(results, offset, limit)
 
 
 def find_callers(store: BuildSetStore, build_name: str,
