@@ -291,9 +291,33 @@ def list_variants(
     cfg = load_config(root)
     project_id = cfg.project.id
     if not project_id:
+        # v2-only index: a project can hold an M6 store with no legacy
+        # config.  List the M6 builds instead of reporting uninitialized.
+        from fw_context_mcp.store_v2.m6_query import get_m6_store, list_builds
+        m6 = get_m6_store(root)
+        if m6 is not None:
+            try:
+                names = list_builds(m6)
+                builds = [{"variant": n, "image": "", "build_name": n,
+                           "config_hash": "", "m6_only": True} for n in names]
+                return {"builds": builds, "multi": len(builds) > 1}
+            except Exception:
+                pass
         return {"builds": [], "multi": False, "error": f"Project at {root} is not initialized."}
     db_path = cfg.index.db_dir / project_id / "index.db"
     if not db_path.exists():
+        # v2-only index (M6 store present, no legacy index.db): list the
+        # M6 builds instead of degrading to an error.
+        from fw_context_mcp.store_v2.m6_query import get_m6_store, list_builds
+        m6 = get_m6_store(root)
+        if m6 is not None:
+            try:
+                names = list_builds(m6)
+                builds = [{"variant": n, "image": "", "build_name": n,
+                           "config_hash": "", "m6_only": True} for n in names]
+                return {"builds": builds, "multi": len(builds) > 1}
+            except Exception:
+                pass
         return {"builds": [], "multi": False, "error": f"No index found for {root}."}
 
     conn = _quick_open_readonly(db_path)
@@ -536,6 +560,32 @@ def get_active_build(
     if not project_id:
         # The project directory exists but was never initialized.
         # Return a human-readable status so the LLM can guide the user.
+        # v2-only projects (indexed straight into the M6 store, no legacy
+        # init/config) are NOT "not initialized": answer from the M6 store.
+        from fw_context_mcp.store_v2.m6_query import get_m6_store, project_status
+        m6 = get_m6_store(root)
+        if m6 is not None:
+            try:
+                status = project_status(m6, active="")
+                return {
+                    "status": "ready",
+                    "project_root": str(root),
+                    "project_id": fw_cfg.project.id or "",
+                    "indexed_as": "m6",
+                    "builds": status["builds"],
+                    "total_facts": status["total_facts"],
+                    "multi": status["multi"],
+                    "active_variant": status["active"] or None,
+                    "index_message": (
+                        f"Project at {root} has an M6-native index "
+                        f"({len(status['builds'])} build(s), "
+                        f"{status['total_facts']} facts). "
+                        "No legacy config on disk; queries read the M6 store."
+                    ),
+                }
+            except Exception as e:
+                from fw_context_mcp.utils import log
+                log.debug("get_active_build M6 branch failed: %s", e)
         return {
             "status": "not_initialized",
             "project_root": str(root),
@@ -1274,6 +1324,20 @@ def list_projects(
 
 
 # ── moved from server.py ──
+def _safe_project_id(root) -> str:
+    """Derive a project id without raising on an uninitialized v2-only tree.
+
+    reset_index touches a project whose only index is the M6 store (no
+    legacy init/config), where ``derive_project_id`` raises
+    ``ProjectNotInitializedError``.  The id is only for display here, so a
+    fallback to the root basename keeps the destructive-path report intact.
+    """
+    try:
+        return derive_project_id(root)
+    except Exception:
+        return Path(root).name
+
+
 def reset_index(
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
     confirm: Annotated[
@@ -1303,6 +1367,40 @@ def reset_index(
         On failure the dict holds only ``error`` with the reason.
     """
     root = resolve_project_root(project_root)
+    # v2-only index: detect the M6 store WITHOUT calling _db_path, which
+    # raises ProjectNotInitializedError on a tree that has no legacy
+    # init/config.  The M6 store is a project-owned file, no config needed.
+    m6_db_path = root / ".fw-context" / "index-m6.db"
+    if m6_db_path.exists():
+        targets = [m6_db_path]
+        for suffix in ("-wal", "-shm"):
+            p = root / ".fw-context" / (m6_db_path.stem + suffix)
+            if p.exists():
+                targets.append(p)
+        if not confirm:
+            return {
+                "project_root": str(root),
+                "db": str(m6_db_path),
+                "project_id": _safe_project_id(root),
+                "action": "dry_run",
+                "message": "M6 store would be deleted (dry-run; pass confirm=True to execute).",
+                "m6": True,
+                "targets": [str(t) for t in targets],
+            }
+        for t in targets:
+            try:
+                t.unlink(missing_ok=True)
+            except Exception as e:
+                return {"error": f"Could not delete {t}: {e}", "m6": True}
+        return {
+            "project_root": str(root),
+            "db": str(m6_db_path),
+            "project_id": _safe_project_id(root),
+            "action": "deleted",
+            "message": f"M6 store deleted ({len(targets)} file(s)). Re-run `fw-context index`.",
+            "m6": True,
+            "deleted": [str(t) for t in targets],
+        }
     db_path = _db_path(root)
     if not db_path.exists():
         return {"error": f"No index found for {root}. Nothing to reset."}

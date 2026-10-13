@@ -1280,7 +1280,9 @@ mcp.tool()(_with_project_selector(_wrap_tool(
 
 
 def get_build_health(
-    project_root: str | None = None, fast: bool = True,
+    project_root: Annotated[str | None,
+                            Field(description="Project root directory. Auto-detected from CWD if omitted.")] = None,
+    fast: bool = True,
 ) -> dict:
     """Legacy fallback for get_build_health when M6 authority is off.
 
@@ -1288,6 +1290,10 @@ def get_build_health(
     M6 store (index-m6.db), which the legacy path does not populate.  When
     M6 authority is disabled the answer is an empty report with a note,
     never a fabricated one.
+
+    Args:
+        project_root: Project root directory. Auto-detected from CWD if
+            omitted (also accepts a project name or a project_id).
     """
     del project_root, fast
     return {"builds": [], "note": "M6-only report (M6 read authority is off)"}
@@ -1299,7 +1305,8 @@ mcp.tool()(_with_project_selector(_wrap_tool(
 
 
 def get_project_status(
-    project_root: str | None = None,
+    project_root: Annotated[str | None,
+                            Field(description="Project root directory. Auto-detected from CWD if omitted.")] = None,
     fast: bool = True,
 ) -> dict:
     """Legacy fallback for get_project_status when M6 authority is off.
@@ -1307,21 +1314,30 @@ def get_project_status(
     The project-level overview is an M6-native read (v2-only indexing
     keeps no legacy build_configs).  When M6 authority is disabled the
     answer is an empty overview with a note, never a fabricated one.
+
+    Args:
+        project_root: Project root directory. Auto-detected from CWD if
+            omitted (also accepts a project name or a project_id).
     """
     del project_root, fast
     return {"builds": [], "note": "M6-only report (M6 read authority is off)"}
 
 
 def get_build_info(
-    project_root: str | None = None,
-    variant: str | None = None,
-    image: str | None = None,
+    project_root: Annotated[str | None,
+                            Field(description="Project root directory. Auto-detected from CWD if omitted.")] = None,
+    variant: Annotated[str | None, Field(description="Build variant name.")] = None,
+    image: Annotated[str | None, Field(description="Sysbuild image name.")] = None,
     fast: bool = True,
 ) -> dict:
     """Legacy fallback for get_build_info when M6 authority is off.
 
     The one-build detail is an M6-native read.  When M6 authority is
     disabled the answer is an empty detail with a note, never fabricated.
+
+    Args:
+        project_root: Project root directory. Auto-detected from CWD if
+            omitted (also accepts a project name or a project_id).
     """
     del project_root, variant, image, fast
     return {"error": "M6-only report (M6 read authority is off)"}
