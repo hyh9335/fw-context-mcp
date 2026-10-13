@@ -78,6 +78,14 @@ def resolve_build_name(store: BuildSetStore, project_root: str | Path,
 
     This supports multi-build coexistence: each build gets a distinct
     build_name, and queries select the build via variant/image kwargs.
+
+    **Strict scope (conflict-4/5 stage 2):** when the environment
+    ``FW_CONTEXT_M6_STRICT_SCOPE`` is set, an explicit selector is
+    REQUIRED once a project holds more than one build — a query that
+    omits both ``variant`` and ``image`` raises instead of silently
+    selecting the first registered build.  Single-build projects keep
+    the free-argument form.  ``variant="*"`` remains an explicit
+    wildcard (see the callers that honor it).
     """
     # If variant/image specified, construct the build name directly
     if variant and image:
@@ -87,14 +95,34 @@ def resolve_build_name(store: BuildSetStore, project_root: str | Path,
     if image:
         return image
 
-    # No explicit selector — try the first registered build
+    # No explicit selector — detect multi-build and honour strict scope.
     try:
-        builds = store._build_to_buildsets
-        if builds:
-            return next(iter(builds.keys()))
+        builds = list(store._build_to_buildsets.keys())
     except Exception:
-        pass
+        builds = []
+    if builds:
+        if len(builds) > 1 and _strict_scope_enabled():
+            candidate = ", ".join(repr(b) for b in builds)
+            raise RuntimeError(
+                f"project holds {len(builds)} builds ({candidate}); a query "
+                f"must name one via 'variant' (or variant='*' for all). "
+                f"Set FW_CONTEXT_M6_STRICT_SCOPE=0 to keep the implicit "
+                f"first-build selection."
+            )
+        return builds[0]
     return "default"
+
+
+def _strict_scope_enabled() -> bool:
+    """Whether strict build scoping is on (conflict-4/5 stage 2, opt-in).
+
+    Default off: existing callers that omit variant/image on a
+    multi-build project keep selecting the first registered build.  When
+    on, such a query fails visibly with the candidate list — the
+    explicit-scope contract of the blueprint.
+    """
+    import os
+    return os.environ.get("FW_CONTEXT_M6_STRICT_SCOPE", "0") not in ("", "0", "false", "False")
 
 
 def list_builds(store: BuildSetStore) -> list[str]:
