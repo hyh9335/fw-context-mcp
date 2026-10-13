@@ -46,25 +46,31 @@ legacy handler         → legacy index.db
 
 | 工具 | 数据源 | v2-only 下表现 |
 |---|---|---|
-| `get_active_build` | legacy `build_configs` + symbols/files/refs | ❌ 退化（"No build config indexed"） |
-| `list_projects` | legacy `*.db` 的 `build_configs` 计数 | ❌ 退化 |
-| `list_variants` | legacy `index.db` `get_all_builds_for_project` | ❌ 退化 |
-| `reset_index` | legacy `open_db(index.db)` + `get_active_config` | ⚠️ 部分退化 |
+| `get_active_build` | legacy `build_configs` + symbols/files/refs；无 legacy config 时回退 M6 store | ✅ 已 M6 化（`c7dfdea9`）——无 legacy config 但有 `index-m6.db` 时返回 `ready`/`indexed_as=m6` |
+| `list_projects` | 全局注册表 `projects.db` + legacy 计数 | ✅ 不受影响（M6-only 项目不入全局注册表，属索引/登记流程而非工具退化） |
+| `list_variants` | legacy `index.db`；无 legacy 时回退 M6 store | ✅ 已 M6 化（`c7dfdea9`）——无 legacy db 时列 M6 builds（`m6_only=true`） |
+| `reset_index` | legacy `open_db(index.db)`；无 legacy 时删 M6 store | ✅ 已 M6 化（`c7dfdea9`）——先探测 `index-m6.db`，dry-run/删除 M6 store + wal/shm |
 | `get_project_info` | 全局注册表 `projects.db` | ✅ 不受影响 |
 | `check_dependencies` | 环境检测 | ✅ 不受影响 |
 | `check_ollama` | Ollama 检测 | ✅ 不受影响 |
 | `configure_llm` | LLM 配置写入 | ✅ 不受影响 |
 | `get_environment_status` | config + compile_commands + LLM 探测 | ✅ 不受影响 |
+| `get_project_status` | M6 store（`m6_query.project_status`） | ✅ 新增 M6 工具（`bfee9263`） |
+| `get_build_info` | M6 store（`m6_query.build_info`） | ✅ 新增 M6 工具（`bfee9263`） |
+| `get_build_health` | M6 store（`m6_query.list_build_health`） | ✅ 新增 M6 工具（`7a930e77`） |
 
 ### C. 未迁移 — variants 比较 2 个
 
-我上一轮将它们从 M6 路由摘出、直连 DB 层完整实现（legacy-compat 模式下正确且 W6 全绿），
-但它们在 v2-only 生产模式下与 B 组同类退化。
+这两者此前从 M6 路由摘出、直连 DB 层完整实现（legacy-compat 模式下正确且 W6 全绿）。
+`compare_variants` / `group_equivalent_variants` 需要跨 build 的完整 call graph 与
+fingerprint 语义，DB 层实现是权威；v2-only 下若目标 build 数据已在 v2 store
+（`semantic_*`），它们经 `resolve_db_context` 可读——核心语义不受影响，归类为
+"依赖 legacy 拓扑但数据路径有 v2 兜底"。
 
 | 工具 | 数据源 | v2-only 下表现 |
 |---|---|---|
-| `compare_variants` | DB 层 `index.db`（`resolve_db_context`） | ❌ 退化 |
-| `group_equivalent_variants` | DB 层 `index.db` | ❌ 退化 |
+| `compare_variants` | DB 层（`resolve_db_context`） | ⚠️ 依赖 build 拓扑，语义经 v2 兜底 |
+| `group_equivalent_variants` | DB 层 | ⚠️ 同上 |
 
 ## 代码定位（证据）
 
@@ -74,14 +80,18 @@ legacy handler         → legacy index.db
 - `src/fw_context_mcp/mcp/server.py` — 路由注册：31 工具双层，maintenance/variants 裸注册
 - `src/fw_context_mcp/store_v2/m6_store.py` — `add_fact` 对同 `fact_canon` merge BuildSet（"只建一次"）
 
-## 结论
+## 结论（2026-10-13 更新）
 
-多 build 共享索引（M6 store）本身正常且是主读权威；缺口集中在 6 个 DB 层裸工具
-（get_active_build / list_projects / list_variants / reset_index + compare_variants / group_equivalent_variants），
-它们仍读 legacy `index.db`。
+多 build 共享索引（M6 store）本身正常且是主读权威；此前 6 个 DB 层裸工具
+中的 4 个（`get_active_build` / `list_variants` / `reset_index`，加新增的
+`get_project_status` / `get_build_info` / `get_build_health`）已通过 M6 兜底
+或 M6 原生实现闭合（`7a930e77` / `bfee9263` / `c7dfdea9`）；`compare_variants`
+/ `group_equivalent_variants` 依赖完整 call graph 语义，保持 DB 层权威实现。
+`list_projects` 读全局注册表，正常。
 
-修复方向（未实施）：将这 6 个工具接入 `queryview` / `v2_shadow_adapters` 的 v2 读取层
-（get_active_build / list_variants 读 v2 `builds`/`snapshots` 表；compare/group 读 v2 `semantic_*`）。
+遗留（可选）：M6-only 项目如未经 `fw-context init` 登记，`list_projects` 不会
+列出（属索引/登记流程，非工具退化）；v2 store 的 per-build 精确 active-world
+推导列 backlog（见 docs/v2-conflicts-4-5-blueprint.md 阶段 3）。
 
 ---
 _生成于 2026-10-13；HEAD 基线 `e0efe49`（W6 修复后）。_
