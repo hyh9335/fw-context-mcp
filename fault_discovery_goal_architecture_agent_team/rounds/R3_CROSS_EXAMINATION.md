@@ -1,2 +1,0 @@
-# R3 — Cross Examination
-Use DEBATE_PROTOCOL pairings. Steelman first. Create DEBATE_ROUND_1.md with claim/evidence/challenge/response/position-update/unresolved. Fact disputes go to ledgers, not rhetoric.

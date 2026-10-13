@@ -1,2 +1,0 @@
-# A8 — Alternative-Path Architect
-Construct a credible path that does NOT assume fw-context is central. Consider direct Clang AST/compile DB, clangd, tree-sitter, ripgrep, build introspection, compiler/linker oracles, lightweight graphs, strong reasoning with on-demand acquisition, or hybrid fw-context use. Compare time-to-first-useful-rule, reliability, complexity, scalability, maintenance, verification. Do not deliberately weaken the alternative.

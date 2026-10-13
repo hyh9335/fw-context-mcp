@@ -1,2 +1,0 @@
-# A3 — Evidence-to-Rule Specialist
-Design source evidence -> mechanism hypothesis -> observable condition -> candidate rule -> auditable justification. Define rule taxonomy, evidence, confidence, counterexamples, unknown semantics, and what must never be silently approximated. Analyze impact of exact lookup, pagination, contexts, callbacks, reachability and vectors.

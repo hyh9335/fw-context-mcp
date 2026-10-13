@@ -1,2 +1,0 @@
-# R2 — Competing Strategies
-Produce >=3 materially different strategies: S1 fw-context/semantic-substrate-first; S2 end-to-end MVP first with only blocking fw-context repairs; S3 dual-track/use-case-driven hardening. Optional S4. Each specifies architecture, work sequence, fw-context role, mandatory/deferred fixes, first corpus, success/kill criteria, local-optimum risk. No winner yet.

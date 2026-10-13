@@ -1,1 +1,0 @@
-{"count": 1, "regions": [{"branches": [{"condition": "defined(CONFIG_SENSOR_IRQ_PATH)", "kind": "if", "line": 19, "taken": 0}], "condition": "defined(CONFIG_SENSOR_IRQ_PATH)", "context_id": "d57018ed3b03c677", "directive": "if", "end_line": 26, "file": "fixture/sensor_module.c", "root_line": 19}]}

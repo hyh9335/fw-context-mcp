@@ -1,2 +1,0 @@
-# A4 — fw-context Goal-Impact Auditor
-Evaluate fw-context strictly as a subtool. Re-open current source + validation. Classify every finding as BLOCKS_MVP / MATERIAL_BUT_DEFER / USE_CASE_DEPENDENT / TOOL_PRODUCT_ONLY / BENCHMARK_ENVIRONMENT. Explain affected fault reasoning step, alternative evidence path, silent-error risk, fix depth, and shared-root hypotheses.

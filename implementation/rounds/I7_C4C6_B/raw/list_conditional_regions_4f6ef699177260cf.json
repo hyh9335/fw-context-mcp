@@ -1,1 +1,0 @@
-{"count": 1, "regions": [{"branches": [{"condition": "CONFIG_DISABLE_ENVIRON", "kind": "if", "line": 107, "taken": 0}], "condition": "CONFIG_DISABLE_ENVIRON", "context_id": "c3f5a5c65fa105d8", "directive": "ifndef", "end_line": 110, "file": "fixture/libs/libc/unistd/lib_getcwd.c", "root_line": 107}]}

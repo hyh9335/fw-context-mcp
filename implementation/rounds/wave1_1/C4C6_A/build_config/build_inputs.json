@@ -1,9 +1,0 @@
-{
- "build_id": "BUILD-C4C6-DISABLE-ENVIRON",
- "defines": [
-  "-DCONFIG_DISABLE_ENVIRON=1",
-  "-DCONFIG_LIBC_HOMEDIR=\"/home\""
- ],
- "lineage": "B (public NuttX snapshot pair)",
- "pinned_by": "CMakeLists target_compile_definitions (frozen at staging)"
-}

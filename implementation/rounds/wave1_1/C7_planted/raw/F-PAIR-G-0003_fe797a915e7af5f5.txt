@@ -1,3 +1,0 @@
-pattern='_submit\\(' glob='sensor_module.c' truncated=False
-sensor_module.c:20: int sensor_submit(int raw)
-sensor_module.c:23:     work_submit(&sensor_work);

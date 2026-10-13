@@ -1,2 +1,0 @@
-pattern='_submit\\(' glob='accel_trigger.c' truncated=False
-accel_trigger.c:48: 	k_work_submit(&accel_work);

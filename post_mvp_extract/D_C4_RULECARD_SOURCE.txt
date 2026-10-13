@@ -1,5 +1,0 @@
-artifact: D_C4_RULECARD.json
-original_path: implementation/rounds/I7_C4C6_A/rulecards/RC-I7-A-API-GETCWD.json
-sha256: 9290aa693f2e5ff9a2ce3eaa93df5ea43a58ac2c703aba712db5c8bed245f1b8
-size_bytes: 2757
-source_artifact_mtime_utc: 2026-09-20T09:42:27Z

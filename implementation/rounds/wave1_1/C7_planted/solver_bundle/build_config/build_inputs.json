@@ -1,8 +1,0 @@
-{
- "build_id": "BUILD-C7-PINNED",
- "defines": [
-  "-DCONFIG_SENSOR_ENABLE=1"
- ],
- "lineage": "D (planted-source-deterministic)",
- "pinned_by": "CMakeLists target_compile_definitions (frozen at staging)"
-}

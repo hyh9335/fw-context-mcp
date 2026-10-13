@@ -1,8 +1,0 @@
-{
-  "_format": "fw-context-cc/5",
-  "defines": [],
-  "dialect": [
-    "-Wno-unknown-warning-option"
-  ],
-  "project_root": "D:\\github\\fw-context-mcp\\implementation\\rounds\\wave1_1\\C5_safety\\work\\proj_d5813856"
-}

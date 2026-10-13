@@ -1,7 +1,0 @@
-{
- "scenario": "N1",
- "board": "sim:nsh",
- "tu_count": 1194,
- "cc_path": "build/compile_commands.json",
- "representative_flags": "/usr/bin/cc -D__NuttX__ -I/home/h00969597/fwctx-v2-work/N1/nuttx-src/sched -isystem /home/h00969597/fwctx-v2-work/N1/nuttx-src/include -isystem /home/h00969597/fwctx-v2-work/N1/nuttx-src/build/include -U_AIX -U_WIN32 -U__APPLE__ -U__FreeBSD__ -U__NetBSD__ -U__linux__ -U__sun__ -U__unix__ -U__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ -g -fomit-frame-pointer -fprofile-arcs -ftest-coverage -fno-inl"
-}

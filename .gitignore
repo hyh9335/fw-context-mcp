@@ -90,3 +90,34 @@ tests/test_feature_comparison.py
 # External real-project corpora (pinned clones)
 .dsh-control/m6_research/corpus/FreeRTOS-Kernel/
 .dsh-control/m6_research/corpus/mbedtls/
+
+# ---- Archived local milestone intermediates (kept on disk; full tree saved
+# under the git tag `archive/pre-cleanup-m3b-native-v2-b0432f5`) ----
+multi_version_index_review/
+implementation/
+.fw-final/
+.fw-closeout/
+.fw-validation/
+.fw-orchestrator/
+fault_discovery_goal_architecture_agent_team/
+fwctx_validation_benchmark_pack/
+fw_context_mcp_cross_platform_closeout/
+fw_context_dsh_project_native_controller_v3/
+post_mvp_extract/
+post_mvp_extract.zip
+tf/
+probe2.py
+_verify_cmd1.txt
+_verify_cmd2.txt
+CROSS_PLATFORM_FINAL_AUDIT.md
+M3_VERIFIER_FINDINGS.md
+RELEASE_AUDIT.md
+KNOWN_LIMITATIONS.md
+.dsh-control/
+.dsh-control-acl-repair/
+packaging/.venv-resolve/
+/gate_run.log
+/m6_gate.log
+/m6_gate_v2.log
+/m65_gate_final.log
+/m65_gate_v2.log

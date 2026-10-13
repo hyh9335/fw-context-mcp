@@ -1,2 +1,0 @@
-# R5 — Strategic Red Team
-A7 leads, A8 attacks alternatives. Test sunk cost, unnecessary fw-context work, missing dataflow/state reasoning, source-only limits, weak GT, evaluation gaming, architecture complexity, too-narrow MVP, premature generalization. Produce RED_TEAM_REPORT with attack/evidence/strategy/severity/mitigation/revisit.

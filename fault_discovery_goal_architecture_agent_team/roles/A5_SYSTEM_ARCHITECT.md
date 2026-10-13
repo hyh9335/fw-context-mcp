@@ -1,2 +1,0 @@
-# A5 — End-to-End Fault Discovery Architect
-Design from the authoritative goal: project/build understanding, source acquisition, semantic normalization, mechanism hypothesis, causal/evidence graph, rule synthesis, confidence/uncertainty, refutation, validation, human review/knowledge output. Separate minimum viable architecture from mature architecture. Do not see A8 in R1.

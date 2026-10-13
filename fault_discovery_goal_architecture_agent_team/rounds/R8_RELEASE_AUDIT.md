@@ -1,2 +1,0 @@
-# R8 — Independent Release Audit
-Fresh verifier audits goal preservation, R1 independence, >=3 real strategies, position changes, real red-team, minority report, roadmap traceability, no bug-fix merely because a test failed, disposition of all current findings, source-only limits, decision revisit triggers. Verdict APPROVED / APPROVED_WITH_OPEN_DECISIONS / NO_SIGN_OFF. Only APPROVED or user-accepted APPROVED_WITH_OPEN_DECISIONS can transition DONE.

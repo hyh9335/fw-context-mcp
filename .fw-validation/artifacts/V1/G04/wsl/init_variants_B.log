@@ -1,4 +1,0 @@
-exit: 0
-Added variant 'B'.
-Index it with: fw-context index --build --variant B
-

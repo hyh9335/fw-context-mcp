@@ -1,6 +1,0 @@
-{
- "scenario": "Z3",
- "board": "native_sim",
- "tu_count": 89,
- "cc_path": "build/compile_commands.json"
-}

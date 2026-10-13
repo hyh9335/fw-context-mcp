@@ -1,6 +1,0 @@
-# variant_b/Make.defs — PT-G1 build fragment for variant B.
-# Per-variant -D set (manifest input): VARIANT_TAG=3 distinguishes variant B.
-VARIANT_NAME := variant_b
-CFLAGS += -I$(PTG1_ROOT)/variant_b
-CFLAGS += -DVARIANT_TAG=3
-SRCS += $(PTG1_ROOT)/shared/mode_select.c

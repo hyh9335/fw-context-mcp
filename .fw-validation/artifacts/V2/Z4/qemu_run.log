@@ -1,5 +1,0 @@
-[0/1] To exit from QEMU enter: 'CTRL+a, x'[QEMU] CPU: cortex-m3
-qemu-system-arm: warning: nic stellaris_enet.0 has no peer
-Timer with period zero, disabling
-*** Booting Zephyr OS build v4.4.2 ***
-Hello World! qemu_cortex_m3/ti_lm3s6965

@@ -1,2 +1,0 @@
-pattern='s_ready = (gate(raw) != 0);' glob=None truncated=False
-fixture/file1.c:14: 	s_ready = (gate(raw) != 0);

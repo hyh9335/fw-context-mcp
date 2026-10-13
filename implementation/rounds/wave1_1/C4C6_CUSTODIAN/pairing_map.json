@@ -1,8 +1,0 @@
-{
- "assignment_rule": "first bit of sha256(commit-sha) parity (deterministic pseudo-random)",
- "mapping": {
-  "A": "526ba1ab343a00b2e1801e089392eed64758b820",
-  "B": "67ed036227b14bbab01b63801bfd7e218dfd6107"
- },
- "note": "custodian-held; solver-visible material must not contain SHAs"
-}

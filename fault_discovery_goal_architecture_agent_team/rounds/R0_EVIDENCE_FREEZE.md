@@ -1,2 +1,0 @@
-# R0 — Evidence Freeze
-Controller only. Record repo HEAD/branch/dirty/version; locate expected artifacts; build FACT_LEDGER.json and CONTRADICTIONS.json; freeze goal; prove product read-only; initialize state. No roadmap interpretation yet.

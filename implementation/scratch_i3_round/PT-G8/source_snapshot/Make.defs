@@ -1,6 +1,0 @@
-# Make.defs — PT-G8 build fragment: conflict by construction.
-# -DPOLL_INTERVAL=250 overrides the stored header default 100 (poll_cfg.h);
-# no -DCTRL_INTERVAL flag exists (control macro has no conflict).
-CFLAGS += -DPOLL_INTERVAL=250
-CFLAGS += -I$(PTG8_ROOT)
-SRCS += poller.c main.c

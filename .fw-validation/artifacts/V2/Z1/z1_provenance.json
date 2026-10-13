@@ -1,7 +1,0 @@
-{
- "scenario": "Z1",
- "board": "native_sim",
- "tu_count": 75,
- "cc_path": "build/compile_commands.json",
- "representative_flags": "/usr/bin/gcc -DKERNEL -DK_HEAP_MEM_POOL_SIZE=0 -D__ZEPHYR__=1 -I/home/h00969597/fwctx-v2-work/Z1/build/zephyr/include/generated/zephyr -I/home/h00969597/fwctx-bench/public/zephyr/include -I/home/h00969597/fwctx-v2-work/Z1/build/zephyr/include/generated -I/home/h00969597/fwctx-bench/public/zephyr/soc/native/inf_clock -I/home/h00969597/fwctx-bench/public/zephyr/boards/native/native_sim -I/home/h0096"
-}

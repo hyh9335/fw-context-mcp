@@ -1,2 +1,0 @@
-# R1 — Independent Research
-Spawn A1–A8 isolated. Common material: GOAL_CONTRACT, CURRENT_STATE_SEED, FACT_LEDGER plus role-relevant evidence only. No other R1 reports. Each outputs facts, inferences, assumptions, uncertainties, top implications/questions, evidence paths. Reject duplicate generic essays.

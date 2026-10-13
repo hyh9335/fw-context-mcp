@@ -1,6 +1,0 @@
-{
- "scenario": "R2",
- "board": "native+USEMODULE=saul,periph_uart",
- "tu_count": 88,
- "cc_path": "/home/h00969597/fwctx-v2-work/R1/riot-src/compile_commands.json"
-}

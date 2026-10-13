@@ -1,5 +1,0 @@
-exit: 1
-Project: work  path=C:\Users\h00969597\fwctx-validation-work\V4\A8_malformed_env\work  build=unknown
-
-error: C:\Users\h00969597\fwctx-validation-work\V4\A8_malformed_env\work\compile_commands.json not found
-  Run 'fw-context index --build' to build and index automatically.

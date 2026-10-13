@@ -1,2 +1,0 @@
-# R7 — Evidence-Weighted Decision
-Create DECISION_LEDGER.json using DECISION_PROTOCOL, then GOAL_BASELINE.md, CURRENT_CAPABILITY_MAP.md, FAULT_DISCOVERY_REQUIREMENTS.md, MINORITY_REPORT.md, FINAL_ARCHITECTURE.md, ROADMAP.md. ROADMAP must contain next implementation wave, non-goals, mandatory/deferred fw-context fixes, first end-to-end MVP, evaluation gate, kill/revisit triggers. No product code.

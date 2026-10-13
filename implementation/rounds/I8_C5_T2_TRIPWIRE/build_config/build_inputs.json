@@ -1,6 +1,0 @@
-{
- "build_id": "BUILD-C5",
- "defines": [],
- "lineage": "C",
- "pinned_by": "I8 driver (no build system in the C5 fixture; single-file fixture)"
-}

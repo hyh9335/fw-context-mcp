@@ -1,2 +1,0 @@
-pattern='defined(CONFIG_ACCEL_TRIGGER_GLOBAL_THREAD)' glob=None truncated=False
-accel_trigger.c:33: #if defined(CONFIG_ACCEL_TRIGGER_GLOBAL_THREAD)

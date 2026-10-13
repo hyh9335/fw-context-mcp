@@ -1,2 +1,0 @@
-# R4 — Scenario Stress
-Run every strategy against every scenario. For each strategy/scenario: evidence required, tools, fw-context role, reasoning steps, expected rule, GT, blockers, workaround, silent-error risk, falsifier. Descriptive dimensions only; no single winner score.

@@ -1,1 +1,0 @@
-pattern='link_ready\\(\\) != 0' glob=None truncated=False
