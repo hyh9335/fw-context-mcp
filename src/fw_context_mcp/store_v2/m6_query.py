@@ -95,7 +95,14 @@ def resolve_build_name(store: BuildSetStore, project_root: str | Path,
     if image:
         return image
 
-    # No explicit selector — detect multi-build and honour strict scope.
+    # No explicit selector — pick the most active build.
+    # The M6 store records which World each build belongs to; a build that
+    # more Worlds reference was part of more index runs, the natural "most
+    # active" signal.  On a single-world project every build has the same
+    # count (or zero), so fall back to the first registered build.  This
+    # keeps single-world behaviour unchanged while making multi-world
+    # re-indexes converge on the dominant build without any cross-layer
+    # dependency on the v2 world_status table.
     try:
         builds = list(store._build_to_buildsets.keys())
     except Exception:
@@ -109,8 +116,38 @@ def resolve_build_name(store: BuildSetStore, project_root: str | Path,
                 f"Set FW_CONTEXT_M6_STRICT_SCOPE=0 to keep the implicit "
                 f"first-build selection."
             )
+        if len(builds) > 1:
+            # Most-worlds-referenced wins; tie -> first registered.
+            most = _most_referenced_build(store, builds)
+            return most
         return builds[0]
     return "default"
+
+
+def _most_referenced_build(store: BuildSetStore, builds: list[str]) -> str:
+    """Return the build that the highest number of Worlds reference.
+
+    ``m6_world_builds`` maps world_id -> build_name.  A build that belongs
+    to more Worlds was part of more index runs and is the natural active
+    choice.  When every build ties (single world, or none recorded), the
+    first registered build breaks the tie so the behaviour is unchanged.
+    """
+    counts: dict[str, int] = {}
+    try:
+        rows = store._conn.execute(
+            "SELECT build_name, COUNT(world_id) FROM m6_world_builds "
+            "GROUP BY build_name"
+        ).fetchall()
+        counts = {r[0]: r[1] for r in rows}
+    except Exception:
+        pass
+    best = builds[0]
+    best_count = counts.get(best, 0)
+    for b in builds[1:]:
+        c = counts.get(b, 0)
+        if c > best_count:
+            best, best_count = b, c
+    return best
 
 
 def _strict_scope_enabled() -> bool:
