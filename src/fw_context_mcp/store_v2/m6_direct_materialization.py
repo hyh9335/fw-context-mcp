@@ -292,6 +292,43 @@ def materialize_unit_into_m6(
     except Exception:  # noqa: BLE001 — body capture is best-effort, never breaks indexing
         log.debug("M6 body capture skipped for %s", build_name)
 
+    # ── I4: FileContent facts ───────────────────────────────────────────────
+    # The read path (search_content / read_file) reads m6_file_content, and
+    # the store's add_file_content_fact was never wired in — m6_file_content
+    # stayed empty under v2-only indexing, so search_content returned 0 on
+    # every real index even after the read side was fixed.  Materialize one
+    # file-content fact per source file this TU touches (the TU's own file,
+    # plus any file that contributes a symbol).  Best-effort: never breaks
+    # indexing.
+    try:
+        _fc_files: dict[str, str] = {}
+        for sym in symbols:
+            fpath = str(getattr(sym, "file", "") or "")
+            if not fpath or fpath in _fc_files:
+                continue
+            try:
+                _fc_files[fpath] = Path(fpath).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:
+                continue
+        # The TU's own compile unit, when known and distinct.
+        tu_main = str(getattr(symbols[0], "file", "") or "") if symbols else ""
+        if tu_main and tu_main not in _fc_files:
+            try:
+                _fc_files[tu_main] = Path(tu_main).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:
+                pass
+        for fpath, content_text in _fc_files.items():
+            if not content_text.strip():
+                continue
+            store.add_file_content_fact(fpath, builds, content_text)
+            stats["kinds"]["FileContent"] = stats["kinds"].get("FileContent", 0) + 1
+    except Exception:  # noqa: BLE001 — file-content capture is best-effort
+        log.debug("M6 file-content capture skipped for %s", build_name)
+
     stats["facts_indexed"] += stats["kinds"].get("Body", 0)
     stats["facts_total"] = stats["facts_indexed"] + stats["facts_reused"]
     return stats
