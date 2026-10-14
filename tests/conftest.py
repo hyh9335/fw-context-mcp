@@ -40,6 +40,12 @@ if os.environ.get("FW_CONTEXT_SHADOW_V2") is None:
 # M5: existing fixtures need the legacy mirror — opt into compat mode.
 if os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE") is None:
     os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = "1"
+# M6/mcp-surface GREEN block: the legacy fixtures (no M6 store, no v2
+# store) are exercised through the legacy path.  v2 read authority is
+# turned OFF so a fixture without a v2 store reaches legacy_fn instead of
+# failing closed (M3B design).  Symmetric with V2_WRITE_AUTHORITY=0 above.
+if os.environ.get("FW_CONTEXT_V2_READ_AUTHORITY") is None:
+    os.environ["FW_CONTEXT_V2_READ_AUTHORITY"] = "0"
 
 # ── Result logging ─────────────────────────────────────────────────────────
 

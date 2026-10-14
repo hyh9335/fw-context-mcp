@@ -276,8 +276,35 @@ def v2_authority_route(
     from .context import _db_path
     from fw_context_mcp.indexer.db._projects import get_active_config
 
-    @functools.wraps(legacy_fn)
-    def wrapper(*args, **kwargs):
+    import inspect as _inspect
+    _v2_body = _make_v2_wrapper_body(
+        tool_name, legacy_fn, format_v2, allow_tree_mismatch)
+
+    if _inspect.iscoroutinefunction(legacy_fn):
+        @functools.wraps(legacy_fn)
+        async def wrapper(*args, **kwargs):
+            return await _v2_body(*args, **kwargs)
+    else:
+        @functools.wraps(legacy_fn)
+        def wrapper(*args, **kwargs):
+            return _v2_body(*args, **kwargs)
+
+    return wrapper
+
+
+def _make_v2_wrapper_body(tool_name, legacy_fn, format_v2, allow_tree_mismatch):
+    """Shared body of the v2 authority wrapper (sync or async per handler).
+
+    Extracted like the M6 body: an async legacy handler (explain_symbol)
+    must be awaited, and a sync one must not, so the wrapper shape follows
+    ``inspect.iscoroutinefunction(legacy_fn)``.
+    """
+    import functools
+    from .queryview import resolve_or_reuse_view, make_session_key
+    from .context import _db_path
+    from fw_context_mcp.indexer.db._projects import get_active_config
+
+    def body(*args, **kwargs):
         if not v2_read_authority_enabled():
             # Legacy sole authority — unchanged production behavior
             return legacy_fn(*args, **kwargs)
@@ -379,7 +406,7 @@ def v2_authority_route(
             *args, **kwargs,
         )
 
-    return wrapper
+    return body
 
 
 # ── M7.2 Production routing primitive — M6 read authority ──────────────────
@@ -419,9 +446,31 @@ def m6_authority_route(
         format_m6: Optional result formatter
     """
     import functools
+    import inspect as _inspect
 
-    @functools.wraps(legacy_fn)
-    def wrapper(*args, **kwargs):
+    _sync_wrapper_body = _make_m6_wrapper_body(
+        tool_name, legacy_fn, m6_fn, format_m6)
+
+    if _inspect.iscoroutinefunction(legacy_fn):
+        @functools.wraps(legacy_fn)
+        async def wrapper(*args, **kwargs):
+            return await _sync_wrapper_body(*args, **kwargs)
+    else:
+        @functools.wraps(legacy_fn)
+        def wrapper(*args, **kwargs):
+            return _sync_wrapper_body(*args, **kwargs)
+
+    return wrapper
+
+
+def _make_m6_wrapper_body(tool_name, legacy_fn, m6_fn, format_m6):
+    """The shared body of the M6 authority wrapper.
+
+    Extracted so the wrapper can be sync for a sync legacy handler and
+    async for an async one (explain_symbol is async): M6 disabled must
+    forward the legacy call and honour its awaitable-ness.
+    """
+    def body(*args, **kwargs):
         if not m6_read_authority_enabled():
             # M6 authority disabled — use legacy/v2 path (unchanged)
             return legacy_fn(*args, **kwargs)
@@ -462,7 +511,7 @@ def m6_authority_route(
 
         return result
 
-    return wrapper
+    return body
 
 
 def m6_read_authority_enabled() -> bool:

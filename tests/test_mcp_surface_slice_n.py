@@ -358,7 +358,8 @@ def test_wire_registry_parity_readme_docs_docstring():
     assert not problems, "4-surface registry parity broken (ADR-006 g): " + "; ".join(problems)
 
 
-def test_wire_business_error_is_isError_true(mv_fixture):
+def test_wire_business_error_is_isError_true(mv_fixture, monkeypatch):
+    monkeypatch.setenv("FW_CONTEXT_M6_READ_AUTHORITY", "0")
     """(c) ADR-006: a handler business error leaves the wire as isError=true."""
     result = wire_call("get_source", {
         "name": "no_such_symbol_xyz_n", "project_root": str(mv_fixture)})
@@ -384,7 +385,8 @@ def test_wire_maintenance_error_is_isError_true(tmp_path):
     assert isinstance(body, dict) and "error" in body
 
 
-def test_wire_variant_star_source_annotated(mv_fixture):
+def test_wire_variant_star_source_annotated(mv_fixture, monkeypatch):
+    monkeypatch.setenv("FW_CONTEXT_M6_READ_AUTHORITY", "0")
     """(e) ADR-006: EVERY source tool under variant='*' returns one record per
     build scope, each carrying the ADR-003 provenance envelope (variant /
     config_hash).  SLICE-E fanned out get_source / get_symbol_context /
@@ -418,7 +420,8 @@ def test_wire_variant_star_source_annotated(mv_fixture):
     assert not problems, "variant='*' source annotation broken (ADR-006 e): " + "; ".join(problems)
 
 
-def test_wire_indirect_targets_preserves_db_note(mv_fixture):
+def test_wire_indirect_targets_preserves_db_note(mv_fixture, monkeypatch):
+    monkeypatch.setenv("FW_CONTEXT_M6_READ_AUTHORITY", "0")
     """(f) + T06::TS06_03: the DB-layer ``_note`` of the fn_ptr_type fallback
     must reach the WIRE verbatim (not only the direct handler call that
     SLICE-H already proved)."""
@@ -569,7 +572,8 @@ def test_wire_schema_violation_isError_true(mv_fixture):
         f"isError={result.isError} text={result.content[0].text[:200]}")
 
 
-def test_wire_variant_star_callgraph_annotated(mv_fixture):
+def test_wire_variant_star_callgraph_annotated(mv_fixture, monkeypatch):
+    monkeypatch.setenv("FW_CONTEXT_M6_READ_AUTHORITY", "0")
     """T06::TS06_07 on the wire: scoped callgraph tools carry the envelope."""
     result = wire_call("find_callers", {
         "name": "util_add", "variant": "*", "project_root": str(mv_fixture)})
