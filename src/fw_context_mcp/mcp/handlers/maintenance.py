@@ -1320,6 +1320,45 @@ def list_projects(
                 )
         except (sqlite3.Error, OSError) as e:
             results.append({"db": str(db_path), "error": str(e)})
+
+    # ── M6-only projects (v2 direct-materialization indexing, no legacy
+    # index.db / no global registry) ──────────────────────────────────────
+    # The M6 query layer keeps the stores it opened this session in
+    # m6_query._m6_stores.  Such a project is indexed and queryable but
+    # never appears in the registry-driven list above, so supplement it.
+    existing_roots = {
+        str(Path(r["root_path"]).resolve())
+        for r in results if r.get("root_path")
+    }
+    try:
+        from ...store_v2.m6_query import _m6_stores
+        for m6_root, _store in list((_m6_stores or {}).items()):
+            m6_root = str(m6_root)
+            if m6_root in existing_roots:
+                continue
+            if not Path(m6_root).exists():
+                continue
+            try:
+                from ...store_v2.m6_query import list_builds
+                builds = list_builds(_store)
+                results.append({
+                    "project_id": _safe_project_id(Path(m6_root)),
+                    "name": Path(m6_root).name,
+                    "root_path": str(Path(m6_root)),
+                    "build_system": _detect_build_system(Path(m6_root)),
+                    "symbol_count": 0, "file_count": 0,
+                    "indexed_at": "", "description": "M6-only index (no legacy DB)",
+                    "first_indexed_at": "",
+                    "schema_version": 0, "current_schema": CURRENT_SCHEMA_VERSION,
+                    "reindex_needed": False, "status": "ready",
+                    "db": str(Path(m6_root) / ".fw-context" / "index-m6.db"),
+                    "variant_count": len(builds), "image_count": 0,
+                    "analysis": None, "indexed_as": "m6",
+                })
+            except Exception:
+                pass
+    except Exception:
+        pass
     return results
 
 
