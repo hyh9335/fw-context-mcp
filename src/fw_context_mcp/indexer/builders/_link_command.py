@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import logging
 import os
+
+from ...platform import IS_POSIX
 import re
 import shlex
 from collections.abc import Iterator
@@ -356,7 +358,7 @@ def ld_path(token: str, posix: bool | None = None) -> str | None:
     surrounding double quotes is removed.
     """
     if posix is None:
-        posix = os.name != "nt"
+        posix = IS_POSIX
     if not posix:
         if len(token) >= 2 and token[0] == token[-1] == '"':
             return token[1:-1]
@@ -434,7 +436,7 @@ def shell_words(text: str) -> list[str] | None:
     POSIX shell rules on a POSIX host, `windows_words` on Windows: a build
     tool there starts the command through `cmd.exe` or `CreateProcess`.
     """
-    if os.name == "nt":
+    if not IS_POSIX:
         return windows_words(text)
     try:
         return shlex.split(text)

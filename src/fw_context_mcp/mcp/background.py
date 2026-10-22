@@ -9,7 +9,7 @@ Key design decisions:
 
 - **Daemon spawning uses the platform lock adapter (not PID files) for mutual
   exclusion**: PID files have an inherent TOCTOU race — the PID may be reused
-  between ``read_pid()`` and a kill.  The kernel lock (``fcntl.flock`` on
+
   POSIX, ``msvcrt.locking`` on win32) is atomic and survives process death
   (the kernel releases it automatically).  The spawning protocol in
   ``_ensure_daemon_running`` holds the lock, spawns the daemon, then
@@ -34,10 +34,6 @@ from __future__ import annotations
 
 import logging
 import sys
-try:
-    import fcntl
-except ImportError:  # Windows
-    fcntl = None
 import os
 import re
 import subprocess
@@ -155,7 +151,7 @@ def _is_bg_reindex_running(root: Path) -> bool:
     def _lock_held(lock_file: Path) -> bool:
         """Probe a lock file without keeping a handle — boolean contract.
 
-        The platform adapter normalizes contention (fcntl BlockingIOError,
+
         msvcrt OSError) to False; the probe never raises for "held".
         """
         try:
@@ -258,7 +254,7 @@ def read_reindex_progress(db_dir: Path) -> str | None:
 def _ensure_daemon_running(root: Path) -> None:
     """Make sure the persistent watcher daemon is running for *root*.
 
-    Uses *watcher.lock* (fcntl) as both daemon-alive indicator and spawn
+
     guard.  The daemon acquires the lock at startup; this function checks
     the ping first (fast path), then falls back to the lock for spawn
     coordination.
@@ -399,15 +395,12 @@ def _is_bg_reindex_running(root: Path) -> bool:
             lock_fd = os.open(lock_file, os.O_CREAT | os.O_RDWR)
         except OSError:
             return False
-        if fcntl is None:  # Windows: no flock; marker-based state only
-            os.close(lock_fd)
-            return False
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.close(lock_fd)
-            return True
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        # v2 platform boundary: no flock here. The pending marker and
+        # reindex.pid (PidFile) carry the cross-process state; the fd lock
+        # of the wave's Unix daemon spawn is not part of the v2 line.
+        os.close(lock_fd)
+        return False
+
         os.close(lock_fd)
         return False
 

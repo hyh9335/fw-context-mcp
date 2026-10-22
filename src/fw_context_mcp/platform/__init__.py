@@ -45,6 +45,11 @@ from .base import (
     write_pid_marker,
 )
 
+#: The single platform fact business modules may ask for (D1): True when the
+#: host is POSIX-like.  Shell-word rules and path quoting key off this; the
+#: branching itself stays here, in the facade.
+IS_POSIX: bool = os.name == "posix"
+
 if os.name == "posix":
     from .posix import (
         PosixControlTransport as _ControlTransport,
