@@ -129,10 +129,8 @@ def _model_installed(ollama_url: str, model: str) -> bool:
     """
     import httpx
 
-    from ..platform import http_get
-
     try:
-        resp = http_get(
+        resp = httpx.get(
             ollama_url.rstrip("/") + "/api/tags",
             timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0),
         )
@@ -156,11 +154,9 @@ def _try_pull(model: str, ollama_url: str) -> bool:
 
     import httpx
 
-    from ..platform import http_stream
-
     url = ollama_url.rstrip("/") + "/api/pull"
     try:
-        with http_stream(
+        with httpx.stream(
             "POST", url, json={"name": model},
             timeout=httpx.Timeout(connect=5.0, read=300.0, write=5.0, pool=5.0),
         ) as resp:

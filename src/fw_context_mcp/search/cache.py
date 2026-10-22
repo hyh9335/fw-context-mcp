@@ -40,8 +40,7 @@ class KeywordCache:
         requests can hit the cache simultaneously — the lock prevents
         data races on the OrderedDict.
 
-    Evicts entries whose age is *ttl_s* seconds or more (inclusive
-    boundary — ``ttl_s=0`` always expires) on access.  When the cache
+    Evicts entries older than *ttl_s* seconds on access.  When the cache
     exceeds *max_entries*, the oldest entries are evicted first.
 
     Thread-safe — guarded by a re-entrant lock.
@@ -71,7 +70,7 @@ class KeywordCache:
             if entry is None:
                 return None
             ts, value = entry
-            if time.monotonic() - ts >= self._ttl_s:
+            if time.monotonic() - ts > self._ttl_s:
                 del self._store[key]
                 return None
             self._store.move_to_end(key)  # LRU refresh

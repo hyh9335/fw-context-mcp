@@ -65,12 +65,11 @@ def check_setup(cfg: LLMConfig) -> dict:
     """
     import httpx
 
-    from ..platform import http_get
     from fw_context_mcp.llm.ollama import ollama_pull_command
 
     base_url = cfg.ollama_url.rstrip("/")
     try:
-        resp = http_get(base_url + "/api/tags", timeout=5.0)
+        resp = httpx.get(base_url + "/api/tags", timeout=5.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         return {
@@ -96,7 +95,10 @@ def check_setup(cfg: LLMConfig) -> dict:
     # so the CLI diag gives a complete picture in one call.  semantic_search
     # will fail at query time if the embedding model is missing — the operator
     # should know this before they try to use it.
-    embed_found = any(_model_name_matches(m, cfg.embed_model) for m in installed)
+    # A sentence-transformers or ft:// model runs locally: Ollama need not
+    # hold it.
+    from fw_context_mcp.llm.embedder_factory import uses_ollama
+    embed_found = not uses_ollama(cfg) or any(_model_name_matches(m, cfg.embed_model) for m in installed)
 
     result: dict = {
         "status": "ok" if model_found else "model_missing",

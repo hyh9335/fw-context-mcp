@@ -3,8 +3,8 @@
 Provides the search tools exposed through the MCP interface:
 
 - ``search_code`` — lexical symbol-name search with progressive relaxation;
-  searches symbol names, signatures, and docstrings via FTS5 with six
-  fallback strategies when the primary query returns nothing.
+  searches symbol names, signatures, and docstrings via FTS5, with five
+  relaxation steps after the primary query when a step returns nothing.
 - ``search_bodies`` — full-text search over the stored text of every
   definition, callables and types alike.  Project code sorts before vendor
   code.
@@ -20,15 +20,16 @@ Provides the search tools exposed through the MCP interface:
   ``._lookup``); synchronous — only local DB queries.
 
 Also exports shared fallback utilities from ``._search_fallbacks`` for
-use by other modules that need to run search-fallback chains independently
-(e.g. ``semantic_search`` falls back to ``search_code`` on embedding
-failure).
+use by other modules that need to run search-fallback chains independently.
+``semantic_search`` does not use them: its lexical fallback is
+``shared.fallback._fallback_to_search_code``.
 
-Architecture: every search handler delegates to ``_with_search_context``
-which resolves the project root, verifies index existence, and wraps the
-actual query in ``_with_stale_recovery`` — a retry-on-stale-index
-decorator that triggers per-file reparsing when compile-commands
-mismatches cause stale-symbol errors.
+Architecture: ``search_code``, ``search_bodies`` and ``search_content``
+delegate to ``_with_search_context``, which verifies that the index exists,
+resolves the build, and runs the query once inside ``_with_stale_recovery``.
+That wrapper does not retry and does not reparse: when a file that the
+answer names changed on disk, it starts the watcher daemon and prepends a
+``warning`` record to the answer.
 """
 
 from __future__ import annotations
@@ -37,46 +38,65 @@ import asyncio
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import Field
 
 from ...config import derive_project_id
 from ...config import load as load_config
-from ...indexer import db as index_db
-from ...indexer.db import _expand_query, get_active_config
+from ...indexer.db import _expand_query
 from ...indexer.db._symbols import _RE_COL_FILTER, _sanitize_body_query
 from ...llm._diag import check_setup
-from ...utils import abs_path, read_file_lines, resolve_project_root
-from ..shared.context import _db_path, _is_stale, _quick_open_readonly
+from ...llm.embedder_factory import uses_ollama
+from ...utils import abs_path, resolve_project_root
+from ..shared.context import _db_path, _quick_open_readonly
 from ..shared.fallback import _fallback_to_search_code
+from ..shared.paging import clamp_offset, page_hint, page_notice, past_end_info, selector_args
 from ..shared.stale import _with_stale_recovery
+from ..shared.variants import IMAGE_DESCRIPTION, VARIANT_DESCRIPTION
 from ._lookup import lookup_symbol
 from ._search_fallbacks import (
     _SEARCH_CODE_FALLBACKS,
+    _SEARCH_CODE_STEPS,
     _fmt_symbol_rows,
     _search_code_docstring,
     _search_code_fts5_kind,
     _search_code_macros_fts,
     _search_code_name_tokens,
+    count_fts5_kind,
 )
+from ._smart_cache import SMART_SEARCH_CACHE, CachedAnswer, answer_key
+
+if TYPE_CHECKING:
+    from fw_context_mcp.search.context import PipelineContext
+
+# The relaxation chain of ``search_code``, each step beside its counter.
+# The primary FTS5 search leads it: it is a step of the same shape, and a
+# paged walk has to treat it as one — the step that matches owns the whole
+# answer, and the count is what says which step that is.
+_SEARCH_CODE_STEPS_WITH_PRIMARY = [
+    (_search_code_fts5_kind, count_fts5_kind),
+    *_SEARCH_CODE_STEPS,
+]
 
 log = logging.getLogger(__name__)
 
 
-def _resolve_scopes_for_search(root: Path, db_path: Path, variant: str, image: str):
-    """Resolve ``(variant, image)`` → ``(scopes, multi, error)`` for search tools.
+def _resolve_build_for_search(
+    root: Path, db_path: Path, variant: str, image: str,
+) -> tuple[str | None, str | None]:
+    """Resolve ``(variant, image)`` → ``(config_hash, error)`` for search tools.
 
     Loads the project config, reads the project ID, and delegates to the shared
-    ``resolve_scopes`` helper on a short-lived read-only connection.
+    ``resolve_build`` helper on a short-lived read-only connection.
     """
-    from ..shared.variants import resolve_scopes
+    from ..shared.variants import resolve_build
 
     project_id = derive_project_id(root)
     cfg = load_config(root)
     conn = _quick_open_readonly(db_path)
     try:
-        return resolve_scopes(conn, project_id, cfg, variant or "", image or "")
+        return resolve_build(conn, project_id, cfg, variant or "", image or "")
     finally:
         conn.close()
 
@@ -102,20 +122,28 @@ def _with_search_context(root: Path, tool_name: str, do_search, variant: str = "
     Every search handler follows the same setup sequence:
     1. Locate the SQLite index database file from the project root.
     2. Verify the index exists — fail early with a clear message if not.
-    3. Run the actual search inside ``_with_stale_recovery``, which catches
-       stale-index errors and retries once after triggering per-file
-       re-parsing behind the scenes.
+    3. Resolve ``(variant, image)`` to ONE build, fail-closed.
+    4. Run the actual search once inside ``_with_stale_recovery``, which
+       adds a stale ``warning`` record to the answer when needed.
 
     This wrapper eliminates five repeated lines from every search function
     and ensures consistent error formatting. The ``tool_name`` parameter
     appears in error messages so the operator knows which operation failed.
 
-    Why stale-recovery is used: the compile-commands database can change
-    between index runs (files added, removed, re-ordered). When a query
-    hits a symbol whose source position is outdated, the stale error
-    propagates as an empty or partial result. ``_with_stale_recovery``
-    detects this, triggers ``reindex_file_impl`` on the affected file, and
-    re-runs ``do_search`` — transparent to the caller.
+    ``resolve_build`` answers with one build — a question about code is a
+    question about one program, see ``shared/variants.py``.  This used to
+    run the search once per build and tag each row with its ``variant`` and
+    ``image``.  That branch became unreachable when the resolver stopped
+    answering with several builds, and it is gone with the merging it
+    served.
+
+    Why stale-recovery is used: a source file can change after the last
+    index run, and the indexed positions of its symbols are then outdated.
+    ``_with_stale_recovery`` compares the mtime of every file that the
+    answer names with the index.  When one changed, or when the answer is
+    empty and indexed files changed, it starts the watcher daemon and
+    prepends a ``warning`` record.  It does not re-run ``do_search``: the
+    answer comes from the index as it is.
 
     Args:
         root: Resolved project root directory.
@@ -133,27 +161,13 @@ def _with_search_context(root: Path, tool_name: str, do_search, variant: str = "
         if not db_path.exists():
             return [{"error": f"No index found for {root}. Run 'fw-context index' first."}]
 
-        # Resolve (variant, image) selection → build scopes (fail-closed).
-        scopes, multi, err = _resolve_scopes_for_search(root, db_path, variant, image)
+        # Resolve (variant, image) selection → ONE build (fail-closed).
+        config_hash, err = _resolve_build_for_search(root, db_path, variant, image)
         if err:
             return [{"error": err}]
-        if len(scopes) == 1:
-            return _with_stale_recovery(root, db_path, do_search, config_hash=scopes[0]["config_hash"])
-
-        # Multi-scope: run per build and annotate each result with its identity.
-        merged: list[dict] = []
-        for scope in scopes:
-            part = _with_stale_recovery(root, db_path, do_search, config_hash=scope["config_hash"])
-            for r in part:
-                if isinstance(r, dict) and "error" not in r and "warning" not in r:
-                    r = dict(r)
-                    r["variant"] = scope["variant"]
-                    r["image"] = scope["image"]
-                    # Which BUILD produced the record — the variant label
-                    # alone is ambiguous on same-second ties (T14 SLICE-E).
-                    r["config_hash"] = scope["config_hash"]
-                merged.append(r)
-        return merged
+        if config_hash is None:
+            return []
+        return _with_stale_recovery(root, db_path, do_search, config_hash=config_hash)
     except (sqlite3.Error, OSError, RuntimeError) as e:
         log.exception("%s failed: %s", tool_name, e)
         return [{"error": f"{tool_name} failed: {e}"}]
@@ -164,54 +178,15 @@ def _with_search_context(root: Path, tool_name: str, do_search, variant: str = "
 # Replaced by s.is_project = 1 / f.is_project = 1 using the DB column.
 
 
-# ── moved from server.py ──
-
-def _append_staleness_warning(
-    results: list[dict], db_path: Path, project_root: Path,
-) -> list[dict]:
-    """Check compile_commands staleness and append a warning if the index is stale.
-
-    When ``compile_commands.json`` changes after indexing (files added,
-    removed, or re-ordered), the indexed source positions, symbol extents,
-    and conditional-compilation state may be outdated. This function detects
-    that condition and appends a warning dict so the LLM can inform the
-    operator that a reindex is needed.
-
-    Uses ``_quick_open_readonly`` instead of the full ``open_db`` path
-    because ``open_db`` runs ``ensure_schema`` — a write transaction —
-    which is unnecessary overhead for reading two config columns.
-
-    Args:
-        results: Existing result list to append the warning to (mutated in place).
-        db_path: Path to the project's SQLite index database file.
-        project_root: Project root directory, used to derive the project_id
-            for the config lookup.
-
-    Returns:
-        The results list, possibly extended with a ``warning`` dict.
-    """
-    conn = _quick_open_readonly(db_path)
-    try:
-        cfg_data = get_active_config(conn, derive_project_id(project_root))
-        if cfg_data and _is_stale(cfg_data, cfg_data["compile_commands_path"])[0]:
-            results.append({
-                "warning": "Index may be stale — compile_commands.json changed since last index.",
-                "hint": "Call reindex_file() on modified files or run 'fw-context index' to update.",
-            })
-    finally:
-        conn.close()
-    return results
-
-
 def search_code(
-    query: Annotated[str, Field(description="FTS5 search terms. 1-3 words, omit underscores. E.g. 'modem init' not 'modem_init'. Supports trailing wildcard 'modem*'.")],
+    query: Annotated[str, Field(description="FTS5 search terms. 1-3 words, omit underscores. E.g. 'modem init' not 'modem_init'. Supports trailing wildcard 'modem*'.", min_length=1)],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
      kind: Annotated[str | None, Field(description="Optional kind filter: function, method, constructor, destructor, class, struct, union, enum, enum_constant, typedef, varglobal, varlocal, variable, field, namespace.")] = None,
-     limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
-     offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a topic that many symbols hold.")] = 0,
+     limit: Annotated[int, Field(description="Maximum results of one page (default 20, max 100).", ge=1)] = 20,
+     offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a topic that many symbols carry.", ge=0)] = 0,
      project_only: Annotated[bool, Field(description="Exclude vendor SDK code. When True, only application code. Default False.")] = False,
-     variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
-     image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+     variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
+     image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
  ) -> list[dict]:
     """Find C/C++ symbols by name — searches function/class/enum NAMES.
 
@@ -232,20 +207,27 @@ def search_code(
       ``modem init`` goes to FTS5 as ``modem* OR init*`` and answers with
       the symbols that hold EITHER word.  ``search_bodies`` does the
       opposite — it takes the query literally, where a space is an AND.
+      A query that holds a double quote, ``AND``, ``OR``, ``NEAR`` or a
+      column filter goes to FTS5 as written.
     - ``init*`` matches init, init_uart, initialize (trailing wildcard)
     - ``"spi init"`` matches the exact phrase "spi init"
-    - Do NOT use underscore in queries — ``modem_init`` is split into
-      ``modem AND init``. Write ``modem init`` instead.
+    - Do NOT use an underscore in a query.  The tokenizer splits
+      ``modem_init`` into two tokens and looks for them NEXT TO EACH
+      OTHER.  That is a phrase and not an AND, thus the query misses
+      ``modem_parser_oob_init``.  Measured on one firmware index,
+      ``serial_write`` gave 1 result and ``serial write`` gave 200.
+      Write ``modem init`` instead.
     - Punctuation is not searchable.  The tokenizer drops it, thus
       ``.attach(`` becomes a phrase that looks for the token ``attach``.
       The query is repaired, never rejected.
 
-    **Progressive relaxation:** when FTS5 finds nothing, the search widens
-    in up to six steps, and every result carries the ``_fallback`` method
-    that found it:
+    **Progressive relaxation:** when a step matches nothing, the next one
+    runs.  Six steps can run.  Step 1 is the primary path and its results
+    carry NO ``_fallback`` key; each step after it names itself there:
 
-    1. FTS5 with the ``kind`` filter — ``_fallback="fts5"``.
-    2. FTS5 without it; operators often guess the wrong kind.
+    1. FTS5 with the ``kind`` filter.  No ``_fallback`` key.
+    2. FTS5 without the kind, when the kind matched nothing; operators
+       often guess the wrong kind — ``_fallback="fts5"``.
     3. ``name_tokens`` substring match over the pre-computed CamelCase /
        snake_case tokens (``BuildType`` is indexed as ``"build type"``).
        Needs N−1 of N query terms — ``"name_tokens_like"``.
@@ -254,6 +236,8 @@ def search_code(
     5. FTS5 per query word, results merged — ``"individual_terms"``.
     6. ``macros_fts`` for ``#define`` names and values, kind="macro" —
        ``"macros_fts"``.
+
+    Steps 3-6 ignore ``kind``.
 
     **Kind filter values:** ``function``, ``method``, ``constructor``,
     ``destructor``, ``class``, ``struct``, ``union``, ``enum``, ``enum_constant``,
@@ -275,33 +259,58 @@ def search_code(
     symbol, never as a fact to quote.  Quote ``source`` from
     ``get_source``, ``signature``, or ``docstring``.
 
-    Read-only. No side effects.
+    Read-only: yes. May auto-reindex stale files (non-blocking). When a
+    file that the answer names changed on disk, this tool starts the
+    watcher daemon in the background and answers from the index it has.
 
     Args:
         query: FTS5 search terms. Keep queries short — 1–3 words.
         project_root: Project root directory. Auto-detected from CWD if omitted.
         kind: Optional filter to return only symbols of this kind.
-        limit: Maximum results (default 20, max 100).
+        limit: Maximum results of one page (default 20, max 100).
+        offset: Skip this many results. Reads the next page of a topic
+            that many symbols carry; the page notice names the offset to
+            use.  One relaxation step owns the whole answer, thus a walk
+            never changes the step under the reader.
         project_only: When True, exclude vendor SDK directories and return only
             application code. Default False.
-        variant: Build variant (multi-project). Omit for the default
-            variant, ``"*"`` for all.
-        image: Sysbuild image in the variant. Omit for all images.
+        variant: Variant of the build (a board, or a PlatformIO
+            environment). On a project of more than one build, give the
+            arguments of one build as the refusal lists them: the
+            variant, the image, or the two. fw-context does not select a
+            build. One query answers for ONE build.
+        image: Image of the build: a separate program, such as the
+            application or the bootloader. Give it when the build has an
+            image name.
 
     Returns:
-        list of dicts, each with: name, qualified_name, kind, file, line,
-        is_definition, signature, docstring, is_template, is_virtual,
-        is_pure_virtual. Enum constants include ``enum_value`` with the
-        integer value. May also include ``template_usr``, ``parent_usr``,
-        and ``llm_analysis`` (``{summary, inputs, outputs}`` — written by a
-        model, not by the code.  ``get_active_build().analysis.model`` names
-        it). Fallback results include ``_fallback`` with the method name.
+        list of dicts.  The page notice leads the answer — ``total``,
+        ``offset``, ``shown``, ``more`` — where ``total`` counts the
+        answer of the step that answered.  Each symbol that follows has
+        name, qualified_name, kind, file, line, is_definition, signature,
+        docstring, is_template, is_virtual, is_pure_virtual. Enum
+        constants include ``enum_value`` with the integer value. May also
+        include ``template_usr``, ``parent_usr``, and ``llm_analysis``
+        (``{summary, inputs, outputs}`` — written by a model, not by the
+        code.  ``get_build_info().analysis.model`` names it). Fallback
+        results include ``_fallback`` with the method name.  A macro
+        result also holds ``_macro_value`` and ``_macro_expanded_value``
+        when they are not empty.
 
         No match gives ``[]``.  A dict with ``error`` means the query
-        failed.  A stale index prepends a dict with ``warning`` + ``hint``.
+        failed.  When FTS5 refuses the query and no LIKE step finds a row,
+        the answer is one dict with ``warning`` + ``hint``.  When a file
+        that the answer names changed on disk, a dict with ``warning``
+        comes BEFORE the page notice — find the notice by its keys, and
+        not by its position.  An empty answer gets that ``warning`` too
+        when indexed files changed: the code can be in them.
     """
     root = resolve_project_root(project_root)
-    limit = max(0, min(limit, 100))
+    # A page of zero rows is not a page.  It would report ``shown: 0`` with
+    # ``more: true`` and a hint naming the offset it already stands at, thus
+    # a reader that follows the hint walks the same empty page for ever.
+    limit = max(1, min(limit, 100))
+    skip = clamp_offset(offset)
 
     def _do_search(c: sqlite3.Connection, config_hash: str) -> list[dict]:
         """Execute the six-step progressive relaxation search for ``search_code``.
@@ -330,43 +339,74 @@ def search_code(
         ``_fmt_symbol_rows`` (called by each fallback), so the caller only
         needs to extract ``result[0]`` — the result list.
 
-        The cascade stops at the first non-None result. Earlier strategies
-        are faster and more precise; later ones are broader but slower.
-        This ordering means the operator gets the best match with minimal
-        overhead when the query is well-formed, and progressively broader
-        searches when the initial query misses.
+        Earlier strategies are faster and more precise; later ones are
+        broader but slower.  The operator thus gets the best match with
+        minimal overhead when the query is well-formed, and progressively
+        broader searches when the initial query misses.
 
         Why progressive relaxation instead of returning empty: operators
         often search with incomplete information ("I think it's called
         something like 'uart init'"). Returning empty on a near-match is
         worse than returning slightly noisy results with a ``_fallback``
         marker that the LLM can use to qualify its confidence.
+
+        **Why the cascade stops on a COUNT and no longer on the rows:**
+        the step that matches owns the WHOLE answer, and a page of it is a
+        slice of that answer.  An empty page of a step that did match
+        means "past the end", and a cascade that read that as "try the
+        next step" would answer page 2 from a broader step than page 1.
+        The reader would then walk two different answers under one query.
         """
-        result = _search_code_fts5_kind(c, query, config_hash, limit, kind, project_only, root)
-        if result is not None:
-            # Each fallback returns (data, method_name) tuple — data is the
-            # result list, method_name is already embedded in each dict via
-            # _fmt_symbol_rows → _fallback key.
-            return result[0]
+        # A query that FTS5 turns down stops the FTS5 steps, not the
+        # cascade: the LIKE steps below read no FTS5 syntax and can still
+        # answer.  The refusal is therefore remembered and given only when
+        # no step found rows — rows are a better answer than a warning,
+        # and an empty list is a worse one.  ``search_bodies`` and
+        # ``search_content`` report the same refusal; search_code let the
+        # exception reach the error boundary instead, and the caller then
+        # read "search_code failed" where its siblings said "FTS5 rejected
+        # the query" and named the repair.
+        rejection: dict | None = None
+        for strategy, counter in _SEARCH_CODE_STEPS_WITH_PRIMARY:
+            try:
+                total = counter(c, query, config_hash, kind, project_only)
+                if not total:
+                    continue
+                result = strategy(c, query, config_hash, limit, kind, project_only, root, skip)
+            except sqlite3.OperationalError as exc:
+                if not _is_fts5_query_error(exc):
+                    raise
+                if rejection is None:
+                    rejection = _fts5_rejection("search_code", query, exc)
+                log.debug("search_code: step turned down the query (%s)", exc)
+                continue
+            # Each strategy returns (data, method_name) — the method name is
+            # already on each dict through _fmt_symbol_rows → _fallback.
+            page = result[0] if result is not None else []
+            if not page:
+                return [{"info": (
+                    f"No symbol at offset {skip}; the answer holds {total}."
+                )}]
+            page.insert(0, page_notice(
+                total, skip, len(page),
+                hint=page_hint("search_code", query, **_search_hint_args(kind, project_only, project_root, variant, image),
+                               next_offset=skip + len(page)),
+            ))
+            return page
 
-        # Try each progressive fallback in order — first non-None result wins.
-        # _SEARCH_CODE_FALLBACKS is a list of callables ordered from
-        # fastest/most-precise to slowest/broadest.
-        for strategy in _SEARCH_CODE_FALLBACKS:
-            result = strategy(c, query, config_hash, limit, kind, project_only, root)
-            if result is not None:
-                return result[0]
-
-        return []
+        return [rejection] if rejection else []
 
     return _with_search_context(root, "search_code", _do_search, variant or "", image or "")
 
 
 
 async def smart_search(
-    query: Annotated[str, Field(description="Natural language description, 5-15 words. E.g. 'how does the modem connect?' or 'handle BLE pairing failure'.")],
+    query: Annotated[str, Field(description="Natural language description, 5-15 words. E.g. 'how does the modem connect?' or 'handle BLE pairing failure'.", min_length=1)],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
-    limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
+    limit: Annotated[int, Field(description="Maximum results on one page (default 20). Held between 1 and 100.", ge=1)] = 20,
+    offset: Annotated[int, Field(description="Skip this many results of the previous search of this query. 0 (the default) is a new search.", ge=0)] = 0,
+    variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
+    image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
 ) -> list[dict]:
     """Natural-language search: an LLM generates FTS5 keywords, then searches
     the libclang index. Finds concepts by meaning rather than exact text
@@ -374,7 +414,7 @@ async def smart_search(
     describe what you're looking for ("how does the modem connect?",
     "handle BLE pairing failure").
 
-    Read-only. No side effects. Slow (10-30 s) — delegates to the full
+    Read-only: yes. Slow (10-30 s) — delegates to the full
     ``SMART_SEARCH`` pipeline (translate → rough_search → llm_query →
     fts5_search → refine → embedding → adaptive_fusion → deduplicate →
     expand_context → format).
@@ -393,50 +433,149 @@ async def smart_search(
     "handle BLE pairing failure").
 
     **Fallback:** When LLM is unavailable, falls back to direct FTS5 search
-    with word-split terms from the query.
+    with word-split terms from the query.  When the LLM call or the
+    embedding step fails, a metadata dict gives the reason in ``warning``
+    or ``detail``.
 
     Args:
         query: Natural language description of what you're looking for.
                Be specific — 5–15 words works best.
         project_root: Project root directory. Auto-detected from CWD if omitted.
-        limit: Maximum number of results (default 20, max 100).
+        limit: Maximum number of results on one page (default 20, max
+            100).  The search itself always ranks up to 100 symbols.
+        offset: Skip this many results of the previous search of the same
+            query.  0, the default, is a NEW search.  A page with an offset
+            comes out of the stored answer of the last search; when the
+            last search was of another query (or another project, or a
+            build that a reindex changed), the tool searches again first.
+            An index run that keeps the build keeps the stored answer.
+        variant: Variant of the build (a board, or a PlatformIO
+            environment). On a project of more than one build, give the
+            arguments of one build as the refusal lists them: the
+            variant, the image, or the two. fw-context does not select a
+            build. One query answers for ONE build.
+        image: Image of the build: a separate program, such as the
+            application or the bootloader. Give it when the build has an
+            image name.
 
     Returns:
         list of dicts with metadata entries (_generated_queries, _rough_queries,
-        _translated_from) followed by symbol results with name, qualified_name,
-        kind, file, line, is_definition, signature, docstring.
+        _translated_from + _translated_to), then the page notice
+        ``{total, offset, shown, more, hint}``, followed by symbol results with
+        name, qualified_name, kind, file, line, is_definition, signature,
+        docstring.  ``total`` counts the symbols of the answer (at most
+        100).  A page after the last symbol gives one ``info`` dict that
+        names the total.  A symbol also holds ``summary``, ``inputs`` and
+        ``outputs`` when ``fw-context index --analyze`` wrote them.  A model
+        wrote that text, and the code did not: never quote it as a fact.
 
-        When the LLM stalls, the tool gives the FTS5 results that it has.
-        The leading dict then holds ``_partial: True``, a ``warning`` with
-        the timeout, and a ``hint``.  The result is incomplete: make the
-        query more specific, or increase the LLM timeout.
+        When the pipeline passes the LLM timeout (``[llm] timeout`` of the
+        project), a leading dict holds ``_partial: True``, a ``warning``
+        with the timeout, and a ``hint``.  The symbols that follow are the
+        ones that the steps before the timeout found, without the later
+        re-rank steps; there can be none.  This answer has no page notice
+        and is not stored, thus a next page searches again.  Make the query
+        more specific, or increase the LLM timeout.
 
-        When the index is stale, a leading dict holds a ``warning`` and a
-        ``hint`` to reindex.
+        When the index of the build of the query is not current (for
+        example, compile_commands.json changed after the last index run),
+        a leading dict holds ``warning`` and ``index_state``.  The answer
+        then comes from the last index run.
 
-        No match gives ``[]``.  One dict with ``error`` means the query
-        failed — check that key first.
+        No match gives the metadata entries and a dict with ``info``.  One
+        dict with ``error`` means the query failed — check that key first.
     """
     from fw_context_mcp.search.context import PipelineContext
-    from fw_context_mcp.search.pipeline import PipelineRunner, _build_smart_search
 
+
+    page_size = max(1, min(limit, 100))
+    skip = clamp_offset(offset)
     try:
-        ctx = PipelineContext.create(query=query, project_root=project_root, limit=limit)
+        # The pipeline gives the whole answer that the pages are cut from.
+        ctx = PipelineContext.create(
+            query=query, project_root=project_root, limit=_SMART_ANSWER_SIZE, variant=variant, image=image,
+        )
     except ValueError as e:
         return [{"error": str(e)}]
 
-    config = _build_smart_search()
-    runner = PipelineRunner(config)
+    # offset 0 is a new search.  A later page comes out of the stored
+    # answer of the same query and build; without one, the search runs.
+    key = answer_key(ctx.db_path, ctx.config_hash, query)
+    answer = SMART_SEARCH_CACHE.get(key) if skip else None
+    if answer is None:
+        searched = await _smart_search_run(ctx, key, page_size, skip)
+        if isinstance(searched, list):
+            # The timeout answer is not stored.  At offset 0 it is still a
+            # new search, thus the older answer must not serve a next page.
+            if not skip:
+                SMART_SEARCH_CACHE.clear()
+            return searched
+        answer = searched
+        SMART_SEARCH_CACHE.put(answer)
 
-    # Load pipeline timeout from config — smart_search involves multiple
-    # LLM round-trips (translate, rough_search, llm_query, refine, embedding)
-    # each of which can stall. A hard timeout prevents runaway sessions.
-    try:
-        from fw_context_mcp.config.settings import load as load_settings
-        cfg = load_settings()
-        timeout = cfg.llm.timeout if cfg and cfg.llm else 120.0
-    except (OSError, ValueError):
-        timeout = 120.0
+    total = len(answer.symbols)
+    page = list(answer.symbols[skip:skip + page_size])
+    if skip and not page:
+        return [past_end_info("symbol", skip, total)]
+    results = list(answer.meta)
+    if total:
+        results.append(page_notice(
+            total, skip, len(page),
+            hint=page_hint(
+                "smart_search", query, **selector_args(project_root, variant, image), next_offset=skip + len(page),
+            ),
+        ))
+    results += page
+    # A changed compile_commands.json is a reason of the state of the index
+    # that the tool wrapper adds (`index_state.annotate_index_state`).
+    return results
+
+
+# The symbols of one smart_search answer: the pages are cut from them.
+_SMART_ANSWER_SIZE = 100
+
+
+def _search_hint_args(
+    kind: str | None,
+    project_only: bool,
+    project_root: str | None,
+    variant: str | None,
+    image: str | None,
+) -> dict[str, object]:
+    """The arguments that the hint of search_code, search_bodies or search_content repeats.
+
+    ``kind`` and ``project_only`` filter the answer, thus a next page
+    without them is a page of another answer.  A value at its default
+    (``None``, ``False``) is left out.
+    """
+    args: dict[str, object] = {}
+    if kind:
+        args["kind"] = kind
+    if project_only:
+        args["project_only"] = True
+    return {**args, **selector_args(project_root, variant, image)}
+
+
+async def _smart_search_run(
+    ctx: PipelineContext, key: str, page_size: int, skip: int,
+) -> CachedAnswer | list[dict]:
+    """Run the smart_search pipeline; give the answer to store, or the timeout page.
+
+    The timeout answer is a list and is NOT stored: it holds what the steps
+    before the stall found, and a later page of it would cut a list that
+    a complete run would give in another order.
+    """
+    from fw_context_mcp.search.pipeline import PipelineRunner, _build_smart_search
+
+
+    runner = PipelineRunner(_build_smart_search())
+
+    # Pipeline timeout from the config of the project (ctx.config, which
+    # create() loaded with the project root) — smart_search involves
+    # multiple LLM round-trips (translate, rough_search, llm_query, refine,
+    # embedding) each of which can stall. A hard timeout prevents runaway
+    # sessions.
+    timeout = ctx.config.llm.timeout if ctx.config and ctx.config.llm else 120.0
 
     try:
         # await is required because the pipeline calls external chat and
@@ -444,31 +583,61 @@ async def smart_search(
         # for 10–30 seconds per invocation.
         ctx = await asyncio.wait_for(runner.run(ctx), timeout=timeout)
     except TimeoutError:
-        # On timeout, return whatever FTS5 results were collected before the
-        # LLM stalled — partial results are better than nothing. The warning
+        # On timeout, return the symbols that the phases before the stall
+        # found — partial results are better than nothing. The warning
         # tells the operator the results are incomplete.
-        results = list(ctx.formatted_results) if ctx.formatted_results else []
-        results.insert(0, {
-            "warning": f"Smart search timed out after {timeout:.0f}s.",
-            "hint": "Results below are partial (FTS5-only). Try a more specific query or increase LLM timeout.",
-            "_partial": True,
-        })
-        return results
+        return await _smart_search_partial(runner.last_ctx or ctx, timeout, page_size, skip)
 
-    # Flatten the pipeline's formatted results iterator into a list.
-    results = list(ctx.formatted_results)
-    # Append staleness warning unless the LLM setup itself failed — in that
-    # case ctx.ollama_warning is set and the results already carry a warning.
-    if ctx.ollama_warning is None:
-        results = _append_staleness_warning(results, ctx.db_path, ctx.project_root)
+    rows = list(ctx.formatted_results)
+    return CachedAnswer(
+        key=key,
+        meta=tuple(r for r in rows if "name" not in r),
+        symbols=tuple(r for r in rows if "name" in r),
+    )
+
+
+async def _smart_search_partial(
+    ctx: PipelineContext, timeout: float, page_size: int, skip: int,
+) -> list[dict]:
+    """The answer of a smart_search that passed *timeout*.
+
+    *ctx* is the context after the last phase that ended.  Its symbols are
+    the fused list when a fusion ran, else the FTS5 rows; they get the same
+    format as a full answer, with a leading ``_partial`` warning.  The
+    answer holds one page of the caller's size and no page notice: there
+    is no complete answer to page.
+    """
+    from fw_context_mcp.search.phases.format import FormatPhase
+
+    rows = ctx.final_results or ctx.fts5_results
+    formatted = (await FormatPhase().run(ctx.evolve(final_results=list(rows)[skip:skip + page_size]))).formatted_results
+    results = [r for r in formatted if "info" not in r]
+    if rows:
+        hint = "Partial results: the search timed out before its last steps. " \
+               "Try a more specific query or increase LLM timeout."
+    else:
+        hint = "No results: the search timed out first. Try a more specific query or increase LLM timeout."
+    results.insert(0, {
+        "warning": f"Smart search timed out after {timeout:.0f}s.",
+        "hint": hint,
+        "_partial": True,
+    })
     return results
 
+
 # ── moved from server.py ──
+# The default threshold of semantic_search; a hint repeats any other value.
+_SEMANTIC_DEFAULT_THRESHOLD = 0.60
+
+
 async def semantic_search(
-    query: Annotated[str, Field(description="Natural language description, 5-15 words. E.g. 'parcel locker state machine' or 'how does the modem connect?'.")],
+    query: Annotated[str, Field(description="Natural language description, 5-15 words. E.g. 'parcel locker state machine' or 'how does the modem connect?'.", min_length=1)],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
-    threshold: Annotated[float, Field(description="Minimum cosine similarity (0.0-1.0). Default 0.60. Use 0.55 for exploratory, 0.50 for broad search.")] = 0.60,
-    limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
+    threshold: Annotated[float, Field(description="Minimum cosine similarity (0.0-1.0). Default 0.60. Use 0.55 for exploratory, 0.50 for broad search.", ge=0.0, le=1.0)] = _SEMANTIC_DEFAULT_THRESHOLD,
+    limit: Annotated[int, Field(description="Maximum results on one page (default 20). Held between 1 and 100.", ge=1)] = 20,
+    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of the symbols above the threshold.", ge=0)] = 0,
+    variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
+    image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
 ) -> list[dict]:
     """Semantic search using pre-computed libclang symbol embeddings. Finds
     symbols by meaning, not by text — matches concepts even when query
@@ -495,11 +664,18 @@ async def semantic_search(
     - ``0.60`` — precise: ~175 avg, high precision (default)
     - ``0.65`` — strict: few results, may miss relevant symbols
 
-    **Source-aware ranking:** Project code boosted 1.2×, library code
-    1.1×, vendored SDK code 0.85×.
+    **Source-aware ranking:** the similarity of a project symbol is
+    multiplied by 1.2, and the similarity of every other symbol by 0.85.
+    The index marks each file as project code or not, thus the two tiers
+    are all there are.  The multiplied score sets the order.
+    ``_similarity`` in the result holds the raw cosine similarity, thus it
+    is on the same scale as ``threshold`` and never above 1.0.
 
-    **Requires an LLM** with an embedding model.
-    Falls back to ``search_code`` with a warning if the LLM is unavailable.
+    **Requires** ``[llm] enabled = true``, embeddings in the index, and
+    for an Ollama embedding model a running Ollama server at
+    ``llm.ollama_url``.  A sentence-transformers or ``ft://`` model embeds
+    the query locally and needs no Ollama.  Without one of them, the tool
+    falls back to a lexical search with a warning.
 
     Read-only. No side effects.
 
@@ -508,27 +684,68 @@ async def semantic_search(
                Be specific — 5–15 words works best.
         project_root: Project root. Auto-detected if omitted.
         threshold: Minimum cosine similarity (0.0-1.0). Default 0.60.
-        limit: Maximum number of results (default 20, max 100).
+            The tool applies it to the raw cosine similarity, before the
+            source boost.
+        limit: Maximum number of results on one page (default 20, max 100).
+        offset: Skip this many results.  Reads the next page; the page
+            notice names the offset to use.
+        variant: Variant of the build (a board, or a PlatformIO
+            environment). On a project of more than one build, give the
+            arguments of one build as the refusal lists them: the
+            variant, the image, or the two. fw-context does not select a
+            build. One query answers for ONE build.
+        image: Image of the build: a separate program, such as the
+            application or the bootloader. Give it when the build has an
+            image name.
 
     Returns:
-        list of dicts, each with: name, qualified_name, kind, file, line,
-        is_definition, signature, docstring, plus ``_similarity`` (cosine
-        similarity score) and ``_method`` (``"embedding"`` or
-        ``"search_code_fallback"``).
+        The page notice ``{total, offset, shown, more, hint}`` comes before
+        the symbols.  ``total`` counts every symbol above ``threshold``, as
+        far as one KNN query reaches (4096 vector rows; a symbol of several
+        chunks takes several of them).  When the KNN stopped
+        there with its last row still above the threshold, the notice also
+        holds ``total_capped: True``, and ``total`` is a lower bound.  A page
+        after the last symbol gives one ``info`` dict that names the total.
 
-        When the best similarity is below the relevance floor (0.68), the
-        result is one dict with ``warning``, ``_best_similarity`` (float),
-        ``_fallback_suggestion`` (``"search_code"``), and ``_results`` (the
-        low-similarity results).  Treat those results as noise, and use
-        ``search_code`` instead.
+        Then a list of dicts, each with: name, qualified_name, kind, file, line,
+        is_definition, signature, docstring, plus ``_method``
+        (``"embedding"`` or ``"search_code_fallback"``), ranked in windows
+        of 200 raw ranks: inside a window by the boosted similarity, then
+        by the symbol id.  Thus the boost moves a symbol only inside its
+        window.  The reranker (when
+        ``llm.reranker_model`` is set) reorders the first symbols of a
+        page, and moves no symbol to another page.  An ``"embedding"``
+        result also holds ``_similarity``, the raw cosine similarity.  A
+        symbol also holds ``summary``, ``inputs`` and ``outputs`` when
+        ``fw-context index --analyze`` wrote them — model text, never a
+        fact to quote — and ``_rerank_score`` when
+        ``llm.reranker_model`` is set.
 
-        When the LLM is not running, or the embedding fails, this tool falls
-        back to ``search_code``.  The results then carry
-        ``_method: "search_code_fallback"``, and a leading dict holds a
-        ``warning`` with the reason.
+        When the index of the build of the query is not current (for
+        example, compile_commands.json changed after the last index run),
+        a leading dict holds ``warning`` and ``index_state``.  The answer
+        then comes from the last index run.
 
-        No match gives ``[]``.  One dict with ``error`` means the query
-        failed — check that key first.
+        Fallback: when the LLM is disabled or not running, or the index
+        holds no embeddings, or the embedding model fails, this tool runs
+        a plain FTS5 symbol search (the first step of ``search_code``,
+        with no kind and no relaxation), one page of it.  A leading dict
+        holds a ``warning`` with the reason, the page notice follows, and
+        each symbol carries ``_method: "search_code_fallback"``.  A
+        changed result file or compile_commands.json adds another leading
+        ``warning``.  When the lexical search finds nothing too, the answer
+        is one ``warning``.
+
+        No match above ``threshold`` runs the same lexical fallback, with a
+        ``warning`` that suggests a lower threshold.  When a phase of the
+        search failed, that ``warning`` gives the error of the phase.  When
+        the best raw similarity of all matches is below 0.68, the answer is
+        the page notice and one dict: a ``warning`` that the matches are
+        likely unrelated, ``_fallback_suggestion: "search_code"``,
+        ``_best_similarity``, and the matches of the page in ``_results``.
+
+        One dict with ``error`` means the query failed — check that key
+        first.
     """
 
     try:
@@ -537,8 +754,28 @@ async def semantic_search(
         if not db_path.exists():
             return [{"error": f"No index found for {root}. Run 'fw-context index' first."}]
 
-        limit = max(0, min(limit, 100))
+        # The size of one page.  The embedding search does not use it: it
+        # ranks the whole set above the threshold, and the page is a slice.
+        limit = max(1, min(limit, 100))
+        skip = clamp_offset(offset)
         threshold = max(0.0, min(1.0, threshold))
+        # The hint of each page repeats a threshold that is not the default,
+        # and the project: the next call must ask for the same set.
+        args: dict[str, object] = {} if threshold == _SEMANTIC_DEFAULT_THRESHOLD else {"threshold": threshold}
+        args.update(selector_args(project_root, variant, image))
+
+        # The build first, before the LLM checks: every path below answers
+        # for this build, the lexical fallbacks too, and a call that names
+        # no build gets the refusal whether the LLM runs or not.
+        from fw_context_mcp.search.context import PipelineContext
+
+        try:
+            ctx = PipelineContext.create(
+                query=query, project_root=str(root), limit=limit, variant=variant, image=image,
+            )
+        except ValueError as e:
+            return [{"error": str(e)}]
+        config_hash = ctx.config_hash
 
         # Verify LLM setup — embedding generation runs against the configured
         # Ollama instance or cloud API. Without an active LLM, embedding-based
@@ -547,43 +784,38 @@ async def semantic_search(
         cfg = load_config(project_root=root)
         if not cfg.llm.enabled:
             return _fallback_to_search_code(
-                root, db_path, query, limit,
+                root, db_path, query, limit, offset=skip, hint_args=args, config_hash=config_hash,
                 warning="LLM is disabled in config. "
                         "Enable it with `[llm] enabled = true` to use semantic search.",
             )
 
-        try:
-            setup = check_setup(cfg.llm)
-        except (RuntimeError, OSError):
-            setup = {"ollama_running": False}
+        # The Ollama server matters only for an Ollama embedding model: a
+        # sentence-transformers or ft:// model embeds the query locally.
+        if uses_ollama(cfg.llm):
+            try:
+                setup = check_setup(cfg.llm)
+            except (RuntimeError, OSError):
+                setup = {"ollama_running": False}
+        else:
+            setup = {"ollama_running": True}
 
         if not setup.get("ollama_running"):
             return _fallback_to_search_code(
-                root, db_path, query, limit,
-                warning="LLM is not running. Start it to use semantic search.",
+                root, db_path, query, limit, offset=skip, hint_args=args, config_hash=config_hash,
+                # The message of the check: a server that runs and is not
+                # Ollama (a proxy page) has nothing to start.
+                warning=setup.get("message") or "LLM is not running. Start it to use semantic search.",
             )
 
         # Delegate to the semantic search pipeline (EmbeddingPhase + FormatPhase).
         # The pipeline handles embedding generation, KNN search, and source-aware
         # boosting internally.
-        from fw_context_mcp.search.context import PipelineContext
-
-        try:
-            ctx = PipelineContext.create(
-                query=query, project_root=str(root), limit=limit
-            )
-        except ValueError as e:
-            return [{"error": str(e)}]
-
         from fw_context_mcp.search.pipeline import PipelineRunner, _build_semantic_search
 
-        # Build the semantic pipeline with an oversampling factor of 10×.
-        # The KNN query fetches limit * 10 candidates from the vector DB,
-        # then cosine-similarity filtering at the requested threshold and
-        # source-aware boosting prune to the final limit. Oversampling
-        # compensates for the post-filter — many candidates will be vendor
-        # code that gets down-weighted by source-aware scoring.
-        config = _build_semantic_search(threshold, limit * 10)
+        # Build the semantic pipeline: one KNN query for every symbol above
+        # the threshold (at most VEC_KNN_MAX_K), ranked with the source boost.
+        # The handler cuts the page out of that order below.
+        config = _build_semantic_search(threshold)
         runner = PipelineRunner(config)
         # await is used because embedding generation requires an HTTP call
         # to the embedding model — it is I/O-bound, not CPU-bound.
@@ -599,43 +831,104 @@ async def semantic_search(
             else:
                 warning_msg = str(ctx.ollama_warning)
             return _fallback_to_search_code(
-                root, db_path, query, limit,
+                root, db_path, query, limit, offset=skip, hint_args=args, config_hash=config_hash,
                 warning=warning_msg,
             )
 
-        if not results:
+        # The symbols, not ``results``: FormatPhase always adds a dict, an
+        # ``info`` when nothing matched.
+        matched = list(ctx.final_results)
+        if not matched:
+            # The runner records a failed phase in ctx.warnings and goes on,
+            # thus an empty result can come from an error.  Give that error
+            # as the reason, not the threshold.
+            if ctx.warnings:
+                no_match_reason = "; ".join(ctx.warnings)
+            else:
+                no_match_reason = (
+                    f"No symbols matched with similarity > {threshold}. "
+                    "Try lowering the threshold or rephrasing the query."
+                )
             return _fallback_to_search_code(
-                root, db_path, query, limit,
-                warning=f"No symbols matched with similarity > {threshold}. "
-                        "Try lowering the threshold or rephrasing the query.",
+                root, db_path, query, limit, offset=skip, hint_args=args, config_hash=config_hash,
+                warning=no_match_reason,
             )
 
-        # Apply reranker when configured
+        # `_method` tells a result of this path from a result of the
+        # search_code fallback, which sets "search_code_fallback".
+        symbols = [item for item in results if "name" in item]
+        meta = [item for item in results if "name" not in item]
+        for item in symbols:
+            item["_method"] = "embedding"
+
+        # The page is a slice of the whole ranked set: every symbol above
+        # the threshold, in windows of 200 raw ranks, inside a window by the
+        # boosted score and the symbol id.  Thus two pages never overlap or
+        # skip.
+        total = len(symbols)
+        page = symbols[skip:skip + limit]
+        if not page:
+            return [past_end_info("symbol", skip, total)]
+
         # Apply LLM-based reranker when configured.
-        # The reranker re-scores the top-N embedding results using a
-        # cross-encoder model, producing a relevance-ranked list. This
-        # is optional — without it, cosine similarity is the sole signal.
-        if cfg.llm.reranker_model and results:
+        # The reranker re-scores the first ``rerank_top_k`` symbols of the
+        # PAGE with a cross-encoder model.  It does not move a symbol to
+        # another page, thus the pages stay a partition of the set, and it
+        # drops no row of the page: the rest of the page follows the
+        # re-scored part.  Without it, cosine similarity is the sole signal.
+        if cfg.llm.reranker_model:
             try:
                 from fw_context_mcp.search.reranker import get_reranker
                 reranker = get_reranker(cfg.llm.reranker_model)
                 if reranker is not None:
-                    results = reranker.rank(
-                        query, results,
-                        min(cfg.index.rerank_top_k, len(results)),
-                    )
+                    head_size = min(cfg.index.rerank_top_k, len(page))
+                    head = reranker.rank(query, page[:head_size], head_size)
+                    if len(head) == head_size:
+                        page = [*head, *page[head_size:]]
+                    else:
+                        # A reranker that gives fewer rows than it got would
+                        # move the next offset back, and two pages would
+                        # overlap.  Keep the vector order of this page then.
+                        log.warning("Reranker gave %d of %d rows; page kept in vector order",
+                                    len(head), head_size)
             except (RuntimeError, ValueError) as e:
                 log.warning("Reranker failed, returning unranked results: %s", e)
+
+        notice = page_notice(
+            total, skip, len(page),
+            hint=page_hint("semantic_search", query, **args, next_offset=skip + len(page)),
+        )
+        if ctx.embedding_capped:
+            # One KNN query reaches at most VEC_KNN_MAX_K symbols, and the
+            # last of them was still above the threshold: the set can be
+            # larger, thus ``total`` is a lower bound.
+            notice["total_capped"] = True
+        results = [*meta, notice, *page]
 
         # Relevance floor: when the best cosine-similarity score is below
         # 0.68, the results are likely unrelated to the query. Embedding
         # models can return low-similarity matches for any input — this
         # threshold prevents the LLM from treating noise as signal.
         # The warning suggests search_code (lexical) as a better alternative.
+        # The best raw cosine similarity of ALL matches, not of the first
+        # row and not of the rows after a cut: the floor asks if the index
+        # holds a relevant match at all.  The source boost orders and cuts
+        # the rows in the embedding phase, and the reranker and the limit
+        # cut them here, thus each of them can drop that match.  The phase
+        # keeps the best raw score from before its cut.  The semantic
+        # pipeline runs the standalone search, which sets that score for
+        # each answer that holds a row.  ``matched`` is for the hybrid
+        # re-rank path of EmbeddingPhase, which gives rows and no score:
+        # a change of the pipeline then gives a floor over the rows that
+        # remain, and not a crash on None.
         _RELEVANCE_FLOOR = 0.68
-        if results and results[0].get("_similarity", 1.0) < _RELEVANCE_FLOOR:
-            best_score = results[0].get("_similarity", 0)
+        if ctx.embedding_best_similarity is not None:
+            best_score = ctx.embedding_best_similarity
+        else:
+            best_score = max(float(r.get("_similarity", 1.0)) for r in matched)
+        if best_score < _RELEVANCE_FLOOR:
             return [
+                notice,
                 {
                     "warning": (
                         f"Best result similarity ({best_score:.3f}) is below relevance "
@@ -644,12 +937,9 @@ async def semantic_search(
                     ),
                     "_fallback_suggestion": "search_code",
                     "_best_similarity": best_score,
-                    "_results": results,
+                    "_results": page,
                 },
             ]
-
-        # Add staleness warning if applicable
-        results = _append_staleness_warning(results, ctx.db_path, ctx.project_root)
         return results
 
     except (sqlite3.Error, OSError, RuntimeError) as e:
@@ -788,14 +1078,14 @@ def _body_match_lines(source: str, start_line: int, terms: list[str]) -> list[in
 
 
 def search_bodies(
-    query: Annotated[str, Field(description="FTS5 search terms for the body of a definition. 1-3 words. E.g. 'attach', 'callback', 'rise'.")],
+    query: Annotated[str, Field(description="FTS5 search terms for the body of a definition. 1-3 words. E.g. 'attach', 'callback', 'rise'.", min_length=1)],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
     kind: Annotated[str | None, Field(description="Optional kind filter: function, method, class, etc.")] = None,
-    limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
-    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a body match.")] = 0,
+    limit: Annotated[int, Field(description="Maximum results of one page (default 20, max 100).", ge=1)] = 20,
+    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a pattern with many hits.", ge=0)] = 0,
     project_only: Annotated[bool, Field(description="Exclude vendor SDK code. When True, only application code. Default False.")] = False,
-    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
-    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
+    variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
+    image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
 ) -> list[dict]:
     """Find patterns in the TEXT OF A DEFINITION — the code inside its extent.
 
@@ -879,7 +1169,8 @@ def search_bodies(
     function is far from the match.  Cite from ``match_lines`` instead.
     Project code sorts before vendor code in the output.
 
-    Read-only. No side effects. Requires the FTS5 index.
+    Read-only: yes. Requires the FTS5 index. May auto-reindex stale files
+    (non-blocking) — see ``search_code``.
 
     Args:
         query: FTS5 search terms, 1-3 words.  A bare multi-word query is an
@@ -890,18 +1181,26 @@ def search_bodies(
             (``'\"attach callback\"'``).
         project_root: Project root. Auto-detected if omitted.
         kind: Optional filter to return only symbols of this kind.
-        limit: Maximum results (default 20, max 100).
+        limit: Maximum results of one page (default 20, max 100).
+        offset: Skip this many results. Reads the next page of a pattern
+            with many hits; the page notice names the offset to use.
         project_only: When True, exclude vendor SDK directories and return only
             application code. Default False.
-        variant: Build variant (multi-project). Omit for the default
-            variant, ``"*"`` for all.
-        image: Sysbuild image in the variant. Omit for all images.
+        variant: Variant of the build (a board, or a PlatformIO
+            environment). On a project of more than one build, give the
+            arguments of one build as the refusal lists them: the
+            variant, the image, or the two. fw-context does not select a
+            build. One query answers for ONE build.
+        image: Image of the build: a separate program, such as the
+            application or the bootloader. Give it when the build has an
+            image name.
 
     Returns:
-        list of dicts, each with: name, qualified_name, kind, file, line
-        (first line of the definition), is_definition, signature,
-        _match_snippet (excerpt around the match), source (the text of the
-        definition).
+        list of dicts.  The page notice leads the answer — ``total``,
+        ``offset``, ``shown``, ``more`` — and each that follows holds:
+        name, qualified_name, kind, file, line (first line of the
+        definition), is_definition, signature, _match_snippet (excerpt
+        around the match), source (the text of the definition).
 
         Also, when they carry an answer:
 
@@ -927,18 +1226,23 @@ def search_bodies(
         ``get_source`` numbers its lines.
 
         No match gives ``[]``.  A dict with ``error`` means the query
-        failed.  A stale index prepends a dict with ``warning`` + ``hint``,
-        and so does a query that FTS5 refuses to parse — an empty list
-        always means "no such code", never "bad query".
+        failed.  A query that FTS5 refuses to parse, also after the
+        repair, gives one dict with ``warning`` + ``hint`` — an empty list
+        always means "no such code", never "bad query".  When a file that
+        the answer names changed on disk, a dict with ``warning`` comes
+        first; an empty answer gets it too when indexed files changed.
     """
     root = resolve_project_root(project_root)
-    # Enforce limit bounds at the function entry point (not inside _do_search)
-    # because _do_search may be called multiple times by stale recovery —
-    # applying the clamp once here ensures consistency across retries.
-    limit = max(0, min(limit, 100))
+    # Enforce limit bounds at the function entry point; _do_search reads
+    # the clamped value through its closure.
+    #
+    # One row at least: a page of zero rows reports ``shown: 0`` with
+    # ``more: true`` and hints at the offset it already stands at, thus a
+    # reader that follows the hint never moves.
+    limit = max(1, min(limit, 100))
 
-    # Computed once, outside the query closure: stale recovery can call the
-    # closure again, and the terms depend only on the operator's query.
+    # Computed outside the query closure: the terms depend only on the
+    # operator's query, and the closure runs under the executor lock.
     terms = _body_query_terms(query)
 
     # The body search keeps the query of the caller: no wildcard is added and
@@ -957,41 +1261,40 @@ def search_bodies(
         ``match_lines`` for the position that ``snippet()`` drops.
 
         **Sorting strategy — project-first:** When ``project_only=False``
-        (default), results are sorted with project code first, then vendor
-        code. The operator sees their own code before framework internals.
-        Sorting happens in Python after the DB query because SQLite FTS5
-        ``rank`` already provides relevance ordering within each group.
+        (default), project code comes before vendor code.  The operator
+        sees their own code before framework internals.
 
-        **Limit enforcement — over-fetch then slice:** The DB query fetches
-        ``limit * 3`` rows (3× multiplier for non-project_only, just
-        ``limit`` for project_only). The 3× compensates for vendor-code
-        filtering — most matches may be in vendor code, so we over-fetch,
-        sort project-first, then slice to ``limit``. This avoids returning
-        fewer than ``limit`` results when the majority of FTS5 matches live
-        in vendor directories.
+        The order is one ORDER BY over the whole answer, and the page is
+        one LIMIT/OFFSET on it.  It used to be a Python re-sort over a
+        ``limit * 3`` over-fetch, and that shape cannot be paged: the
+        grouping held only inside the window that was fetched, thus a
+        deeper page fetched a wider window, pulled a project row from the
+        tail of it to the front, and pushed every vendor row behind that
+        row onto a different page.  A walk then saw one row twice and
+        another never.
 
-        **Why DB-level limit matters:** SQLite FTS5's ``rank`` column is a
-        bm25 score computed during the MATCH — ordering by rank and limiting
-        at the DB level ensures we get the most relevant matches before any
-        Python-level filtering. Doing the same filtering in Python would
-        require fetching all matches, which could be tens of thousands of
-        rows in a large codebase.
+        **Why the DB does the ordering:** ``rank`` is a bm25 score that
+        FTS5 computes during the MATCH.  Ordering and cutting in SQL gives
+        the most relevant matches of the whole index, where the same work
+        in Python needs every match first — tens of thousands of rows in a
+        large codebase.
 
-        **FTS5 syntax errors:** Invalid FTS5 queries (e.g. unescaped special
-        characters) raise ``sqlite3.OperationalError`` with error code 1.
-        These are caught and logged — we return empty results rather than
-        propagating the error to the operator, because FTS5 syntax errors
-        are typically caused by operator input and are not operational
-        failures.
+        **FTS5 syntax errors:** a query that FTS5 refuses raises
+        ``sqlite3.OperationalError`` with error code 1.  The query is then
+        repaired with ``_sanitize_body_query`` and run once more; the rows
+        carry ``_fallback: "sanitized"``.  When the repair changes nothing
+        or fails too, the answer is the ``_fts5_rejection`` warning, never
+        an empty list.  Any other database error propagates.
 
         Args:
             c: Open read-only SQLite connection (provided by stale recovery).
             config_hash: Active build configuration hash for filtering.
 
         Returns:
-            List of result dicts with name, qualified_name, kind, file,
-            line, is_definition, signature, _match_snippet, and optionally
-            source (truncated at 2000 characters).
+            A page notice, then a result dict per definition with name,
+            qualified_name, kind, file, line, is_definition, signature,
+            _match_snippet, and optionally source (cut at 2000 characters
+            for a callable, 500 for any other kind) and match_lines.
         """
         kind_filter = ""
         project_filter = ""
@@ -999,18 +1302,38 @@ def search_bodies(
             kind_filter = "AND s.kind = ?"
         if project_only:
             project_filter = "AND s.is_project = 1"
+        where_sql = f"""WHERE symbols_fts MATCH ? AND s.config_hash = ? AND s.is_definition = 1
+                      AND s.source != '' {kind_filter} {project_filter}"""
+        skip = clamp_offset(offset)
+
+        # Project code first, and in SQL.  This used to be a Python re-sort
+        # over a 3x over-fetch, and a page walk cannot survive that: the
+        # grouping then held only inside the fetched window, thus a deeper
+        # page fetched more rows, pulled a project row from the tail to the
+        # front and pushed every vendor row behind it to another page.  One
+        # order over the whole answer keeps each row on the page where the
+        # walk first met it.
+        #
+        # ``rank`` ties — several bodies score alike — and SQLite may then
+        # return tied rows in any order.  ``s.usr`` is unique and ends the
+        # order, thus two pages of one walk cannot repeat or skip a row.
         sql = f"""SELECT s.*, snippet(symbols_fts, 9, '<b>', '</b>', '…', 60) AS _match_snippet
                    FROM symbols_fts
                    JOIN symbols s ON s.id = symbols_fts.rowid
-                   WHERE symbols_fts MATCH ? AND s.config_hash = ? AND s.is_definition = 1
-                     AND s.source != '' {kind_filter} {project_filter}
-                    ORDER BY rank
-                   LIMIT ?"""
+                   {where_sql}
+                    ORDER BY s.is_project DESC, rank, s.usr
+                   LIMIT ? OFFSET ?"""
+        count_sql = f"""SELECT COUNT(*) FROM symbols_fts
+                        JOIN symbols s ON s.id = symbols_fts.rowid
+                        {where_sql}"""
 
         def _params(match_query: str) -> list:
-            row_limit = limit if project_only else limit * 3
             return [_scoped_to_source(match_query), config_hash,
-                    *([kind] if kind else []), row_limit]
+                    *([kind] if kind else []), limit, skip]
+
+        def _count_params(match_query: str) -> list:
+            return [_scoped_to_source(match_query), config_hash,
+                    *([kind] if kind else [])]
 
         repaired = ""
         try:
@@ -1047,7 +1370,6 @@ def search_bodies(
                 "is_definition": bool(r["is_definition"]),
                 "signature": r["signature"],
                 "_match_snippet": r["_match_snippet"],
-                "_is_project": bool(r["is_project"]),
             }
             if repaired:
                 # The caller wrote a pattern FTS5 could not parse.  Report the
@@ -1074,34 +1396,34 @@ def search_bodies(
                     d["match_lines"] = match_lines
             results.append(d)
 
-        if project_only:
-            final = results
-        else:
-            # Project-first sorting: group results by is_project, project
-            # code first. The 3× over-fetch compensates for vendor matches
-            # being filtered out. After sorting, slice to the operator's
-            # requested limit. ``_is_project`` is a temporary sort key —
-            # it is removed from each dict before returning.
-            project_results = [r for r in results if r["_is_project"]]
-            vendor_results = [r for r in results if not r["_is_project"]]
-            final = project_results + vendor_results
-        for r in final:
-            del r["_is_project"]
-        return final[:limit]
+        # The rows are already the page: SQL ordered them and cut them.
+        page = results
+        total = c.execute(count_sql, _count_params(repaired or expanded)).fetchone()[0]
+        if not page:
+            if skip and total:
+                return [{"info": (
+                    f"No body at offset {skip}; the answer holds {total}."
+                )}]
+            return []
+        page.insert(0, page_notice(
+            total, skip, len(page),
+            hint=page_hint("search_bodies", query, **_search_hint_args(kind, project_only, project_root, variant, image),
+                           next_offset=skip + len(page)),
+        ))
+        return page
 
     return _with_search_context(root, "search_bodies", _do_search, variant or "", image or "")
 
 
 
 def search_content(
-    query: Annotated[str, Field(description="FTS5 search terms for full file content. 1-3 words. E.g. 'InterruptIn', 'extern C'. Bare multi-word = OR-joined.")],
+    query: Annotated[str, Field(description="FTS5 search terms for full file content. 1-3 words. E.g. 'InterruptIn', 'extern C'. Bare multi-word = OR-joined.", min_length=1)],
     project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
-    limit: Annotated[int, Field(description="Maximum results (default 20, max 100).")] = 20,
-    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a file match.")] = 0,
+    limit: Annotated[int, Field(description="Maximum results of one page (default 20, max 100).", ge=1)] = 20,
+    offset: Annotated[int, Field(description="Skip this many results. Reads the next page of a topic that many files touch.", ge=0)] = 0,
     project_only: Annotated[bool, Field(description="Exclude vendor SDK code. When True, only application code. Default False.")] = False,
-    variant: Annotated[str | None, Field(description="Build variant name (multi-project). Omit to use default_variant or fail-closed. Use '*' for all variants.")] = None,
-    image: Annotated[str | None, Field(description="Sysbuild image name within the variant (multi-project). Omit for all images of the variant.")] = None,
-    mode: Annotated[str, Field(description="Which text the query searches: 'active' (default) = ifdef-filtered stored content (only code that compiles); 'directives' = the preprocessor directive lines only (#if/#define/#include/#pragma/...), taken and untaken alike; 'raw' = the files as on disk, best-effort disk scan over indexed paths.")] = "active",
+    variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
+    image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
 ) -> list[dict]:
     """Find patterns in FULL file content — the whole file, not only the
     text that belongs to a definition.
@@ -1140,28 +1462,35 @@ def search_content(
     When ``files_fts`` is missing (legacy index), falls back to LIKE
     search on ``files.content`` — results include ``_fallback: "like"``
     and no snippet highlighting. Run ``fw-context index`` to upgrade.
+    The LIKE search splits the query on spaces and underscores and needs
+    EVERY word as a substring (AND, not OR).
 
-    Read-only. No side effects. Requires the FTS5 index with file content.
+    Read-only: yes. Requires the FTS5 index with file content. May
+    auto-reindex stale files (non-blocking) — see ``search_code``.
 
     Args:
         query: FTS5 search terms. 1-3 words. Bare multi-word queries are
             OR-joined (prefix-wildcarded). Prefer single-word queries.
             E.g. ``'InterruptIn'``, ``'extern C'``, ``'#define'``.
         project_root: Project root. Auto-detected if omitted.
-        limit: Maximum results (default 20, max 100).
+        limit: Maximum results of one page (default 20, max 100).
+        offset: Skip this many results. Reads the next page of a topic
+            that many files touch; the page notice names the offset to use.
         project_only: When True, filter to project code only (files with is_project = 1).
-        variant: Build variant (multi-project). Omit for the default
-            variant, ``"*"`` for all.
-        image: Sysbuild image in the variant. Omit for all images.
-        mode: Which text the query searches (ADR-012): ``active`` (default)
-            = the ifdef-filtered stored content, only code that compiles;
-            ``directives`` = the preprocessor directive lines only, taken
-            and untaken alike; ``raw`` = the files as they are on disk,
-            best-effort scan over indexed paths.
+        variant: Variant of the build (a board, or a PlatformIO
+            environment). On a project of more than one build, give the
+            arguments of one build as the refusal lists them: the
+            variant, the image, or the two. fw-context does not select a
+            build. One query answers for ONE build.
+        image: Image of the build: a separate program, such as the
+            application or the bootloader. Give it when the build has an
+            image name.
 
     Returns:
-        list of dicts, each with: file, language, mtime,
-        _match_snippet (highlighted excerpt around the match).
+        list of dicts.  The page notice leads the answer — ``total``,
+        ``offset``, ``shown``, ``more`` — and each that follows holds:
+        file, language, mtime, _match_snippet (highlighted excerpt around
+        the match).
 
         Also, when it carries an answer:
 
@@ -1176,39 +1505,18 @@ def search_content(
           Read ``_match_snippet`` in that case.
 
         No match gives ``[]``.  A dict with ``error`` means the query
-        failed.  A stale index prepends a dict with ``warning`` + ``hint``,
-        and so does a query that FTS5 refuses to parse — the answer then
-        comes from the LIKE path and carries ``_fallback: "like"``.
-
-    **The ``mode`` parameter (ADR-012)** picks the text the query runs
-    against:
-
-    - ``active`` (default) — the ifdef-filtered stored content, exactly
-      the historical behavior: a term that lives only in an inactive
-      branch is invisible, and that empty answer is correct (the code
-      does not compile).
-    - ``directives`` — searches ONLY the preprocessor directive lines the
-      index recorded (``#if``/``#define``/``#include``/``#pragma``/...),
-      taken and untaken alike (T12-C6).  Each result carries
-      ``directives``: the matched ``{line, kind, text}`` rows, and
-      ``match_lines`` in absolute file lines, so a cite of ``file:line``
-      stays correct across modes.
-    - ``raw`` — searches the files as they are on disk (T12-C5).  A
-      best-effort disk scan over the indexed paths, project code first:
-      an inactive branch is real text here.  No FTS — the scan walks the
-      indexed paths until ``limit`` results, so a hit in a file the scan
-      never reached is missed, never fabricated; the docstring of the
-      contract calls this out so a caller treats an empty raw result as
-      "not found within the scan", not as proof of absence.
+        failed.  A query that FTS5 refuses to parse prepends a dict with
+        ``warning`` + ``hint`` — the answer then comes from the LIKE path
+        and carries ``_fallback: "like"``.  When a file that the answer
+        names changed on disk, a dict with ``warning`` comes first; an
+        empty answer gets it too when indexed files changed.
     """
     root = resolve_project_root(project_root)
     # Enforce limit bounds at the function entry point (not inside _do_search)
-    # — same rationale as search_bodies: consistent bound across stale-recovery retries.
-    limit = max(0, min(limit, 100))
-    if mode not in ("active", "raw", "directives"):
-        return [{
-            "error": f"Unknown mode {mode!r} — use 'active', 'raw' or 'directives'."
-        }]
+    # — same rationale as search_bodies: consistent bound across stale-recovery
+    # retries, and one row at least, so that a page never hints at the offset
+    # it already stands at.
+    limit = max(1, min(limit, 100))
     expanded = _expand_query(query)
     # Computed once, outside the query closure: stale recovery can call the
     # closure again, and the terms depend only on the query of the caller.
@@ -1239,19 +1547,20 @@ def search_content(
         ``fw-context index`` upgrades a legacy index to include
         ``files_fts``, enabling the faster FTS5 path on subsequent queries.
 
-        **Limit enforcement:** The DB query fetches ``limit * 3`` rows. The
-        3× multiplier compensates for post-filtering (removing duplicate
-        files, applying vendor-code sorting if needed). After Python-level
-        processing, results are sliced to ``limit``.
+        **The page comes from SQL:** both paths order their rows and cut
+        them with LIMIT/OFFSET, thus the rows this function builds are
+        already the page.  There is no re-sort in Python here, therefore
+        nothing to over-fetch for.
 
         Args:
             c: Open read-only SQLite connection (provided by stale recovery).
             config_hash: Active build configuration hash for filtering.
 
         Returns:
-            List of result dicts with file, language, mtime, _match_snippet,
-            and optionally match_lines and _fallback.  A query that FTS5
-            refuses heads the list with a warning dict.
+            A page notice, then a result dict per file with file, language,
+            mtime, _match_snippet, and optionally match_lines and
+            _fallback.  A query that FTS5 refuses heads the list with a
+            warning dict.
         """
         project_filter = ""
         if project_only:
@@ -1259,6 +1568,8 @@ def search_content(
         # Set when FTS5 refuses the query below — it then heads the result
         # list, so the caller reads "bad query" and not "no such code".
         rejection: dict | None = None
+        skip = clamp_offset(offset)
+        total = 0
 
         # Check whether the files_fts virtual table exists.
         # Legacy indexes created before file-content FTS5 indexing was added
@@ -1269,19 +1580,32 @@ def search_content(
 
         if table_row is not None:
             try:
-                # FTS5 path: uses snippet() for contextual highlighting.
-                # Fetches limit * 3 rows — 3× compensates for vendor-code
-                # files that may crowd out project-code matches.
+                # ``rank`` ties — several files score alike — and SQLite may
+                # then return tied rows in any order.  ``f.path`` is unique
+                # within one build and ends the order, thus two pages of one
+                # walk cannot repeat or skip a file.
+                #
+                # The rows are sliced here and nowhere else, thus the OFFSET
+                # belongs in the query.  An earlier 3x over-fetch served a
+                # project-first re-sort that this function does not do, and
+                # it only read two thirds of its rows to throw them away.
                 rows = c.execute(
                     f"""SELECT f.*, snippet(files_fts, 1, '<b>', '</b>', '…', 80) AS _match_snippet
                        FROM files_fts
                        JOIN files f ON f.id = files_fts.rowid
                        WHERE files_fts MATCH ? AND f.config_hash = ?
                          AND f.content != '' {project_filter}
-                        ORDER BY rank
-                       LIMIT ?""",
-                    (expanded, config_hash, limit * 3),
+                        ORDER BY rank, f.path
+                       LIMIT ? OFFSET ?""",
+                    (expanded, config_hash, limit, skip),
                 ).fetchall()
+                total = c.execute(
+                    f"""SELECT COUNT(*) FROM files_fts
+                       JOIN files f ON f.id = files_fts.rowid
+                       WHERE files_fts MATCH ? AND f.config_hash = ?
+                         AND f.content != '' {project_filter}""",
+                    (expanded, config_hash),
+                ).fetchone()[0]
             except sqlite3.OperationalError as e:
                 # FTS5 syntax error on the query — fall back to LIKE, which
                 # reads the query as literal text and thus still answers.
@@ -1316,6 +1640,10 @@ def search_content(
             escaped_terms = [t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") for t in like_terms]
             like_clauses = " AND ".join(["f.content LIKE ? ESCAPE '\\'" for _ in escaped_terms])
             like_params = [f"%{t}%" for t in escaped_terms]
+            # This path had NO order at all, thus SQLite was free to return
+            # the rows differently on every call.  A page walk over that is
+            # meaningless: the same file could arrive twice and another
+            # never.  ``f.path`` is unique within one build and settles it.
             rows = c.execute(
                 f"""SELECT f.*,
                            substr(f.content, 0, 200) || '…' AS _match_snippet
@@ -1324,14 +1652,23 @@ def search_content(
                        AND f.content != ''
                        AND {like_clauses}
                        {project_filter}
-                     LIMIT ?""",
-                (config_hash, *like_params, limit * 3),
+                     ORDER BY f.path
+                     LIMIT ? OFFSET ?""",
+                (config_hash, *like_params, limit, skip),
             ).fetchall()
+            total = c.execute(
+                f"""SELECT COUNT(*) FROM files f
+                     WHERE f.config_hash = ?
+                       AND f.content != ''
+                       AND {like_clauses}
+                       {project_filter}""",
+                (config_hash, *like_params),
+            ).fetchone()[0]
 
         results: list[dict] = [rejection] if rejection else []
-        # Sliced before the scan below: the query over-fetches 3×, and reading
-        # the text of a file that never reaches the caller is wasted work.
-        for r in rows[:limit]:
+        # ``rows`` IS the page — both paths above ordered and cut in SQL.
+        page: list[dict] = []
+        for r in rows:
             d = {
                 "file": abs_path(root, r["path"]),
                 "language": r["language"],
@@ -1346,126 +1683,19 @@ def search_content(
             # #ifdef branch is a blank line, and a raw read shows it as code.
             if match_lines := _body_match_lines(r["content"], 1, terms):
                 d["match_lines"] = match_lines
-            results.append(d)
+            page.append(d)
+        if not page:
+            if skip and total:
+                results.append({"info": (
+                    f"No file at offset {skip}; the answer holds {total}."
+                )})
+            return results
+        results.append(page_notice(
+            total, skip, len(page),
+            hint=page_hint("search_content", query, **_search_hint_args(None, project_only, project_root, variant, image),
+                           next_offset=skip + len(page)),
+        ))
+        results += page
         return results
 
-    def _do_search_directives(c: sqlite3.Connection, config_hash: str) -> list[dict]:
-        """Search ONLY the preprocessor directive lines (T12-C6, ADR-012).
-
-        The ``file_directives`` table holds one row per directive line —
-        ``#if``/``#define``/``#include``/``#pragma``/... — of a project
-        file, taken and untaken alike, with an eager FTS5 mirror.  This
-        view reaches the directive text the active view blanks out: the
-        ``#if CMD_FLAG`` line of an untaken branch is real, searchable
-        text here.
-
-        Same two paths as the active view: FTS5 first (rank order), LIKE
-        over the directive text when the table is missing or FTS5 refuses
-        the query.  ``match_lines`` are absolute file lines — the same
-        line numbers ``read_file`` uses in every mode.
-        """
-        try:
-            rows = index_db.search_directives_fts(
-                c, config_hash, expanded, limit * 3, project_only=project_only,
-            )
-        except sqlite3.OperationalError:
-            # FTS5 refused the query (or the table is missing) — same LIKE
-            # fallback contract as the active view, over the directive text.
-            rows = index_db.search_directives_like(
-                c, config_hash, terms, limit * 3, project_only=project_only,
-            )
-            if not rows:
-                return [
-                    {
-                        "error": "The FTS5 index rejected the query, and no "
-                        "directive line matches the LIKE fallback either. "
-                        "Try fewer or simpler terms.",
-                    }
-                ]
-            rows = [dict(r) | {"_fallback": "like"} for r in rows]
-
-        # Group the rows per file: one result per file, the matched
-        # directives inside it, `match_lines` absolute (C10 parity with the
-        # other modes).
-        per_file: dict[str, dict] = {}
-        for r in rows:
-            d = per_file.get(r["path"])
-            if d is None:
-                d = {
-                    "file": abs_path(root, r["path"]),
-                    "language": r["language"],
-                    "mtime": r["mtime"],
-                    "directives": [],
-                }
-                if isinstance(r, dict) and r.get("_fallback") == "like":
-                    d["_fallback"] = "like"
-                per_file[r["path"]] = d
-            row_entry = {
-                "line": r["line"],
-                "kind": r["kind"],
-                "text": r["text"],
-            }
-            snippet = r["_match_snippet"] or ""
-            if "<b>" in snippet:
-                row_entry["_match_snippet"] = snippet
-            d["directives"].append(row_entry)
-            # match_lines holds every matched directive line of the file —
-            # extended per row, capped like the other modes.
-            ml = d.setdefault("match_lines", [])
-            if len(ml) < 20:
-                ml.append(r["line"])
-        results = list(per_file.values())
-        for d in results:
-            if not d["match_lines"]:
-                del d["match_lines"]
-            d["match_lines"] = d.get("match_lines", [])[:20]
-        return results[:limit]
-
-    def _do_search_raw(c: sqlite3.Connection, config_hash: str) -> list[dict]:
-        """Search the files as they are on disk (T12-C5, ADR-012).
-
-        A best-effort disk scan over the indexed paths — no FTS, because
-        the disk text of an unstale file IS the indexed text minus the
-        filter, and a second stored copy of raw text is exactly what
-        ADR-012 refuses.  Project code is scanned first, vendor code
-        after; the loop walks the indexed paths until ``limit`` results
-        (no scanned-file cap — verified W0 R10), so a hit in a file the
-        scan never reached is missed, and an empty result says "not found
-        within the scan", never "no such code".
-
-        The line of a match is computed by the same helper as the active
-        view, over the disk text — the numbers are directly comparable
-        because both are absolute file lines.
-        """
-        paths = index_db.list_config_file_paths(
-            c, config_hash, project_only=project_only
-        )
-        results: list[dict] = []
-        for r in paths:
-            if len(results) >= limit:
-                break
-            file_abs = abs_path(root, r["path"])
-            lines = read_file_lines(file_abs)
-            if lines is None:
-                continue
-            text = "".join(lines)
-            match_lines = _body_match_lines(text, 1, terms)
-            if not match_lines:
-                continue
-            results.append({
-                "file": file_abs,
-                "language": r["language"],
-                "mtime": r["mtime"],
-                "match_lines": match_lines,
-                "_source": "raw-disk",
-            })
-        return results
-
-    _mode_impl = {
-        "active": _do_search,
-        "directives": _do_search_directives,
-        "raw": _do_search_raw,
-    }[mode]
-    return _with_search_context(
-        root, "search_content", _mode_impl, variant or "", image or ""
-    )
+    return _with_search_context(root, "search_content", _do_search, variant or "", image or "")

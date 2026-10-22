@@ -79,7 +79,6 @@ from datetime import UTC, datetime
 import httpx
 
 from ..config.settings import LLMConfig
-from ..platform import http_get, http_post, http_stream
 from ._debug import _write_debug_log
 from .embedder import Embedder
 
@@ -172,7 +171,7 @@ def _pull_model(
     digest_states: dict[str, int] = {}  # digest → last completed bytes
 
     try:
-        with http_stream(
+        with httpx.stream(
             "POST", url, json={"name": model},
             timeout=httpx.Timeout(
                 connect=30.0,
@@ -279,13 +278,13 @@ def _stream_ollama_generate(
     chunks: list[str] = []
     try:
         with ollama_guard():
-            with http_stream("POST", url, json=payload, timeout=cfg.timeout) as resp:
+            with httpx.stream("POST", url, json=payload, timeout=cfg.timeout) as resp:
                 if resp.status_code == 404:
                     if cfg.auto_pull:
                         log.info("LLM model '%s' not found, pulling...", cfg.model)
                         _pull_model(cfg.model, base_url)
                         # Retry with streaming
-                        with http_stream("POST", url, json=payload, timeout=cfg.timeout) as resp2:
+                        with httpx.stream("POST", url, json=payload, timeout=cfg.timeout) as resp2:
                             resp2.raise_for_status()
                             for line in resp2.iter_lines():
                                 _extract_ollama_chunk(line, chunks)
@@ -430,13 +429,13 @@ def call_ollama(
     t0 = time.monotonic()
     try:
         with ollama_guard():
-            resp = http_post(url, json=payload, timeout=cfg.timeout)
+            resp = httpx.post(url, json=payload, timeout=cfg.timeout)
         if resp.status_code == 404:
             if cfg.auto_pull:
                 log.info("LLM model '%s' not found, pulling...", cfg.model)
                 _pull_model(cfg.model, base_url)
                 with ollama_guard():
-                    resp = http_post(url, json=payload, timeout=cfg.timeout)
+                    resp = httpx.post(url, json=payload, timeout=cfg.timeout)
             else:
                 raise OllamaModelNotFoundError(cfg.model, base_url) from None
         resp.raise_for_status()
@@ -524,7 +523,7 @@ def _call_ollama_embed_impl(
     t0 = time.monotonic()
     try:
         with ollama_guard():
-            resp = http_post(url, json=payload, timeout=cfg.timeout * 2)
+            resp = httpx.post(url, json=payload, timeout=cfg.timeout * 2)
         resp.raise_for_status()
         embeddings = resp.json()["embeddings"]
         if embedder is not None:
@@ -548,7 +547,7 @@ def _call_ollama_embed_impl(
                 _pull_model(cfg.embed_model, cfg.ollama_url)
                 try:
                     with ollama_guard():
-                        resp = http_post(url, json=payload, timeout=cfg.timeout * 2)
+                        resp = httpx.post(url, json=payload, timeout=cfg.timeout * 2)
                     resp.raise_for_status()
                     embeddings = resp.json()["embeddings"]
                     if embedder is not None:
@@ -634,7 +633,7 @@ class OllamaEmbedder(Embedder):
         if cached is not None:
             return cached
         try:
-            resp = http_get(
+            resp = httpx.get(
                 f"{self._cfg.ollama_url.rstrip('/')}/api/show",
                 params={"name": model}, timeout=5.0,
             )
@@ -732,8 +731,11 @@ def check_setup(cfg: LLMConfig) -> dict:
     """Check LLM backend connectivity and model availability.
 
     Reports on both the chat API (Ollama native or external) and the
-    embedding API (always Ollama).  When ``chat_api_base`` points to an
-    external host, a compliance warning is included.
+    embedding backend.  An Ollama embedding model needs the Ollama server;
+    a sentence-transformers or ``ft://`` model runs locally, and
+    ``embedding_backend`` tells which one is configured.  When
+    ``chat_api_base`` points to an external host, a compliance warning is
+    included.
 
     Args:
         cfg: LLM configuration.
@@ -764,8 +766,13 @@ def check_setup(cfg: LLMConfig) -> dict:
         ``compliance_warning`` (str, when chat_api_base is external).
     """
     from ..config.settings import _is_loopback_url
+    from .embedder_factory import uses_ollama
 
-    result: dict = {"suggest_cloud": False}
+    ollama_embedding = uses_ollama(cfg)
+    result: dict = {
+        "suggest_cloud": False,
+        "embedding_backend": "ollama" if ollama_embedding else "local",
+    }
 
     # ── Chat API configuration info ──
     if cfg.chat_api_base:
@@ -791,7 +798,7 @@ def check_setup(cfg: LLMConfig) -> dict:
     # ── Ollama connectivity (for embedding + possibly chat) ──
     base_url = cfg.ollama_url.rstrip("/")
     try:
-        resp = http_get(base_url + "/api/tags", timeout=5.0)
+        resp = httpx.get(base_url + "/api/tags", timeout=5.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         return _without_ollama(result, cfg, ollama_embedding, "Ollama is not running.", server_runs=False)
@@ -835,8 +842,8 @@ def check_setup(cfg: LLMConfig) -> dict:
     ]
     result["model_details"] = model_details
 
-    # Embedding model check (embedding always uses Ollama)
-    embed_found = _check_model_installed(cfg.embed_model, installed)
+    # Embedding model check: only an Ollama model must be installed there.
+    embed_found = not ollama_embedding or _check_model_installed(cfg.embed_model, installed)
     result["configured_embed_model"] = cfg.embed_model
     result["embedding_installed"] = embed_found
 

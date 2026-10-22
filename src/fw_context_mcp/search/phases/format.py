@@ -39,9 +39,32 @@ class FormatPhase(Phase):
 
     Adds metadata entries: ``_generated_queries``, ``_rough_queries``,
     ``_translated_from`` / ``_translated_to``, warnings, etc.
+
+    Why ``keep_similarity``?
+        semantic_search gives ``_similarity`` in each result, the raw
+        cosine similarity.  smart_search does not give it:
+        its results mix scored embedding rows with call-graph neighbors
+        and FTS5 rows that have no score.  Thus only the semantic pipeline
+        sets the flag, and the default output stays as it was.
+
+    Why cut to ``ctx.limit`` here?
+        Each phase that orders the results also cuts them to the limit.
+        But the runner records a failed phase in ``warnings`` and goes on
+        with the context from before that phase.  When adaptive fusion and
+        context expansion both fail, the uncut embedding rows come here.
+        This is the last phase of each pipeline, thus a cut here makes the
+        limit hold for every answer.
+
+    Why ``cut=False``?
+        semantic_search pages its answer: the handler takes the page out of
+        the whole ranked set, thus the format must keep the whole set.
     """
 
     name = "format"  #: Phase identifier used in pipeline configuration.
+
+    def __init__(self, keep_similarity: bool = False, cut: bool = True) -> None:
+        self.keep_similarity = keep_similarity
+        self.cut = cut
 
     async def run(self, ctx: PipelineContext) -> PipelineContext:
         """Convert final scored results to MCP tool output dicts.
@@ -68,6 +91,8 @@ class FormatPhase(Phase):
                 val = r.get(field, "") or ""
                 if val:
                     item[field] = val
+            if self.keep_similarity and "_similarity" in r:
+                item["_similarity"] = r["_similarity"]
             return item
 
         results: list[dict] = []
@@ -88,7 +113,8 @@ class FormatPhase(Phase):
             results.append({"warning": w})
 
         # Symbol results
-        results += [_fmt(r) for r in ctx.final_results]
+        rows = ctx.final_results[: ctx.limit] if self.cut else ctx.final_results
+        results += [_fmt(r) for r in rows]
 
         if not ctx.final_results:
             results.append({"info": "No results found for the generated queries."})

@@ -83,6 +83,16 @@ class PipelineContext:
 
     # ── Phase 5 output ────────────────────────────────────────────────────
     embedding_results: list[dict] = field(default_factory=list)
+    # The best raw cosine similarity of all candidates of a standalone
+    # search, before the source boost cuts the list to ``limit``.  The
+    # relevance floor of semantic_search reads it: the boosted order can
+    # drop the candidate with the best raw score.  None when no standalone
+    # search ran.
+    embedding_best_similarity: float | None = None
+    # True when a whole-set search (semantic_search) stopped at the largest
+    # k of one KNN query with its last row still above the threshold: more
+    # symbols can be above it, and the count of the rows is a lower bound.
+    embedding_capped: bool = False
 
     # ── Phase 6 output ────────────────────────────────────────────────────
     final_results: list[dict] = field(default_factory=list)
@@ -113,8 +123,14 @@ class PipelineContext:
         query: str,
         project_root: str | None = None,
         limit: int = 20,
+        variant: str | None = None,
+        image: str | None = None,
     ) -> PipelineContext:
-        """Factory: resolve project root, load config, read config_hash, get executor.
+        """Factory: resolve project root, load config, resolve the build, get executor.
+
+        *variant* and *image* select the build, as in every query tool
+        (``resolve_build``).  A refusal raises ``ValueError`` with its text,
+        which lists the builds to repeat the call with.
 
         Why a factory method?
             Creating a PipelineContext requires multiple steps (resolve root,
@@ -128,7 +144,7 @@ class PipelineContext:
         ``ensure_schema`` write transaction for a two-field read.  All
         phase queries go through the shared ``executor``.
         """
-        from fw_context_mcp.indexer.db import get_active_config
+        from fw_context_mcp.mcp.shared.variants import resolve_build
 
         root = resolve_project_root(project_root)
         cfg = load_config(project_root=root)
@@ -140,10 +156,16 @@ class PipelineContext:
 
         conn = _quick_open_readonly(db_path)
         try:
-            build_cfg = get_active_config(conn, project_id)
-            if not build_cfg:
+            # The build that the caller names.  These tools took no selector
+            # until 2026-10.  On a project of several variants they answered
+            # for the newest build, thus for the build that the last index
+            # run did, and for the images of one build for the application.
+            # Both were choices that the caller did not make.
+            config_hash, refusal = resolve_build(conn, project_id, cfg, variant or "", image or "")
+            if refusal:
+                raise ValueError(refusal)
+            if config_hash is None:
                 raise ValueError(f"No build config indexed for {root}.")
-            config_hash = build_cfg["config_hash"]
         finally:
             conn.close()
 

@@ -11,10 +11,12 @@ Provides:
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -252,8 +254,46 @@ def _terminate_session_daemons(index_dir: Path) -> None:
 
 @pytest.fixture
 def tmpdir():
-    with tempfile.TemporaryDirectory() as d:
+    # Windows adjudication: an sqlite3 connection that a test's executor kept
+    # in a reference cycle (exception tracebacks hold frames) can still be
+    # alive at cleanup, and unlinking an open test.db dies with WinError 32.
+    # One gc.collect() breaks the cycle and closes the connection; the retry
+    # then succeeds.  On POSIX an open file unlinks fine, so no dance there.
+    d = tempfile.mkdtemp()
+    try:
         yield Path(d)
+    finally:
+        if sys.platform == "win32":
+            # An executor that the handler registered for a db inside *d*
+            # keeps its connection open past the test — close it, or the
+            # rmtree below dies on WinError 32.
+            try:
+                from fw_context_mcp.mcp.shared.executor import invalidate_executor
+
+                for p in Path(d).rglob("*.db"):
+                    invalidate_executor(str(p.resolve()))
+            except Exception:
+                pass
+            gc.collect()
+            for attempt in range(5):
+                try:
+                    shutil.rmtree(d)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.2 * (attempt + 1))
+                    # A buffered LogRecord that carries exc_info holds the
+                    # frames of the failure — and through them the executor
+                    # and its connection.  Cutting the traceback lets the
+                    # cycle collector free the connection for the next try.
+                    gc.collect()
+                    for o in gc.get_objects():
+                        if isinstance(o, logging.LogRecord) and o.exc_info:
+                            o.exc_info = None
+                    gc.collect()
+        else:
+            shutil.rmtree(d)
 
 
 @pytest.fixture

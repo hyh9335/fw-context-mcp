@@ -61,8 +61,11 @@ def make_project(tmp_path: Path, fill: Callable[..., None], *, files: int = 1) -
     root = tmp_path / "proj"
     (root / "src").mkdir(parents=True)
     (root / ".fw-context").mkdir()
+    # Windows adjudication: a raw Windows path inside a TOML string is an
+    # escape sequence error (tomllib refuses the backslash); forward
+    # slashes mean the same directory everywhere Python opens a file.
     (root / ".fw-context" / "config.toml").write_text(
-        f'[project]\nid = "{PROJECT_ID}"\n\n[build]\n\n[index]\ndb_dir = "{tmp_path}"\n',
+        f'[project]\nid = "{PROJECT_ID}"\n\n[build]\n\n[index]\ndb_dir = "{tmp_path.as_posix()}"\n',
         encoding="utf-8",
     )
     db_path = tmp_path / PROJECT_ID / "index.db"

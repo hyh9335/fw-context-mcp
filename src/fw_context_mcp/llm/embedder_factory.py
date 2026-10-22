@@ -170,3 +170,20 @@ def _validate_model_dir(path: Path, label: str) -> None:
             f"Model directory {label} exists but is missing config.json. "
             "The model may be corrupted — re-run 'fw-context finetune' to regenerate it."
         )
+
+# The model-name prefixes that run on the local sentence-transformers
+# backend instead of an Ollama server (the same list get_embedder uses).
+_ST_PREFIXES = ("ibm-granite/", "lightonai/", "baai/", "cross-encoder/", "sentence-transformers/")
+
+
+def uses_ollama(cfg: LLMConfig) -> bool:
+    """Return True when :func:`get_embedder` gives an ``OllamaEmbedder`` for *cfg*.
+
+    The same rules as :func:`get_embedder`, without a model to construct:
+    an empty ``embed_model`` auto-detects an Ollama model, ``ft://`` and the
+    sentence-transformers prefixes run locally, and every other name is an
+    Ollama tag.  A caller that needs the Ollama server for embedding only
+    asks for it when this is True.
+    """
+    model = cfg.embed_model.lower()
+    return not (model.startswith("ft://") or model.startswith(_ST_PREFIXES))

@@ -13,12 +13,13 @@ lets the assistant continue working with lexical precision only.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
 
 from ...config import derive_project_id
-from ...indexer.db import get_active_config
 from ...utils import abs_path
 from .context import _is_stale, _quick_open_readonly, get_executor
+from .paging import page_hint, page_notice, past_end_info
 from .stale import _stale_files
 
 
@@ -28,12 +29,25 @@ def _fallback_to_search_code(
     query: str,
     limit: int,
     warning: str,
+    offset: int = 0,
+    hint_args: Mapping[str, object] | None = None,
+    *,
+    config_hash: str,
 ) -> list[dict]:
     """Fall back to lexical search when Ollama/embeddings are unavailable.
 
     Runs on the shared executor connection (same as regular tools) and
-    adds a stale warning when the index is out of date.  ``config_hash``
-    is read fresh per request via a short-lived read-only connection.
+    adds a stale warning when the index is out of date.
+
+    *config_hash* is the build that the caller resolved from its selector.
+    WHY the caller gives it: this function resolved a build of its own
+    until 2026-10, without the selector, and a fallback could answer for
+    another build than the main path.
+
+    The answer is one page, at *offset*, with the page notice of
+    semantic_search: the reader pages the tool it called, and the same
+    cause gives the same fallback on the next page.  *hint_args* go into
+    the hint, thus the next call asks for the same set.
     """
     try:
         conn = _quick_open_readonly(db_path)
@@ -42,11 +56,12 @@ def _fallback_to_search_code(
         # of crashing (callers may pass a path whose index was deleted).
         return [{"error": f"Cannot open index database {db_path}: {e}. Run 'fw-context index' first."}]
     try:
-        project_id = derive_project_id(root)
-        cfg = get_active_config(conn, project_id)
-        if not cfg:
+        cfg = conn.execute(
+            "SELECT * FROM build_configs WHERE project_id = ? AND config_hash = ?",
+            (derive_project_id(root), config_hash),
+        ).fetchone()
+        if cfg is None:
             return [{"error": "No build config indexed."}]
-        config_hash = cfg["config_hash"]
         compile_commands_path = cfg["compile_commands_path"]
     finally:
         conn.close()
@@ -58,7 +73,7 @@ def _fallback_to_search_code(
         # must not open its own connection.  Timeout is enforced by
         # _wrap_tool (300 s + interrupt), not here.
         results = _fallback_to_search_code_inner(
-            db_conn, root, query, cfg_hash, limit, warning
+            db_conn, root, query, cfg_hash, limit, warning, offset=offset, hint_args=hint_args,
         )
         result_files = [abs_path(root, r["file"]) for r in results if "file" in r]
         stale_f = _stale_files(db_conn, cfg_hash, result_files, root)
@@ -87,14 +102,24 @@ def _fallback_to_search_code_inner(
     config_hash: str,
     limit: int,
     warning: str,
+    offset: int = 0,
+    hint_args: Mapping[str, object] | None = None,
 ) -> list[dict]:
-    """Inner fallback with an open connection."""
+    """Inner fallback with an open connection.
+
+    One page of the plain FTS5 symbol search, and its count on the same
+    conditions (``count_symbols``), thus ``total`` describes the rows.
+    *hint_args* are the arguments of the semantic_search call that the hint
+    repeats: a threshold that is not the default, and the project.
+    """
     from fw_context_mcp.indexer.db import search_symbols
+    from fw_context_mcp.indexer.db._symbols import count_symbols
 
     rows = search_symbols(
         conn, query, config_hash, limit=limit, kind=None,
-        exclude_variables=True,
+        exclude_variables=True, offset=offset,
     )
+    total = count_symbols(conn, query, config_hash, kind=None, exclude_variables=True)
     results: list[dict] = []
     for r in rows:
         d = {
@@ -113,9 +138,20 @@ def _fallback_to_search_code_inner(
         results.append(d)
 
     if not results:
+        if offset and total:
+            return [
+                {"warning": warning, "_method": "search_code_fallback"},
+                past_end_info("symbol", offset, total),
+            ]
         return [{"warning": f"{warning} (no lexical results either)."}]
 
+    notice = page_notice(
+        total, offset, len(results),
+        hint=page_hint("semantic_search", query, **(hint_args or {}),
+                       next_offset=offset + len(results)),
+    )
     return [
         {"warning": warning, "_method": "search_code_fallback"},
+        notice,
         *results,
     ]
