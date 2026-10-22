@@ -18,6 +18,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 _HEAD_PATHS: dict[str, tuple[Path | None, float]] = {}
+_REBASE_DIRS = ("rebase-merge", "rebase-apply")
 _NO_GIT_RECHECK_S = 60.0
 
 # Hard-coded UTF-8 — git outputs UTF-8 on all modern platforms regardless of

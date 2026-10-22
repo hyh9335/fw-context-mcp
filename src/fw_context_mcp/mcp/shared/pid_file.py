@@ -42,10 +42,12 @@ the background reindex.  PID-based ownership prevents this.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from ...platform import marker_pid as _marker_pid
 from ...platform import process as _process
+from ...utils import owner_token
 
 
 class PidFile:
@@ -95,8 +97,32 @@ class PidFile:
     # ── Instance methods ────────────────────────────────────────────
 
     def write(self) -> None:
-        """Write our PID to the file, overwriting any existing content."""
-        self._path.write_text(str(self._pid), encoding="utf-8")
+        """Write our PID to the file, overwriting any existing content.
+
+        WHY a temporary file and a rename: a plain write truncates the file
+        first.  A reader in that moment reads an empty file, and
+        :meth:`is_active` deletes a file that holds no PID.  The marker of
+        a live process was then gone.  ``os.replace`` changes the file in
+        one step, thus a reader sees the old PID or the new PID.
+
+        WHY ``mkstemp`` and not ``utils.write_text_atomic``: that function
+        gives each process one temporary name.  Two threads of one MCP
+        server that write ``reindex.pause`` at the same time then share it,
+        and the second rename fails.  The suffix holds
+        ``utils.owner_token``, thus ``utils.remove_stale_tmp`` removes the
+        file of a writer that a kill stopped before the rename.
+        """
+        fd, tmp = tempfile.mkstemp(
+            dir=self._path.parent, prefix=f".{self._path.name}.", suffix=f".{owner_token()}.tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(str(self._pid))
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, self._path)
+        except OSError:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
     def unlink_if_ours(self) -> None:
         """Remove the PID file, but **only** if it names our PID.
@@ -166,6 +192,44 @@ class PidFile:
         return _process.is_alive(pid)
 
     @staticmethod
+    def _read_pid_text(path: Path) -> tuple[str | None, bool]:
+        """Read the raw text of the marker *path*.
+
+        Returns ``(text, exists)``.  ``(None, False)`` when the file was
+        there at the read and a writer replaced it in between: the reader
+        then cleans nothing, because the file it read is gone and a new
+        owner owns the name.  ``(None, True)`` for a file that is there
+        and unreadable: the caller decides the cleanup.
+        """
+        try:
+            return path.read_text(encoding="utf-8").strip(), True
+        except FileNotFoundError:
+            return None, False
+        except OSError:
+            return None, True
+
+    @staticmethod
+    def _pid_of_text(path: Path, text: str | None, exists: bool) -> int | None:
+        """Parse the marker text, and clean up garbage of a file that stayed."""
+        if text is None:
+            return None
+        if not text:
+            if exists:
+                path.unlink(missing_ok=True)
+            return None
+        if text.startswith("{"):
+            # JSON marker (v2 identity format): the platform reader decides.
+            pid = _marker_pid(path)
+            if pid is None and exists:
+                path.unlink(missing_ok=True)
+            return pid
+        if not (text.isascii() and text.isdigit()):
+            if exists:
+                path.unlink(missing_ok=True)
+            return None
+        return int(text)
+
+    @staticmethod
     def is_active(path: Path) -> bool:
         """Return ``True`` when *path* exists and the process is alive.
 
@@ -174,11 +238,13 @@ class PidFile:
         Both marker formats are understood; a JSON marker for a LIVE
         process is valid, never garbage.
         """
-        if not path.exists():
+        text, exists = PidFile._read_pid_text(path)
+        if text is None and not exists:
+            # Nothing to clean.  An unlink here deleted the file that a
+            # writer made after this read, thus a live marker.
             return False
-        pid = _marker_pid(path)
+        pid = PidFile._pid_of_text(path, text, exists)
         if pid is None:
-            path.unlink(missing_ok=True)
             return False
         if PidFile._pid_exists(pid):
             return True
@@ -212,9 +278,5 @@ class PidFile:
         garbage.  Unparseable files are cleaned up automatically; a JSON
         marker is parsed, never deleted for its format.
         """
-        if not path.exists():
-            return None
-        pid = _marker_pid(path)
-        if pid is None:
-            path.unlink(missing_ok=True)
-        return pid
+        text, exists = PidFile._read_pid_text(path)
+        return PidFile._pid_of_text(path, text, exists)

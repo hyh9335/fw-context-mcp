@@ -947,6 +947,12 @@ class TestTheHeadWatcher:
 
         assert asyncio.run(_scenario()), "a checkout did not reach the daemon"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="ReadDirectoryChangesW holds an open handle on the watched .git "
+        "directory, and Windows refuses its deletion while the watch runs "
+        "(POSIX inotify does not need the handle)",
+    )
     def test_a_git_directory_that_rm_and_git_init_replace(self, monkeypatch, tmp_path):
         """The old watch is on a removed directory and gets no more events."""
         from fw_context_mcp.indexer import git_context

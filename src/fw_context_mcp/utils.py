@@ -28,6 +28,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Sequence
@@ -1024,3 +1025,427 @@ def write_text_atomic(path: Path, text: str, *, mode: int | None = None) -> None
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+BUILD_GROUP_GRACE_S = 5.0
+
+
+class BuildTimeoutError(RuntimeError):
+    """A build command ran longer than its timeout.
+
+    A subclass of the ``RuntimeError`` that ``run_build_command`` raises for
+    every failure, thus each caller that catches that error stays correct.
+    A caller that tries again after a failure needs the difference: a
+    command that hung once can hang again, each time for the whole timeout.
+    """
+
+
+_CC_STEM = "compile_commands"
+
+
+_CC_SUFFIX = ".json"
+
+
+_ERROR_INVALID_PARAMETER = 87
+
+
+_OWNER_TOKEN_AT_END = re.compile(r"(?:^|\.)(\d+@[A-Za-z0-9._-]+)$")
+
+
+_ON_WINDOWS = os.name == "nt"
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
+_STILL_ACTIVE = 259
+
+
+def _remove_group_record(record: Path, pgid: int) -> None:
+    """Remove *record* when it still names the group *pgid*."""
+    try:
+        if json.loads(record.read_text(encoding="utf-8")).get("pgid") == pgid:
+            record.unlink(missing_ok=True)
+    except (OSError, ValueError, AttributeError):
+        return
+
+
+def _write_group_record(record: Path, pgid: int, program: str) -> None:
+    """Write ``{"index_pid", "pgid", "leader", "started"}`` to *record* atomically.
+
+    ``leader`` is the base name of the program that leads the group, and
+    ``started`` its start time (see :func:`process_start_time`).  The reader
+    compares the two with the live leader, because a PID can come back for
+    an unrelated process.
+    """
+    temporary = record.with_name(f".{record.name}.{os.getpid()}")
+    payload = {
+        "index_pid": os.getpid(),
+        "pgid": pgid,
+        "leader": Path(program).name,
+        "started": process_start_time(pgid),
+    }
+    try:
+        temporary.write_text(json.dumps(payload), encoding="utf-8")
+        os.replace(temporary, record)
+    except OSError as exc:
+        # The record helps only after a SIGKILL.  A build must not fail for it.
+        log.warning("Cannot record the build process group in %s: %s", record, exc)
+        temporary.unlink(missing_ok=True)
+
+
+def build_cfg_env(build_cfg: BuildConfig | None, env: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment of a build command: :func:`build_env` plus the build config.
+
+    *env* goes on top of :func:`build_env`, then ``build_cfg.env``,
+    ``build_cfg.extra_path`` (prepended to ``PATH``) and
+    ``build_cfg.extra_env``.  Every command that the build config runs gets
+    it: the builders through :func:`run_build_command`, and the
+    ``pre_build`` hook and the ``command`` override in ``indexer.build``.
+    """
+    merged_env = build_env(env)
+    if build_cfg:
+        if build_cfg.env:
+            merged_env.update(build_cfg.env)
+        if build_cfg.extra_path:
+            merged_env["PATH"] = os.pathsep.join(build_cfg.extra_path) + os.pathsep + merged_env.get("PATH", "")
+        if build_cfg.extra_env:
+            merged_env.update(build_cfg.extra_env)
+    return merged_env
+
+
+def cc_staging_path(directory: Path) -> Path:
+    """Return the file in *directory* that one build writes before the final database gets it.
+
+    The name holds the owner token of this process (see :func:`owner_token`),
+    thus two runs cannot write one staging file, also when they run in two
+    PID namespaces.  The leading dot keeps the file out of each scan that
+    looks for ``compile_commands.*``.
+
+    The caller puts *directory* on the file system of the final database,
+    thus ``os.replace`` between the two is atomic.
+    """
+    staging = directory / f".{_CC_STEM}.{owner_token()}{_CC_SUFFIX}"
+    staging.parent.mkdir(parents=True, exist_ok=True)
+    return staging
+
+
+def clear_dead_temporaries(directory: Path, stem: str, suffix: str) -> int:
+    """Remove the temporary files of ``<stem><suffix>`` whose owner stopped.
+
+    An atomic write that a signal (SIGKILL) stops leaves its temporary file
+    behind, and no later write uses that name again, because the name holds
+    the owner token.  A file of a process that still runs stays: it writes
+    the file.  A file whose owner this process cannot see stays too, see
+    :func:`owner_is_dead`.  Best-effort: a file that cannot be deleted costs
+    disk space only.  Returns the number of removed files.
+    """
+    removed = 0
+    for candidate in directory.glob(f".{stem}.*{suffix}"):
+        token = temporary_owner(candidate, stem, suffix)
+        if token is None or not owner_is_dead(token):
+            continue
+        try:
+            candidate.unlink(missing_ok=True)
+            removed += 1
+        except OSError as exc:
+            log.debug("Cannot remove the dead temporary file %s: %s", candidate, exc)
+    return removed
+
+
+def decode_source_lines(data: bytes) -> list[str]:
+    """Decode the bytes of a source file into lines, detecting the encoding.
+
+    The lines are the ones that ``open(path, encoding=...).readlines()``
+    gives: universal newlines, and the end of each line kept.  The indexer
+    decodes the bytes that libclang parsed with this function, and
+    :func:`read_file_lines` decodes the disk with it, thus one text gives
+    one result on the two paths.
+
+    Encoding fallback chain — ordered by coverage in embedded C/C++ projects:
+
+    1. UTF-8 — universal, handles 99%+ of source files.
+    2. cp1252 (Windows-1252) — common in legacy Windows-authored firmware;
+       characters like 0x80-0x9F decode cleanly (unlike latin1 where they
+       map to control characters that produce valid-but-garbled output).
+    3. latin1 — ISO-8859-1 never raises UnicodeDecodeError (every byte
+       maps to a valid character), so any file that survives this far
+       is readable; the content may be garbled but the caller gets
+       line-oriented access without crashing.
+
+    UTF-16 files will produce garbled content; extremely low risk in
+    embedded C/C++ projects.
+    """
+    for encoding in ("utf-8", "cp1252"):
+        try:
+            return io.TextIOWrapper(io.BytesIO(data), encoding=encoding).readlines()
+        except UnicodeError:
+            continue
+    return io.TextIOWrapper(io.BytesIO(data), encoding="latin1").readlines()
+
+
+def macro_signature(name: str, is_function_like: bool, params: str) -> str:
+    """Write how a macro is invoked: ``NAME``, ``NAME()`` or ``NAME(a, b)``.
+
+    *params* is the ``macros.params`` column — the parameter list without
+    its parentheses.  It is empty BOTH for an object-like macro and for a
+    function-like one that takes no argument, thus *is_function_like* is
+    what separates ``NAME`` from ``NAME()``.
+
+    WHY one function and not one f-string at each reader: four places
+    answer with a macro — ``lookup_symbol``, ``find_callers`` and
+    ``find_references``, the macro step of ``search_code``, and the shared
+    fallback behind ``get_source``, ``get_symbol_context`` and
+    ``explain_symbol``.  A reader that sees two spellings of one macro has
+    to guess which one the source holds.
+    """
+    if not is_function_like:
+        return name
+    return f"{name}({params})"
+
+
+def process_group_is_gone(pgid: int, leader: subprocess.Popen | None = None) -> bool:
+    """Return True when no process of the group *pgid* runs.
+
+    *leader* as in :func:`stop_process_group`: it is reaped first, because
+    a zombie leader still counts as a member.
+    """
+    if leader is not None:
+        leader.poll()
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+def process_start_time(pid: int) -> str | None:
+    """Return a value that names the start of process *pid*, or None when unknown.
+
+    WHY: a PID can come back for an unrelated process, and the program name
+    alone does not tell the two apart — a build under ``activate`` has
+    ``bash`` as its leader, and so has the shell in a new terminal.  The
+    start time of a process does not change while it lives, and a new
+    process with the same PID has a different one.
+
+    Linux: field 22 of ``/proc/<pid>/stat``, the start in clock ticks after
+    the boot.  The name in field 2 can hold spaces and ")", thus the fields
+    are counted after the LAST ")".  Elsewhere (macOS): ``ps -o lstart=``.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        if Path("/proc/self/stat").exists():
+            return None  # /proc works, thus the process is gone
+    except OSError:
+        return None
+    else:
+        fields = stat.rpartition(")")[2].split()
+        # fields[0] is field 3 (the state), thus field 22 is fields[19].
+        return fields[19] if len(fields) > 19 else None
+    # A fixed locale and time zone: `lstart` is local time in the format of
+    # the locale, and the writer (a daemon run) and the reader (a run in a
+    # terminal) can have different ones.  The two strings must be equal.
+    env = {"LC_ALL": "C", "TZ": "UTC0", "PATH": os.environ.get("PATH", "/bin:/usr/bin")}
+    try:
+        result = subprocess.run(  # noqa: S603 — fixed argv, no shell
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True, text=True, timeout=5, check=False, env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def record_build_groups(record: Path) -> Iterator[None]:
+    """Record the process group of each build in this block in *record*.
+
+    WHY: a run that SIGKILL stops cannot stop its build.  The record lets
+    the next run that owns the index find the group and stop it (see
+    ``cli/_index._reap_orphan_build_group``).
+    """
+    token = _BUILD_GROUP_RECORD.set(record)
+    try:
+        yield
+    finally:
+        _BUILD_GROUP_RECORD.reset(token)
+
+
+def run_in_process_group(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: float | None,
+    capture_output: bool,
+) -> subprocess.CompletedProcess:
+    """Run *cmd* in a new session, and stop its whole process group on any exit but its own.
+
+    Same result as ``subprocess.run(..., text=True)``: a timeout raises
+    ``TimeoutExpired`` with the output so far.  Any exception while the
+    command runs (the timeout, ``IndexStopped`` from a SIGTERM handler,
+    ``KeyboardInterrupt``) first stops the group, then goes on.
+
+    A new session also takes the build out of the process group of the
+    terminal.  Ctrl-C thus reaches this process only, as a
+    ``KeyboardInterrupt``, and this function stops the build.  The build has
+    no controlling terminal: output to the terminal still works, but an open
+    of ``/dev/tty`` fails, thus a password prompt (``sudo``, ``ssh``) or a
+    curses screen (``menuconfig``) in a ``pre_build`` hook does not work.
+    No build that fw-context starts needs one.
+
+    The record goes only when the group is gone.  An exception during the
+    stop (a second Ctrl-C) can leave members alive, and the next index run
+    then finds them through the record.
+    """
+    pipe = subprocess.PIPE if capture_output else None
+    proc = subprocess.Popen(  # noqa: S603 — argv list, no shell
+        cmd, cwd=cwd, env=env, stdout=pipe, stderr=pipe, text=True, start_new_session=True,
+    )
+    record = _BUILD_GROUP_RECORD.get()
+    try:
+        if record is not None:
+            _write_group_record(record, proc.pid, cmd[0])
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_process_group(proc.pid, leader=proc)
+        stdout, stderr = proc.communicate()
+        raise subprocess.TimeoutExpired(cmd, timeout or 0, output=stdout, stderr=stderr) from None
+    except BaseException:
+        stop_process_group(proc.pid, leader=proc)
+        proc.wait()
+        raise
+    finally:
+        if record is not None and process_group_is_gone(proc.pid, proc):
+            _remove_group_record(record, proc.pid)
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+def staging_owner(path: Path) -> str | None:
+    """Return the owner token in the name of a staging file, or None.
+
+    The inverse of the names that :func:`cc_staging_path` makes:
+    ``.compile_commands.<token>.json``.  The token is found by its form,
+    ``<digits>@<tag>``, after a dot or at the start, because the host name in
+    the token holds dots too (see :func:`temporary_owner`).
+    """
+    return temporary_owner(path, _CC_STEM, _CC_SUFFIX)
+
+
+def stop_process_group(
+    pgid: int,
+    grace: float = BUILD_GROUP_GRACE_S,
+    leader: subprocess.Popen | None = None,
+) -> None:
+    """Send SIGTERM to the group *pgid*, and SIGKILL to what remains after *grace*.
+
+    The group can live on after its leader: the leader of a ``make -j``
+    exits and its compilers still run.  Thus the wait is for the whole
+    group, with ``killpg(pgid, 0)``, and not for the leader only.
+
+    *leader* is the ``Popen`` of the leader when this process started it.
+    Until this process reaps it, a leader that exited is a zombie, and a
+    zombie still counts as a member of the group.  The wait thus reaps it,
+    or it would always last the whole *grace*.
+
+    The SIGKILL is in ``finally``: a second Ctrl-C during the wait raises
+    ``KeyboardInterrupt`` out of ``time.sleep``, and a build that ignores
+    SIGTERM then ran on.
+    """
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if process_group_is_gone(pgid, leader):
+                return
+            time.sleep(0.05)
+    finally:
+        # PermissionError: macOS refuses a signal to a group that holds only
+        # zombies (EPERM, where Linux gives success).  Nothing runs there, and
+        # the parent of each zombie reaps it.
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def temporary_owner(path: Path, stem: str, suffix: str) -> str | None:
+    """Return the owner token in the name of a temporary file, or None.
+
+    The name of a temporary file of ``<stem><suffix>`` is
+    ``.<stem>.[<name>.]<token><suffix>``, as the atomic writers make it with
+    :func:`owner_token`.
+    """
+    prefix = f".{stem}."
+    name = path.name
+    if not name.startswith(prefix) or not name.endswith(suffix):
+        return None
+    middle = name.removeprefix(prefix).removesuffix(suffix)
+    match = _OWNER_TOKEN_AT_END.search(middle)
+    return match.group(1) if match else None
+
+_TMP_OWNER = re.compile(r"\.(\d+@[A-Za-z0-9._-]+)\.tmp$")
+
+def remove_stale_tmp(directory: Path) -> int:
+    """Remove the temporary files whose writer stopped.
+
+    Two writers name their temporary files with :func:`owner_token`:
+    :func:`write_text_atomic` and ``PidFile.write``.  Returns the count.  A
+    manifest is tens of MB on a large project, thus a file that a kill left
+    behind is worth removing.  A file of a writer that still runs, or of
+    another host, stays: :func:`owner_is_dead` decides.
+    """
+    removed = 0
+    for tmp in directory.glob(".*.tmp"):
+        match = _TMP_OWNER.search(tmp.name)
+        if match is not None and owner_is_dead(match.group(1)):
+            tmp.unlink(missing_ok=True)
+            removed += 1
+    return removed
+
+
+def _windows_process_is_gone(pid: int) -> bool:
+    """Say if no process with *pid* runs, on Windows.
+
+    ``OpenProcess`` fails with ``ERROR_INVALID_PARAMETER`` for a PID that no
+    process has.  Another failure, such as access denied, is a process that
+    runs.  An open process whose exit code is ``STILL_ACTIVE`` runs.
+
+    On another platform the answer is False: the file then stays, which
+    costs disk space only.  The type checker reads the platform test and
+    does not check the Windows calls on another platform.
+
+    PID 0 and a PID that a DWORD cannot hold give False too, as an
+    ``OverflowError`` does on POSIX.  ctypes would cut a large PID to 32
+    bits and probe another process, and PID 0 is the idle process, for
+    which ``OpenProcess`` also fails with ``ERROR_INVALID_PARAMETER``.
+    The argument and result types are declared, so that a handle keeps
+    its full width.
+    """
+    if sys.platform != "win32" or not 0 < pid < 2**32:
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ctypes.get_last_error() == _ERROR_INVALID_PARAMETER
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value != _STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)

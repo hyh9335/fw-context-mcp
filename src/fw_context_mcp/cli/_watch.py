@@ -77,8 +77,8 @@ def cmd_watch_status(args: argparse.Namespace) -> int:
 
     from ..config import derive_project_id
     from ..config import load as load_config
-    from ..mcp.background import _is_bg_reindex_running, read_reindex_progress
-    from ..mcp.daemon import ping_daemon
+    from ..mcp.background import read_reindex_progress, read_reindex_state
+    from ..mcp.daemon import DAEMON_SOCK_NAME, ping_daemon
     from ..utils import resolve_project_root
 
     root = resolve_project_root(args.project)
@@ -87,19 +87,18 @@ def cmd_watch_status(args: argparse.Namespace) -> int:
     db_dir = cfg.index.db_dir / project_id
 
     pid_file = db_dir / "watcher.pid"
+    sock_path = db_dir / DAEMON_SOCK_NAME
 
     print(f"Project:    {root.name}")
     print(f"Path:       {root}")
     print(f"DB dir:     {db_dir}")
 
     # Daemon status
-    alive = ping_daemon(root)
+    alive = ping_daemon(root) if sock_path.exists() else False
     if alive:
         if pid_file.exists():
             try:
-                from ..platform import marker_pid
-
-                pid = marker_pid(pid_file)
+                pid = int(pid_file.read_text().strip())
                 import time as _time
 
                 uptime_s = _time.time() - pid_file.stat().st_mtime
@@ -109,16 +108,15 @@ def cmd_watch_status(args: argparse.Namespace) -> int:
         else:
             print("Daemon:     running")
     else:
-        artifact = _transport.artifact_path(db_dir)
-        if artifact.exists():
-            print("Daemon:     not responding (endpoint exists but no response)")
+        if sock_path.exists():
+            print("Daemon:     not responding (socket exists but no response)")
         elif pid_file.exists():
-            print("Daemon:     dead (pid file exists but no response)")
+            print("Daemon:     dead (pid file exists but socket missing)")
         else:
-            print(f"Daemon:     not running{_spawn_error_suffix(db_dir)}")
+            print("Daemon:     not running")
 
-    # Endpoint
-    print(f"Endpoint:   {_transport.artifact_path(db_dir)}{' (active)' if alive else ''}")
+    # Socket
+    print(f"Socket:     {sock_path}{' (active)' if alive else ''}")
 
     # Modified files count
     db_path = db_dir / "index.db"
@@ -145,9 +143,13 @@ def cmd_watch_status(args: argparse.Namespace) -> int:
         except (sqlite3.Error, OSError):
             pass
 
-    # Index subprocess
-    if _is_bg_reindex_running(root):
+    # Index subprocess.  "scheduled" is work of the daemon that waits for
+    # the debounce, for a manual operation, or for the start of its run.
+    state = read_reindex_state(root)
+    if state == "reindexing":
         print("Index:      running")
+    elif state == "pending":
+        print("Index:      scheduled")
     else:
         print("Index:      idle")
 
