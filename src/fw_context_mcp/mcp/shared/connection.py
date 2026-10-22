@@ -191,3 +191,6 @@ def _resolve_handler_context(
         scopes=scopes,
         multi=multi,
     ), None
+
+# v2 M6: db_keys pre-marked integrity-checked at server startup (re-exported by context.py).
+_integrity_checked: set[str] = set()

@@ -359,6 +359,30 @@ def _extract_model_name(result, default_url: str) -> str:
 # ── Registry ────────────────────────────────────────────────────────────
 
 
+def fix_config(_result, project_root=None) -> tuple[bool, str]:
+    """Remove each config value that ``load`` cannot use (``housekeeping.remove_unusable_values``).
+
+    The value of a lower file, or the default, then applies to each
+    removed key.  ``local.toml`` and the global config get a ``.bak`` copy
+    of the old text first.  ``config.toml`` of a project gets no copy,
+    because git holds its old text.
+    """
+    from ..housekeeping import remove_unusable_values
+    from ..utils import resolve_project_root
+
+    try:
+        root: Path | None = resolve_project_root(str(project_root) if project_root else None)
+    except OSError:
+        root = None
+    report = remove_unusable_values(root)
+    removed = "; ".join(f"{path}: {label}" for path, label in report.removed_keys)
+    message = f"removed {len(report.removed_keys)} config value(s) that fw-context cannot use: {removed}"
+    if report.failures:
+        failed = "; ".join(f"{path}: {reason}" for path, reason in report.failures)
+        return False, f"{message}; {failed}" if report.removed_keys else failed
+    return True, message
+
+
 FIXABLE: dict[str, Any] = {
     "pysqlite3": fix_pysqlite3,
     "sqlite-vec": fix_sqlite_vec,

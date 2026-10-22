@@ -48,6 +48,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ..indexer.build import BuildConfig, BuildImage, BuildVariant
+from ..utils import fw_context_home
 
 log = logging.getLogger(__name__)
 
@@ -1149,6 +1150,11 @@ _CACHE_SERVER_FIELDS: list[tuple[str, str, str]] = [
 ]
 
 #: The sections that ``_check_layer`` checks against their field table.
+_UPDATES_FIELDS: list[tuple[str, str, str]] = [
+    ("check", "check", "bool"),
+]
+
+
 _CHECKED_SECTIONS: tuple[tuple[str, list[tuple[str, str, str]]], ...] = (
     ("project", _PROJECT_FIELDS),
     ("build", _BUILD_FIELDS),
