@@ -597,6 +597,65 @@ def _init_one_tool(
     return ok, warnings
 
 
+def _implicit_variant_names(project_root: Path, build_system: str | None, proj_cfg) -> list[str]:
+    """Return the names of the variants that the project file declares, or [].
+
+    See ``builders.implicit_variants``: each environment of a
+    ``platformio.ini`` with more than one is a variant.  A build system
+    that cannot answer gives [], and the build of ``init`` then reports its
+    own error, which names the cause.
+    """
+    from ..indexer.build import explicit_compile_commands
+    from ..indexer.builders import implicit_variants
+    from ..indexer.builders import registry as builder_registry
+
+    # The same gate as in `fw-context index`: a database of the user and a
+    # [build] command name their build themselves.
+    if proj_cfg.build.command or explicit_compile_commands(project_root, proj_cfg) is not None:
+        return []
+    builder_cls = builder_registry.get(build_system) if build_system else None
+    try:
+        found = implicit_variants(builder_cls() if builder_cls else None, project_root, proj_cfg.build)
+    except (RuntimeError, OSError):
+        logging.getLogger(__name__).debug("cannot list the builds of %s", project_root, exc_info=True)
+        return []
+    return [variant.name for variant in found]
+
+
+def _persist_detected_embed_model(project_root: Path, cfg) -> None:
+    """Save a detected embedding model to the global config, one time.
+
+    ``load`` detects the model when no config file sets ``[llm]
+    embed_model``: a GPU gives ``qwen3-embedding:8b``, a CPU gives
+    ``qwen3-embedding:0.6b``.  WHY save it: a detection that fails one time,
+    for example without ``nvidia-smi`` in ``PATH``, selects the other model,
+    and the next index run then embeds each definition again with a
+    different dimension.  A saved name keeps the model.
+
+    WHY the global config: the hardware is a fact of the machine, and not
+    of the project.  Before, init saved the name to ``local.toml`` of each
+    project.  Each project then selected its own backend, thus a change of
+    the global config did not apply to it, and "use the global settings"
+    of the LLM step had no lasting effect.
+
+    Nothing is saved when a config file sets ``embed_model``, or when the
+    LLM is off.  A failed write is a warning: init continues, and the next
+    run detects the model again.
+    """
+    from ..config.settings import ConfigError, llm_key_sources, update_global_llm_key
+
+    if not (cfg.llm.enabled and cfg.llm.embed_model):
+        return
+    try:
+        if "embed_model" in llm_key_sources(project_root):
+            return
+        path = update_global_llm_key("embed_model", cfg.llm.embed_model)
+    except (ConfigError, OSError) as exc:
+        print(f"  [warn] The detected embedding model {cfg.llm.embed_model} is not saved ({exc})")
+        return
+    print(f"  [ok] Embedding model {cfg.llm.embed_model} (detected) saved to {path}")
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     """Register fw-context with AI assistants and provision the project.
 
@@ -613,7 +672,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     registration — project ID, config, deps, build, and checklist still run.
     """
     from ..config import load as load_project_config
-    from ..config.settings import _update_local_toml, _write_project_id
+    from ..config.settings import _write_project_id
     from ..config.settings import generate_project_id as _gen_pid
     from ..config.tools import TOOLS
     from ..utils import resolve_project_root
@@ -710,7 +769,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     # Reload so the python/activate/idf_path written by resolve_build_env are
     # visible to the auto-build below.  Without this the ESP-IDF/Zephyr build
-    # runs without sourcing export.sh / nordic_minimal_setup.sh — the toolchain
+    # runs without sourcing export.sh / the NCS environment script — the toolchain
     # is then missing from PATH and the build fails at configure time.
     _proj_cfg = load_project_config(project_root=project_root)
 
@@ -778,10 +837,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         from ..llm.auto_model import resolve_embed_model
 
         resolve_embed_model(_proj_cfg.llm, skip_pull=True)
-        # Persist the resolved name so the next load() short-circuits and
-        # never auto-pulls without consent (init is the single writer).
-        if _proj_cfg.llm.enabled and _proj_cfg.llm.embed_model:
-            _update_local_toml(project_root, {"embed_model": _proj_cfg.llm.embed_model})
+        _persist_detected_embed_model(project_root, _proj_cfg)
 
     # ── 11. Diagnostic output ──
     if not args.dry_run:

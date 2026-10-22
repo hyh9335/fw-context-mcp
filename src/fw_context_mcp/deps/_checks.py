@@ -354,6 +354,57 @@ def check_watchfiles() -> DepCheckResult:
         )
 
 
+def check_config(problem: Exception | None, project_root: str | Path | None = None) -> DepCheckResult:
+    """Report if the config files of fw-context can be used.
+
+    *problem* is the ``ConfigError`` of ``load`` for the project, or
+    ``None`` when the files load.  ``run_full_check`` loads the config one
+    time, and the checks that read the config are ``skipped`` after this
+    check fails.  WHY its own check: those checks reported "check crashed"
+    with the same message, each with ``critical=True``, and ``db-integrity``
+    among them read as a damaged database.
+
+    For a value of the wrong type, the message lists each such value of the
+    three files (``housekeeping.remove_unusable_values`` with ``dry_run``),
+    not only the first one of ``load``.  The list also names a value that
+    ``doctor --fix --only config`` cannot remove (``[project] id``, a file
+    without write permission).  The row has a fix command when the fix can
+    remove a value.  A file that is not valid TOML needs the user: the row
+    then gives the error of ``load`` and no fix command.
+
+    When the files load, a value of a key of ``_TUNING_KEYS`` with the wrong
+    type can still be there: ``load`` did not use it (a warning).  The row
+    is then ``degraded`` and not critical, with the same list and fix.
+    """
+    if problem is not None and not getattr(problem, "values", False):
+        return DepCheckResult(name="config", status="error", message=str(problem), critical=True)
+    from ..housekeeping import remove_unusable_values
+    from ..utils import resolve_project_root
+
+    try:
+        root: Path | None = resolve_project_root(str(project_root) if project_root else None)
+    except OSError:
+        root = None
+    report = remove_unusable_values(root, dry_run=True)
+    parts = [f"{path}: {label}" for path, label in report.removed_keys]
+    parts += [f"{path}: {reason}" for path, reason in report.failures]
+    if problem is None and not parts:
+        return DepCheckResult(name="config", status="ok", message="the config files load", critical=False)
+    if problem is None:
+        lead = "config values that fw-context does not use (a lower file or the default applies): "
+    else:
+        lead = "config values that fw-context cannot use: "
+    return DepCheckResult(
+        name="config",
+        status="error" if problem is not None else "degraded",
+        message=lead + "; ".join(parts),
+        # --only config: a full `doctor --fix` also pulls the missing models,
+        # after the fix of the config lets their checks run.
+        fix_cmd="fw-context doctor --fix --only config" if report.removed_keys else None,
+        critical=problem is not None,
+    )
+
+
 def check_tomli_w() -> DepCheckResult:
     """Verify tomli-w is installed — required for config writes during init.
 
@@ -409,22 +460,58 @@ def check_ollama_running(cfg) -> DepCheckResult:
 
 
 def check_ollama_chat_model(cfg) -> DepCheckResult:
-    """Verify the configured chat model is installed."""
+    """Verify the configured chat model is installed on the Ollama server of the chat calls.
+
+    That server is ``ollama_url``, or the Ollama server of ``chat_api_base``
+    (`chat_router.chat_ollama_server`).  WHY ``skipped`` for an
+    OpenAI-compatible ``chat_api_base``: that API runs the model, and
+    ``doctor --fix`` must not try to pull its name from Ollama.
+
+    WHY this check asks the chat server itself, and not
+    ``_diag.check_setup``: ``semantic_search`` calls ``check_setup`` on each
+    query, and the embeddings do not use the chat server.  If
+    ``check_setup`` asked the chat server, a chat server that does not
+    answer would make each query wait.  Also, the check of a
+    remote chat server does not depend on the server of ``ollama_url``.
+    """
     if not cfg.enabled:
         return DepCheckResult(name="chat-model", status="skipped", message="LLM disabled in config", critical=False)
 
-    from ..llm._diag import check_setup
+    from ..llm._diag import installed_models
+    from ..llm.auto_model import _model_name_matches
+    from ..llm.chat_router import chat_ollama_server
+    from ..llm.ollama import ollama_pull_command
 
-    result = check_setup(cfg)
-    if result.get("status") == "error":
-        return DepCheckResult(name="chat-model", status="skipped", message="Ollama not reachable", critical=False)
-    if result.get("status") == "model_missing":
+    try:
+        server = chat_ollama_server(cfg)
+    except ValueError as exc:
+        return DepCheckResult(name="chat-model", status="error", message=str(exc), critical=False)
+    if server is None:
+        return DepCheckResult(
+            name="chat-model",
+            status="skipped",
+            message=f"chat model '{cfg.model}' runs on an OpenAI-compatible API (chat_api_base), not on Ollama",
+            critical=False,
+        )
+    models = installed_models(server)
+    if models is None:
+        if server.rstrip("/") == cfg.ollama_url.rstrip("/"):
+            # The check "ollama" reports this server.
+            return DepCheckResult(name="chat-model", status="skipped", message="Ollama not reachable", critical=False)
+        return DepCheckResult(
+            name="chat-model",
+            status="degraded",
+            message=f"the Ollama server {server} of chat_api_base gives no model list (/api/tags)",
+            critical=False,
+        )
+    if not any(_model_name_matches(m, cfg.model) for m in models):
+        command = ollama_pull_command(cfg.model, server, get_platform_info()["system"])
         return DepCheckResult(
             name="chat-model",
             status="missing",
             message=f"model '{cfg.model}' not installed",
-            fix_cmd=f"ollama pull {cfg.model}",
-            instructions=f"ollama pull {cfg.model}",
+            fix_cmd=command,
+            instructions=command,
             critical=False,
         )
     return DepCheckResult(
@@ -441,17 +528,19 @@ def check_ollama_embed_model(cfg) -> DepCheckResult:
         return DepCheckResult(name="embed-model", status="skipped", message="LLM disabled in config", critical=False)
 
     from ..llm._diag import check_setup
+    from ..llm.ollama import ollama_pull_command
 
     result = check_setup(cfg)
     if result.get("status") == "error":
         return DepCheckResult(name="embed-model", status="skipped", message="Ollama not reachable", critical=False)
     if not result.get("embedding_installed"):
+        command = ollama_pull_command(cfg.embed_model, cfg.ollama_url, get_platform_info()["system"])
         return DepCheckResult(
             name="embed-model",
             status="missing",
             message=f"embedding model '{cfg.embed_model}' not installed",
-            fix_cmd=f"ollama pull {cfg.embed_model}",
-            instructions=f"ollama pull {cfg.embed_model}",
+            fix_cmd=command,
+            instructions=command,
             critical=False,
         )
     return DepCheckResult(
@@ -463,7 +552,14 @@ def check_ollama_embed_model(cfg) -> DepCheckResult:
 
 
 def check_db_integrity(project_root: str | Path | None = None) -> DepCheckResult:
-    """Verify the index database is not corrupt."""
+    """Verify the index database is not corrupt.
+
+    A read that fails with a lock, a missing permission or a fault of the
+    disk gives ``degraded``, not critical (``error_shows_damage``).  WHY:
+    the check reported each such failure as a critical ``error``, and the
+    exit code 2 of doctor then said "damaged" for a good index that an
+    index run held.
+    """
     platform_ctx = get_platform_info()
     from ..config import derive_project_id
     from ..config import load as load_config
@@ -511,9 +607,15 @@ def check_db_integrity(project_root: str | Path | None = None) -> DepCheckResult
                     message=f"quick_check: ok (index.db, {size_mb:.0f} MB)",
                     critical=True,
                 )
-            # quick_check returned an error — run full integrity_check
-            detail = conn.execute("PRAGMA integrity_check").fetchone()
-            detail_msg = detail[0] if detail else "unknown error"
+            # quick_check returned an error — run full integrity_check.
+            # quick_check found damage: an error of the second read (a lock,
+            # an I/O error) must not make it "not damage".
+            quick_msg = row[0] if row else "unknown error"
+            try:
+                detail = conn.execute("PRAGMA integrity_check").fetchone()
+            except sqlite3.Error:
+                detail = None
+            detail_msg = detail[0] if detail else quick_msg
             return DepCheckResult(
                 name="db-integrity",
                 status="error",
@@ -521,24 +623,34 @@ def check_db_integrity(project_root: str | Path | None = None) -> DepCheckResult
                 instructions=db_integrity_instructions(platform_ctx),
                 critical=True,
             )
-        except sqlite3.OperationalError as e:
-            return DepCheckResult(
-                name="db-integrity",
-                status="error",
-                message=f"cannot open database: {e}",
-                instructions=db_integrity_instructions(platform_ctx),
-                critical=True,
-            )
         finally:
             conn.close()
     except sqlite3.Error as e:
+        return _read_failure(e, platform_ctx)
+
+
+def _read_failure(error: sqlite3.Error, platform_ctx: dict) -> DepCheckResult:
+    """The result for a read of the index that failed: damage, or a cause that is not damage."""
+    from ..indexer.db import error_shows_damage
+
+    if error_shows_damage(error):
         return DepCheckResult(
             name="db-integrity",
             status="error",
-            message=f"database error: {e}",
+            message=f"database error: {error}",
             instructions=db_integrity_instructions(platform_ctx),
             critical=True,
         )
+    return DepCheckResult(
+        name="db-integrity",
+        status="degraded",
+        message=(
+            f"cannot read the index now: {error}. This does not show damage: the cause can be a lock, "
+            "a missing permission, a fault of the host (disk, memory) or a fault of the program. "
+            "Repair that cause, and do not delete the database."
+        ),
+        critical=False,
+    )
 
 
 def check_disk_space(project_root: str | Path | None = None) -> DepCheckResult:
@@ -612,6 +724,7 @@ CHECK_ORDER: list[tuple[str, Any]] = [
     ("libclang-so", check_libclang_so),
     ("watchfiles", check_watchfiles),
     ("tomli-w", check_tomli_w),
+    ("config", check_config),
     ("ollama", check_ollama_running),
     ("chat-model", check_ollama_chat_model),
     ("embed-model", check_ollama_embed_model),

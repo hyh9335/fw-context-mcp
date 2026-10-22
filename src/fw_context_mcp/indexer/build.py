@@ -26,6 +26,8 @@ from fw_context_mcp.utils import build_env, cc_output_path, ignore_autobuild_dir
 # build system backends before ``detect_build_system()`` is called.
 from . import builders  # noqa: F401 — side-effect import
 from .builders import registry as _builder_registry
+from .build_layout import BuildLayout
+from .builders import application_database, output_compile_commands
 
 log = logging.getLogger(__name__)
 
@@ -555,6 +557,108 @@ def resolve_reuse_compile_commands(project_root: Path, configured: Path) -> Path
     return configured
 
 
+def checked_compile_commands(project_root: Path, cfg, indexed: Path | None) -> Path | None:
+    """Give the compile_commands.json whose build an index run checks, or None.
+
+    It is the file that a run without an explicit file reads
+    (:func:`default_compile_commands`), and only when the index came
+    from it.  For the build of fw-context, "came from it" means that the
+    index read a database in the output directory of the build.
+    *indexed* is the file of the active index, or None when there is no
+    index yet.  WHY the second condition: an index of another file (an
+    explicit file of the user, or a file that an earlier config named) is
+    not the build of this file.  A check of it would replace an explicit
+    file with a build, or start a build that never repairs what it checks.
+
+    None for a project with ``[[build.variants]]``: each variant has a file
+    of its own, and this check does not cover them.
+
+    The CLI and ``get_project_status`` both ask here, thus the two cannot
+    disagree about which build is missing.
+    """
+    if cfg.build.variants:
+        return None
+    # A database of the user has no build that fw-context runs, thus there is
+    # no build to check: a missing `directory` of a CI database is the CI
+    # machine, and the advice `--build` would replace the file in the index.
+    if user_database(project_root, cfg) is not None:
+        return None
+    explicit = explicit_compile_commands(project_root, cfg)
+    if explicit is not None:
+        if indexed is not None and explicit != indexed.resolve():
+            return None
+        return explicit
+    if indexed is None:
+        return build_compile_commands(project_root, cfg.build, "")
+    # The database of the build is where the build system put it in the
+    # output directory: out/compile_commands.json, or deeper, as the
+    # database of a Zephyr sysbuild image, out/<image>/compile_commands.json.
+    # When the build is gone, the path of
+    # the index is the only record of where it was, thus the test is "in the
+    # output directory", and not one fixed path that a removed build cannot
+    # give any more.
+    out_dir = BuildLayout(project_root.resolve()).out_dir("")
+    if not indexed.resolve().is_relative_to(out_dir.resolve()):
+        return None
+    return indexed
+
+
+# The values of ``[index] compile_commands`` that name no file of the user:
+# the project-root file that ``fw-context init`` wrote before 2026-08, and the
+# copy in .fw-context/build/ that fw-context kept before the build layout.
+# For a project that fw-context builds, each of the two means "the database
+# of the build", which is now in the output directory of the build.
+_BUILD_DATABASE_VALUES: tuple[Path, ...] = (
+    Path("compile_commands.json"),
+    Path(".fw-context") / "build" / "compile_commands.json",
+)
+
+
+def explicit_compile_commands(project_root: Path, cfg) -> Path | None:
+    """Return the compile_commands.json that ``[index] compile_commands`` names, or None.
+
+    None means that the index reads the database of the build that
+    fw-context runs (:func:`build_compile_commands`).  That is the case
+    when the value is one of ``_BUILD_DATABASE_VALUES`` and fw-context can
+    run the build of the project.
+
+    A project whose build fw-context cannot run (a stub such as
+    STM32CubeIDE, see :func:`can_run_build`) gets the configured file in all
+    cases: the user makes that file outside of fw-context, often in the
+    project root.
+
+    The result is resolved, an absolute value too: a caller that compares it
+    must not see /var and /private/var.
+    """
+    root = project_root.resolve()
+    configured = (root / cfg.index.compile_commands).resolve()
+    if not can_run_build(cfg.build, cfg.build.system or detect_build_system(root)):
+        return configured
+    if any(configured == (root / value).resolve() for value in _BUILD_DATABASE_VALUES):
+        return None
+    return configured
+
+
+def user_database(project_root: Path, cfg) -> Path | None:
+    """Return the database of the user that ``[index] compile_commands`` names, or None.
+
+    It is a file that the config names for a build that fw-context CAN run
+    (a CI database, a copy for clangd).  fw-context indexes it as it is and
+    runs no build for it: a build of fw-context writes another file, and it
+    would replace the file of the user in the index.  For a build that
+    fw-context cannot run (a stub), the configured file is the only
+    database there is, thus it is no database "of the user" here, and the
+    checks of its build stay.
+
+    The CLI and ``get_project_status`` both ask here, thus the two cannot
+    disagree about what fw-context builds.
+    """
+    root = project_root.resolve()
+    if not can_run_build(cfg.build, cfg.build.system or detect_build_system(root)):
+        return None
+    return explicit_compile_commands(root, cfg)
+
+
 def _can_convert(cfg: BuildConfig, system: str) -> bool:
     """Check whether the configuration supports the convert path."""
     if system == "keil-mdk":
@@ -572,3 +676,79 @@ def _can_generate(cfg: BuildConfig, system: str) -> bool:
     if system == "bare":
         return bool(cfg.source_dirs)
     return False
+
+
+def can_run_build(cfg: BuildConfig, system: str | None) -> bool:
+    """Say if :func:`generate_compile_commands` can make compile_commands.json for *system*.
+
+    A ``[build] command`` runs in all cases.  Otherwise the builder of
+    *system* decides: a builder that only detects a project (a stub, such
+    as STM32CubeIDE) sets ``can_build = False``, because its ``build()``
+    only raises with instructions.  Such a build must run outside of
+    fw-context, and the caller tells the user or the LLM so.
+    """
+    if cfg.command:
+        return True
+    builder_cls = _builder_registry.get(system) if system else None
+    if builder_cls is None:
+        return False
+    return bool(getattr(builder_cls, "can_build", True))
+
+
+def default_compile_commands(project_root: Path, cfg) -> Path:
+    """Return the compile_commands.json that a run without an explicit file reads.
+
+    The file that ``[index] compile_commands`` names when it names a file of
+    the user (:func:`explicit_compile_commands`), else the database of the
+    build without variants (:func:`build_compile_commands`).  The file can
+    be missing: the caller then runs the build.
+    """
+    explicit = explicit_compile_commands(project_root, cfg)
+    if explicit is not None:
+        return explicit
+    return build_compile_commands(project_root, cfg.build, "")
+
+
+def build_compile_commands(project_root: Path, build_cfg: BuildConfig, variant: str) -> Path:
+    """Return the database of the program of the build of *variant*, or of its application.
+
+    The backend says where its build system put the database in the output
+    directory (``builders.output_compile_commands``).  A build of several
+    programs gives the database of its application
+    (``builders.application_database``).  When the build is not there, the
+    answer is a file that does not exist, thus the caller runs the build.
+    """
+    root = project_root.resolve()
+    out_dir = BuildLayout(root).out_dir(variant)
+    system = build_cfg.system or detect_build_system(root)
+    builder_cls = _builder_registry.get(system) if system else None
+    builder = builder_cls() if builder_cls else None
+    found = output_compile_commands(builder, out_dir, build_cfg)
+    if "" in found:
+        return found[""]
+    application = application_database(builder, out_dir)
+    if application is not None:
+        return application
+    if len(found) == 1:
+        return next(iter(found.values()))
+    return out_dir / COMPILE_COMMANDS_NAME
+
+
+def retired_build_dir_keys(cfg: BuildConfig) -> list[str]:
+    """Return where the config still sets the retired ``build_dir``.
+
+    Each build goes to ``.fw-context/build/<variant>/out`` (see
+    ``build_layout``), never to a directory of the user, thus ``build_dir``
+    has no effect.  The index run refuses such a config with the list that
+    this function gives: a key that the config shows and the build ignores
+    lets the user think that the build goes somewhere else.
+    """
+    found: list[str] = []
+    if cfg.build_dir is not None:
+        found.append("[build] build_dir")
+    found.extend(
+        f"[[build.variants]] {variant.name!r} build_dir"
+        for variant in cfg.variants
+        if variant.build_dir is not None
+    )
+    return found

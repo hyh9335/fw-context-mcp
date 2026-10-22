@@ -58,6 +58,7 @@ __all__ = [
     "ensure_schema",
     "behavior_fingerprint",
     "group_equivalent_variants",
+    "error_shows_damage",
     "find_all_callers_recursive",
     "find_call_path",
     "find_callees_recursive",
@@ -115,6 +116,7 @@ __all__ = [
     "list_config_file_paths",
     "lookup_macro",
     "make_analysis_summary",
+    "missing_columns",
     "open_db",
     "purge_file_records",
     "purge_missing_files_batch",
@@ -131,8 +133,10 @@ __all__ = [
     "search_similar_hybrid",
     "search_similar_vec",
     "search_symbols",
+    "set_analyze_vendor",
     "set_entry_point",
     "split_tokens",
+    "symbols_without_embedding",
     "transaction",
     "upsert_build_config",
     "upsert_build_context",
@@ -173,6 +177,7 @@ from ._conditionals import (
 from ._connection import (
     DatabaseCorruptionError,
     ensure_schema,
+    error_shows_damage,
     get_db_schema_version,
     open_db,
     transaction,
@@ -254,7 +259,6 @@ from ._memory import (
 )
 from ._projects import (
     compute_analysis_coverage,
-    count_pending_analysis,
     delete_build_data,
     get_active_config,
     get_all_builds_for_project,
@@ -262,6 +266,8 @@ from ._projects import (
     get_build_stats,
     get_builds_for_scope,
     make_analysis_summary,
+    set_analyze_vendor,
+    symbols_without_embedding,
     upsert_build_config,
     upsert_project,
 )
@@ -288,6 +294,8 @@ from ._schema import (
     CURRENT_SCHEMA_VERSION,
     _ensure_column,
     drop_fts_triggers,
+    missing_columns,
+    row_format_effect,
     row_format_is_newer,
     row_format_is_older,
 )

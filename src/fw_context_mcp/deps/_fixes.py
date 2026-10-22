@@ -67,8 +67,15 @@ def _pip_install(package: str) -> tuple[bool, str]:
         return False, "timed out after 180 s"
 
 
-def _ollama_pull(model: str, url: str | None = None) -> tuple[bool, str]:
-    """Pull an Ollama model. Returns (ok, output).
+def _ollama_pull(model: str, url: str) -> tuple[bool, str]:
+    """Pull an Ollama model onto the server at *url*. Returns (ok, output).
+
+    *url* is the server that the check asks for the model: ``[llm]
+    ollama_url`` for the embedding model, and the Ollama server of the
+    chat calls for the chat model.  WHY no default: without the url, the
+    pull goes to the local server.  With a remote ``ollama_url``, the
+    model is then on the wrong server, or the pull fails.  The recheck
+    then finds the model missing.
 
     WHY (CLI-first): The ``ollama pull`` CLI shows a progress bar and
     is already authenticated for self-hosted registries.  The HTTP API
@@ -82,14 +89,22 @@ def _ollama_pull(model: str, url: str | None = None) -> tuple[bool, str]:
     """
     if which("ollama"):
         try:
-            return _pull_via_cli(model)
+            return _pull_via_cli(model, url)
         except FileNotFoundError:
             pass
 
-    if url is None:
-        url = "http://localhost:11434"
-
     return _pull_via_api(model, url)
+
+
+def _stalled(model: str, url: str) -> str:
+    """Return the message of a pull that made no progress, with the manual command for the server at *url*."""
+    from ..llm.ollama import ollama_pull_command
+    from ._instructions import get_platform_info
+
+    return (
+        f"pull stalled — no progress for {STALL_TIMEOUT}s; "
+        f"run `{ollama_pull_command(model, url, get_platform_info()['system'])}` manually"
+    )
 
 
 def _kill(proc: subprocess.Popen) -> None:
@@ -123,8 +138,12 @@ def _extract_cli_error(tail: bytes) -> str:
     return parts[-1] if parts else ""
 
 
-def _pull_via_cli(model: str) -> tuple[bool, str]:
+def _pull_via_cli(model: str, url: str) -> tuple[bool, str]:
     """Pull *model* via the ``ollama`` CLI with a stall-based timeout.
+
+    The CLI asks the server that ``OLLAMA_HOST`` names, thus the call sets
+    it to *url*.  Without it, the CLI uses its own default server, or the
+    ``OLLAMA_HOST`` of the shell, and not the server of the check.
 
     Reads the merged stdout+stderr stream from a background thread and
     echoes it to stderr, so the CLI progress bar stays visible during the
@@ -143,6 +162,7 @@ def _pull_via_cli(model: str) -> tuple[bool, str]:
         ["ollama", "pull", model],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        env={**os.environ, "OLLAMA_HOST": url},
     )
     # Progress state is shared between the reader thread and this loop, so it
     # is guarded by a lock — a plain closure variable would be a data race.
@@ -175,10 +195,7 @@ def _pull_via_cli(model: str) -> tuple[bool, str]:
             if time.monotonic() - last > STALL_TIMEOUT:
                 _kill(proc)
                 reader.join(timeout=1.0)
-                return False, (
-                    f"pull stalled — no progress for {STALL_TIMEOUT}s; "
-                    f"run `ollama pull {model}` manually"
-                )
+                return False, _stalled(model, url)
             time.sleep(1.0)
         reader.join(timeout=5.0)
         # End the progress bar on a clean line — a trailing ``\r`` update
@@ -239,10 +256,7 @@ def _pull_via_api(model: str, url: str) -> tuple[bool, str]:
     except httpx.ConnectError:
         return False, f"Ollama not reachable at {url}"
     except httpx.ReadTimeout:
-        return False, (
-            f"pull stalled — no progress for {STALL_TIMEOUT}s; "
-            f"run `ollama pull {model}` manually"
-        )
+        return False, _stalled(model, url)
     except httpx.HTTPError as e:
         return False, str(e)
     except OSError as e:
@@ -277,17 +291,50 @@ def fix_tomli_w(_result, _project_root=None) -> tuple[bool, str]:
     return _pip_install("tomli-w")
 
 
+def _no_model_to_pull(result) -> tuple[bool, str] | None:
+    """Refuse a pull when the check did not find the model missing.
+
+    WHY: ``run_fixes`` also calls a fix for ``degraded``, for example a
+    chat server that gives no model list.  Such a result names no model,
+    thus the pull took the name ``"unknown"``.  The message of the failed
+    pull then replaced the message of the check.
+    """
+    if result.status == "missing":
+        return None
+    return False, f"no model to pull: {result.message}"
+
+
 def fix_chat_model(result, _project_root=None) -> tuple[bool, str]:
-    """Pull the configured chat model."""
-    # Extract model name from the result message or fix_cmd
-    model = _extract_model_name(result, "ollama")
-    return _ollama_pull(model)
+    """Pull the configured chat model onto the Ollama server of the chat calls.
+
+    That server is ``ollama_url``, or the Ollama server of ``chat_api_base``
+    (`chat_router.chat_ollama_server`), the server that the check asks.
+    """
+    from ..llm.chat_router import chat_ollama_server
+    from . import load_project_config
+
+    if refused := _no_model_to_pull(result):
+        return refused
+    cfg = load_project_config(_project_root).llm
+    server = chat_ollama_server(cfg)
+    if server is None:
+        return False, "an OpenAI-compatible API (chat_api_base) runs the chat model; Ollama cannot pull it"
+    return _ollama_pull(cfg.model, server)
 
 
 def fix_embed_model(result, _project_root=None) -> tuple[bool, str]:
-    """Pull the configured embedding model."""
-    model = _extract_model_name(result, "ollama")
-    return _ollama_pull(model)
+    """Pull the configured embedding model onto the server of ``[llm] ollama_url``.
+
+    WHY the model name comes from the config and not from ``fix_cmd``:
+    ``fix_cmd`` is a shell command for a person, and it starts with the
+    setting of ``OLLAMA_HOST``.  The check read the same config.
+    """
+    from . import load_project_config
+
+    if refused := _no_model_to_pull(result):
+        return refused
+    cfg = load_project_config(_project_root).llm
+    return _ollama_pull(cfg.embed_model, cfg.ollama_url)
 
 
 
@@ -321,6 +368,7 @@ FIXABLE: dict[str, Any] = {
     "chat-model": fix_chat_model,
     "embed-model": fix_embed_model,
     "sqlite-ext": fix_sqlite_ext,
+    "config": fix_config,
 }
 
 

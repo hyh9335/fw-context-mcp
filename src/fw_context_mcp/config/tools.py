@@ -90,6 +90,29 @@ limits:
 Never conclude that code is live because you saw it in a file. Cite
 fw-context, and check `source_origin` when the answer carries one.
 
+### An index that is not current
+
+When the index of the build of a query is not current, the answer says so:
+a dict gets `index_state` and `index_warning`, a list gets a leading row
+with `warning` and `index_state`. The answer then comes from the last index
+run. Act on `index_state`:
+
+- `"reindexing"` or `"pending"` — an index run updates the index. WAIT:
+  repeat the call, or call `get_project_status` after about 30 s. Use the
+  old answer only when the user tells you to continue. Do not start a
+  second index run.
+- `"not_scheduled"` — no index run updates the index. Tell the user the
+  command that the warning names. When it names none, call
+  `get_project_status`: it names the command.
+- `"failed"` — the last index run failed, because the build is not there
+  or the run stopped. A dict also gets `build_warning`. Give the text to
+  the user: it names the command that repairs it.
+
+No `index_state`: the quick checks of the query found no reason. They can
+miss a changed header, a changed file that the answer does not name, or a
+new source file when the answer is not empty. `get_project_status` does
+the full check of each build.
+
 ### Code review — use fw-review skill
 
 For C/C++ code review, invoke the `fw-review` skill via the Skill tool.
@@ -117,6 +140,87 @@ operator asked about.
 
 Do not invent other parameter names. An unknown argument causes an error
 that names it.
+
+### A project that holds several builds
+
+One project can hold several builds on two axes: `variant` is the board,
+`image` is the program. A Zephyr project has `app`, `mcuboot` and `stage0`,
+an ESP-IDF project has its application and `bootloader` — a bootloader is
+NOT the application.
+
+**One query answers for ONE build, and you select it.** A project of
+several builds has no active build, and fw-context selects none for you:
+no default from the config, no application from the build system, no
+completion of a part of a pair. On a project of more than one build, give
+the arguments of one build exactly as the error lists them: the `variant`,
+the `image`, or the two. A query that names no build, or a part of one,
+gets an error that lists each build with the
+arguments to repeat the call. An answer that blends a bootloader with an
+application serves no question, and two builds of one application repeat
+nearly every row.
+
+- Select the build from the task. If the task does not identify one
+  build, ask the user. Do not select a build from its position in a list.
+- `get_project_status` lists every build in `builds`, with its state and
+  counts. `get_build_info(variant, image)` gives the `config_hash`,
+  `board`, `entry_point`, memory map and defines of one build. Both read
+  the INDEX and not only the config, thus a build indexed with
+  `--variant` is listed even when config.toml no longer declares it.
+- Pass `variant` and `image` to every tool that answers about code,
+  `smart_search` and `semantic_search` included.
+- `reindex_file` is not a query: without `variant` and `image` it re-parses
+  the file in each build that compiles it. Give the arguments of one build
+  to re-parse only that build.
+- To learn whether a symbol is in the bootloader TOO, ask twice — once per
+  build. Two plain answers beat one blended answer.
+
+### Reading past the first page
+
+Each tool that can give a long list pages it, and says how much there is:
+
+- A list answer leads with a page notice and takes an `offset`:
+  `lookup_symbol`, `search_code`, `search_bodies`, `search_content`,
+  `smart_search`, `semantic_search`, `find_callers`, `find_references`,
+  `find_all_callers_recursive`, `find_callees_recursive`,
+  `find_indirect_call_sites`, `find_indirect_targets`, `find_variables`,
+  `find_dead_code`, `find_hotspots`, `find_wrapper_callers`,
+  `trace_data_flow`, `get_template_instances`, `get_vector_table`.
+- A dict answer holds the notice under the key `page`:
+  `get_class_members`, `get_file_map` with `kind`, and `read_file`, which
+  pages LINES and names the next page with `start_line`, not `offset`.
+  `get_inheritance_chain` (transitive) has `all_bases_page` and
+  `all_derived_page`.
+- `get_symbol_context` and `get_source` cut each list: `<list>_total`
+  counts it, and `<list>_hint` names the tool that pages a cut list.
+- `smart_search`: no offset, or 0, is a NEW search. A larger offset pages
+  the stored answer of the last search of the same query.
+- `semantic_search`: `total_capped: true` means that `total` is a lower
+  bound — the search reaches 4096 vector rows at most.
+- `find_call_path` has no pages: the paths cannot be counted. A trailing
+  `info` says when paths can be left out.
+
+    {"total": 137, "offset": 0, "shown": 50, "more": true, "hint": "…"}
+
+The `hint` key is there only when `more` is true. The notice is ALWAYS
+there when the answer holds a row, thus a full page never leaves you
+guessing whether more exists. `total` counts every row the
+query matches; `more` says whether any are left.
+
+Find the notice by its keys, and not by its position. A `warning` row
+comes before it when the index is stale, and so does the row that reports
+a query FTS5 could not parse.
+
+- When `more` is true, call again with `offset=<offset + shown>`. The
+  `hint` spells out that call, with each argument that changes the
+  answer: the filters, and the project and the build.
+- Do NOT conclude "that is all of them" from a page alone. Read `total` —
+  a hot function can have hundreds of call sites, and a common name such
+  as `read` can name hundreds of symbols.
+- Each order is stable, thus two pages never overlap and never skip a
+  row. The tools order by what they answer about: a reference by file and
+  line, a symbol by definition first, a search by relevance and then by
+  identity.
+- An `info` row that names an offset means you walked past the end.
 
 ### Parameter names
 
@@ -238,6 +342,47 @@ get_active_build() status:
   • "not_initialized" — ask operator, then run `fw-context init` via bash.
   • "no_index" — ask operator, then run `fw-context index --build` via bash.
   • "error" — DB corruption. Use other tools.
+get_project_status() — `reindex_state` of each build in `builds` has the
+values of `index_state` above. `null`: the index of that build is current,
+continue. `"reindexing"` or `"pending"`: wait. `"not_scheduled"` or
+`"failed"`: tell the user the command. Read it for the build that the task
+needs.
+
+get_project_status() status:
+  • "ready" / "reindexing" — queries work. Read `reindex_state` of the
+    build before you continue.
+  • "reindex_needed" — queries work, and a reason needs a command. It wins
+    over "reindexing". When `bg_reindex_running` is true, an index run is
+    active or scheduled: do not start a second one.
+  • "not_initialized" — ask operator, then run `fw-context init` via bash.
+  • "no_index" — ask operator, then run `fw-context index --build` via bash.
+  • "config_error" — a config file cannot be used. `config_file` names it,
+    and `index_message` gives the problem. Tell the operator. Do NOT run
+    `fw-context init` or `fw-context index`: they cannot repair the file.
+    When `index_message` names `fw-context doctor --fix --only config`,
+    that command removes each value that cannot be used. Run it, or
+    correct the file, only with the approval of the operator, then call
+    get_project_status() again.
+  • `config_warnings` (a list, with a status other than config_error) —
+    values of a config file
+    that fw-context did not use: a lower file or the default applies, and
+    the tools work. Tell the operator each line. With the approval of the
+    operator, `fw-context doctor --fix --only config` removes them.
+  • `analysis.complete: false` — the LLM analysis of some symbols is
+    missing. The tools work, and they give no llm_analysis for those
+    symbols. When `index_message` says that symbols wait for the analysis
+    and names `fw-context index`, tell the operator, and run it only
+    with the approval of the operator: the LLM can need hours.
+  • `index_message` says that definitions have no embedding — the
+    search by meaning (semantic_search, smart_search) does not find
+    them. Tell the operator the command that the message names.
+  • NO status, only `error` — the index holds no build config. There is
+    no status "error".
+  • The call fails with an error of SQLite (for example "database disk
+    image is malformed") — fw-context cannot read the index. Call
+    check_dependencies: the message of its check db-integrity tells if the
+    database is damaged. Ask the operator before you delete it with
+    reset_index.
 
 `client_restart_required: True` is not a status, and NO command repairs it.
 The index holds a newer row format than this session reads, thus the index
@@ -262,16 +407,16 @@ Do NOT use fw-context in Python, JS, Go, or other non-C/C++ projects.
 ### Tool categories
 
 Search: lookup_symbol, search_code, search_bodies, search_content,
-smart_search, semantic_search, explain_symbol.
-Source: get_symbol_context, get_source, get_file_map, read_file.
+smart_search, semantic_search, find_variables.
+Source: get_symbol_context, get_source, get_file_map, explain_symbol, read_file.
 Call graph: find_callers, find_references, find_call_path,
 find_all_callers_recursive, find_callees_recursive, find_hotspots,
-find_dead_code, find_wrapper_callers, trace_data_flow,
+find_dead_code, find_wrapper_callers, trace_data_flow, get_vector_table,
 find_indirect_call_sites, find_indirect_targets.
 Inheritance: get_inheritance_chain, get_class_members,
 get_template_instances, get_method_overrides.
-Maintenance: get_active_build, reindex_file, reset_index,
-check_ollama, list_projects, get_project_info.
+Maintenance: get_active_build, get_project_status, get_build_info, check_dependencies,
+list_projects, get_project_info, check_ollama, configure_llm, reindex_file, reset_index.
 
 Individual tool descriptions are in the MCP tool listings —
 discover them at runtime.

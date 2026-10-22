@@ -22,8 +22,8 @@ import sqlite3
 
 __all__ = [
     "ANALYZABLE_KINDS",
+    "EMBEDDABLE_KINDS",
     "compute_analysis_coverage",
-    "count_pending_analysis",
     "delete_build_data",
     "get_active_config",
     "get_all_builds_for_project",
@@ -31,20 +31,39 @@ __all__ = [
     "get_build_stats",
     "get_builds_for_scope",
     "make_analysis_summary",
+    "set_analyze_vendor",
+    "symbols_without_embedding",
     "upsert_build_config",
     "upsert_project",
 ]
 
-# Kinds the LLM analysis pipeline processes.  All three consumers import
-# this tuple, thus the selection query, the coverage report, and the
-# staleness check can never drift apart again:
+# Kinds the LLM analysis pipeline processes.  The two consumers import
+# this tuple, thus the selection query and the coverage report always use
+# the same kinds:
 #   1. ``_llm_analysis._select_unanalyzed_symbols`` — selects the work.
 #   2. ``compute_analysis_coverage`` — reports the coverage.
-#   3. ``count_pending_analysis`` — the staleness signal that
-#      ``background._fast_staleness_check`` uses.
-# A kind that is in the selection query but not here made the daemon miss
-# the analysis work for that kind.
+# If a kind is in the selection query but not in this tuple, the coverage
+# report does not count the analysis work for that kind.
 ANALYZABLE_KINDS: tuple[str, ...] = (
+    "function",
+    "method",
+    "constructor",
+    "destructor",
+    "class",
+    "struct",
+    "union",
+    "typedef",
+    "enum",
+    "varglobal",
+)
+
+# Kinds of definition that get an embedding.  The two consumers import this
+# tuple, thus the work and the check of the work always use the same kinds:
+#   1. ``_embedding._build_embeddings`` — selects the symbols to embed.
+#   2. ``symbols_without_embedding`` — finds the definitions that have none.
+# A kind that only one of them reads gives a gap that nobody reports, or a
+# report of a gap that no run can close.
+EMBEDDABLE_KINDS: tuple[str, ...] = (
     "function",
     "method",
     "constructor",
@@ -79,8 +98,7 @@ def compute_analysis_coverage(conn: sqlite3.Connection, config_hash: str) -> dic
     * ``total`` — all symbols of the analyzable kinds.
 
     ``total - analyzed - skipped`` gives the symbols that the pipeline can
-    still process.  Use ``count_pending_analysis`` for that value — do not
-    compute it again in the caller.
+    still process.  ``make_analysis_summary`` uses that value.
     """
     placeholders = ", ".join("?" * len(ANALYZABLE_KINDS))
     rows = conn.execute(
@@ -114,34 +132,32 @@ def compute_analysis_coverage(conn: sqlite3.Connection, config_hash: str) -> dic
     return coverage
 
 
-def count_pending_analysis(
-    conn: sqlite3.Connection,
-    config_hash: str,
-    *,
-    analyze_vendor: bool,
-) -> int:
-    """Count the symbols that the LLM-analysis pipeline can still process.
+def symbols_without_embedding(conn: sqlite3.Connection, config_hash: str) -> list[int]:
+    """Return the ids of the definitions of the build that have no embedding.
 
-    This is the staleness signal: a value larger than 0 means that a
-    background reindex has analysis work to do.  It is the counterpart of
-    ``compute_analysis_coverage``, and it uses the same query, thus the
-    coverage report and the staleness check can never disagree.
+    The definitions are the ones that ``_build_embeddings`` embeds: kinds of
+    ``EMBEDDABLE_KINDS`` with ``is_definition = 1``.  A definition without a
+    row of chunk 0 has no embedding.  The row of chunk 0 is also the row
+    that ``_build_embeddings`` reads for its content hash.
 
-    A symbol with a ``skip:*`` sentinel counts as done.  The pipeline
-    already tried it and cannot analyze it, thus a pending count that
-    included these symbols would start a background reindex again after
-    every run.
-
-    When *analyze_vendor* is False, only project symbols count.  Pass the
-    value from the CONFIG, not the value stored in ``build_configs`` — this
-    count must predict what the next background reindex does.
+    WHY a gap can occur: a re-parse of one file deletes the symbols of its
+    translation unit, also the symbols of the headers that it includes, and
+    inserts them again with new ids.  ``ON DELETE CASCADE`` removes their
+    embeddings.  Measured on a project of 7 builds with 4 300 to 8 400
+    definitions each: 36 ms for the 7 builds together.
     """
-    coverage = compute_analysis_coverage(conn, config_hash)
-    sides = ("project", "vendor") if analyze_vendor else ("project",)
-    return sum(
-        max(0, coverage[side]["total"] - coverage[side]["analyzed"] - coverage[side]["skipped"])
-        for side in sides
-    )
+    placeholders = ", ".join("?" * len(EMBEDDABLE_KINDS))
+    rows = conn.execute(
+        f"""SELECT s.id FROM symbols s
+            WHERE s.config_hash = ?
+              AND s.is_definition = 1
+              AND s.kind IN ({placeholders})
+              AND NOT EXISTS (SELECT 1 FROM embeddings e
+                              WHERE e.symbol_id = s.id AND e.chunk_index = 0)
+            ORDER BY s.id""",
+        (config_hash, *EMBEDDABLE_KINDS),
+    ).fetchall()
+    return [row[0] for row in rows]
 
 
 def make_analysis_summary(
@@ -160,8 +176,8 @@ def make_analysis_summary(
     * Symbols with a ``skip:*`` sentinel, which the pipeline cannot
       analyze.  ``skipped`` keeps these symbols visible in the counts.
 
-    Thus ``complete`` agrees with ``count_pending_analysis``:
-    ``complete`` is True exactly when the pending count is 0.
+    Thus ``complete`` is True exactly when ``total - analyzed - skipped``
+    is 0 or less for each side that the pipeline processes.
     """
     project_pending = (
         coverage["project"]["total"]
@@ -285,8 +301,9 @@ def upsert_build_config(
         compile_commands_path: Absolute path to ``compile_commands.json``.
         embedding_dim: Embedding vector dimension detected from the model.
             ``None`` when embeddings are disabled or not yet generated.
-        manifest_verification: ``"full"`` or ``"none"`` —
-            indicates whether manifest.json was available during indexing.
+        manifest_verification: ``"full"``, ``"partial"`` or ``"none"`` —
+            ``"none"`` when manifest.json was not available during indexing,
+            ``"partial"`` when it was and the embeddings are not complete.
         description: Human-readable build description (git branch + tag).
             ``None`` keeps whatever the row already holds.
 
@@ -306,9 +323,10 @@ def upsert_build_config(
 
             WHY None is the default: the UPDATE arm assigns this column from
             ``excluded``, thus a caller that omits it writes the default over
-            the stored value.  ``cmd_analyze`` omits this column and the two
-            below, because it only updates ``analyze_vendor`` on an index
-            that another run built.  It erased the three, and
+            the stored value.  ``cmd_analyze`` omitted this column and the
+            two below, because it only updates ``analyze_vendor`` on an index
+            that another run built (now `set_analyze_vendor`).  It erased the
+            three, and
             ``get_active_config`` then matched no row for a build that names
             a variant — every tool called with an explicit variant failed on
             an index that is fully present.
@@ -323,8 +341,9 @@ def upsert_build_config(
             it runs after the last translation unit.  Two callers must not
             stamp: ``runner.run`` writes this row before it reads a single
             unit, thus a run that fails would leave the new format over the
-            old rows; ``cmd_analyze`` only updates ``analyze_vendor`` on an
-            index that another version built.  A missed stamp costs one
+            old rows; ``cmd_analyze`` called it to update only
+            ``analyze_vendor`` on an index that another version built (now
+            `set_analyze_vendor`).  A missed stamp costs one
             reindex that was not needed — a wrong stamp costs silence over
             an index that answers with dead code.
         board: Concrete board string per-(variant, image) — captures per-image
@@ -390,6 +409,22 @@ def upsert_build_config(
                board = excluded.board,
                row_format = excluded.row_format""",
         (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board, row_format),
+    )
+
+
+def set_analyze_vendor(conn: sqlite3.Connection, config_hash: str, analyze_vendor: bool) -> None:
+    """Record whether the LLM analysis of the build *config_hash* covers vendor code.
+
+    WHY not `upsert_build_config`: its UPDATE arm sets ``created_at`` to
+    the time of the call.  ``fw-context analyze`` writes no symbol, thus
+    that would make an old index look new: the analysed build would become
+    the newest build, and a compile_commands.json newer than the index run
+    would no longer look newer.  This function changes the one column that
+    the analysis changes.
+    """
+    conn.execute(
+        "UPDATE build_configs SET analyze_vendor = ? WHERE config_hash = ?",
+        (int(analyze_vendor), config_hash),
     )
 
 
@@ -611,3 +646,33 @@ def get_build_stats(conn: sqlite3.Connection, config_hash: str) -> dict:
     result["fp_assignments"] = fp_assignments
 
     return result
+
+
+def count_pending_analysis(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    *,
+    analyze_vendor: bool,
+) -> int:
+    """Count the symbols that the LLM-analysis pipeline can still process.
+
+    This is the staleness signal: a value larger than 0 means that a
+    background reindex has analysis work to do.  It is the counterpart of
+    ``compute_analysis_coverage``, and it uses the same query, thus the
+    coverage report and the staleness check can never disagree.
+
+    A symbol with a ``skip:*`` sentinel counts as done.  The pipeline
+    already tried it and cannot analyze it, thus a pending count that
+    included these symbols would start a background reindex again after
+    every run.
+
+    When *analyze_vendor* is False, only project symbols count.  Pass the
+    value from the CONFIG, not the value stored in ``build_configs`` — this
+    count must predict what the next background reindex does.
+    """
+    coverage = compute_analysis_coverage(conn, config_hash)
+    sides = ("project", "vendor") if analyze_vendor else ("project",)
+    return sum(
+        max(0, coverage[side]["total"] - coverage[side]["analyzed"] - coverage[side]["skipped"])
+        for side in sides
+    )

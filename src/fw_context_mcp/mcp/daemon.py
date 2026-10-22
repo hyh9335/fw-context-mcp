@@ -384,6 +384,7 @@ async def _reindex_loop(
     on_index_proc: Callable[[asyncio.subprocess.Process | None], None],
     build_patterns: list[str] | None = None,
     force_refs: bool = False,
+    startup_check: Callable[[Path], tuple[bool, list[str]]] | None = None,
 ) -> None:
     """Run one index for each pending change, until shutdown or a ping timeout.
 
@@ -396,6 +397,33 @@ async def _reindex_loop(
     cheaper than an index that is not correct.
     """
     from .background import _check_bg_pause as _bg_paused
+    loop = asyncio.get_running_loop()
+    force_refs = False
+    if startup_check is not None:
+        if not await _index_is_free(db_dir, shutdown, ping_expired, dlog):
+            return
+        # Synchronous, thus in an executor: the socket server answers the
+        # pings in this time.
+        #
+        # WHY the errors stop here: the check finds only the work of the
+        # time when no daemon watched.  Some errors made the exception leave
+        # the loop: a locked or damaged database, a file that cannot be
+        # read, or a config that lost its project ID after the start
+        # (`ProjectNotInitializedError`).  The daemon then stopped, and a
+        # new daemon stopped on the same error.  Without the check the
+        # watcher continues.  The status tools do their own check: they
+        # show the error, or that no run updates the index
+        # ("not_scheduled"), and they name the command.
+        try:
+            needs, reasons = await loop.run_in_executor(None, startup_check, project_root)
+        except (sqlite3.Error, OSError, ValueError, RuntimeError):
+            dlog.warning("The check at the start failed; the watcher continues without it", exc_info=True)
+            needs, reasons = False, []
+        if needs:
+            dlog.info("Initial index needed (%s)", ", ".join(reasons))
+            # A reason of a build carries its variant/image in front.
+            force_refs = any(reason.endswith("refs missing") for reason in reasons)
+            pending.set()
 
     loop = asyncio.get_running_loop()
 
@@ -455,6 +483,86 @@ async def _reindex_loop(
             build_patterns[:] = await loop.run_in_executor(
                 None, _load_build_patterns, db_dir
             )
+
+
+def _index_held(db_dir: Path) -> bool:
+    """Return True while another process holds the index.
+
+    ``reindex.pause``: ``reindex_file`` and ``reset_index`` of an MCP
+    server write it, and each ``fw-context index`` run.  ``reindex.pid``:
+    each ``fw-context index`` run writes it when it holds the index lock
+    (``cli._index._claim_index``), also a run that holds no pause marker
+    any more because a ``reindex_file`` replaced it and then removed it.
+    Between two turns no run of this daemon owns either file: the run
+    removes them when it ends, and ``_wait_index`` removes the files of a
+    run that a kill stopped.
+    """
+    return PidFile.is_active(db_dir / "reindex.pause") or PidFile.is_active(db_dir / "reindex.pid")
+
+
+async def _index_is_free(
+    db_dir: Path,
+    shutdown: asyncio.Event,
+    ping_expired: Callable[[], bool],
+    dlog: logging.LoggerAdapter,
+) -> bool:
+    """Wait while another process holds the index.
+
+    Returns True when the index is free, and False on shutdown or a ping
+    timeout.  WHY no time limit: a manual index of a large project runs
+    for hours, and work that the loop gives up after a limit was not done
+    by anybody.  The loop must still stop with the daemon, thus this
+    function looks at the shutdown and the pings.
+    """
+    if not _index_held(db_dir):
+        return True
+    dlog.info("Another process holds the index — the background reindex waits")
+    while _index_held(db_dir):
+        if shutdown.is_set() or ping_expired():
+            return False
+        try:
+            await asyncio.wait_for(shutdown.wait(), timeout=_HELD_POLL_S)
+        except TimeoutError:
+            pass
+    return not shutdown.is_set()
+
+
+async def _setup_unix_socket(db_dir: Path, on_ping) -> tuple[asyncio.Server, Path]:
+    """Create and bind the Unix domain socket for daemon pings.
+
+    *on_ping* is called (no arguments) each time a valid ping arrives.
+    Returns the server and socket path.
+    """
+    sock_path = _socket_path(db_dir)
+    sock_path.unlink(missing_ok=True)
+
+    async def _handle_ping(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
+            if b"ping" in data:
+                on_ping()
+        except (TimeoutError, OSError):
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except OSError:
+                pass
+
+    try:
+        server = await asyncio.start_unix_server(_handle_ping, path=str(sock_path))
+    except OSError as exc:
+        # Not "daemon already running": this process holds `watcher.lock`,
+        # thus no other daemon of the project runs.  The error says the
+        # cause, for example "AF_UNIX path too long" for a socket path that
+        # is longer than `sun_path` (108 bytes on Linux, 104 on macOS).  The
+        # index directory sets that path.
+        log.error("Cannot bind the socket %s: %s", sock_path, exc)
+        raise
+
+    os.chmod(sock_path, 0o600)
+    return server, sock_path
 
 
 def _setup_signal_handlers(shutdown: asyncio.Event) -> None:
@@ -554,16 +662,31 @@ def _staleness_check(project_root: Path) -> tuple[bool, list[str]]:
     """Return ``(needs_reindex, reasons)`` for the initial daemon startup.
 
     Checks structural staleness (compile_commands.json, schema, row format,
-    refs) AND file-level staleness (on-disk mtime newer than stored mtime).
+    refs) AND file-level staleness (the stored hash against the file on
+    disk, or the stored time for a row without a hash,
+    ``_count_modified_files``).
     Without the file-level check the daemon would never detect files that
     were modified BEFORE it started — watchfiles only detects NEW changes.
 
     The row-format check is the reason a daemon can ask for a reindex over
     an index whose files did not change: the columns are the same, but the
     text in them carries an older meaning.  See ``CURRENT_ROW_FORMAT``.
+
+    Every build of the project is checked, each ``(variant, image)``, and
+    not only the newest one: an edit to a file that only another image
+    compiles made that build stale, and the check of the newest build did
+    not see it.  A reason of a build carries its ``variant/image``.
+
+    A checkout that happened while no daemon ran is a reason too: the
+    watcher sees a change of HEAD only while it runs
+    (``git_context.head_moved``).  A new source file that the run builds on
+    its own (``_unindexed_sources``) is also a reason: the watcher sees a
+    new file only while it runs, and without this check no run came for a
+    file that the user added before the daemon started.
     """
+    from ..indexer.git_context import read_head
     from .shared.context import _db_path, _quick_open_readonly
-    from .shared.stale import _count_modified_files, check_structural_staleness
+    from .shared.stale import _count_modified_files, check_structural_staleness, checkout_reason
 
     db_path = _db_path(project_root)
     if not db_path.exists():
@@ -580,29 +703,77 @@ def _staleness_check(project_root: Path) -> tuple[bool, list[str]]:
         return False, []
     reasons: list[str] = []
     try:
-        from ..indexer.db import get_active_config
+        from .shared.stale import build_label, latest_builds, outdated_index_fact
+
+        # Before the first read of a build row.  The run that this reason
+        # starts opens the index with `open_db`, which adds the columns.
+        outdated = outdated_index_fact(conn)
+        if outdated:
+            return True, [outdated]
 
         project_id = derive_project_id(project_root)
-        cfg = get_active_config(conn, project_id)
-        if not cfg:
-            return False, []
+        live_head = read_head(project_root)
+        for cfg in latest_builds(conn, project_id):
+            config_hash = cfg["config_hash"]
+            label = build_label(cfg)
+            prefix = f"{label}: " if label else ""
 
-        config_hash = cfg["config_hash"]
+            # 1-4. Structural checks: compile_commands.json, schema version,
+            #      row format, refs.  `index_state` does checks 1-3 and not the refs.
+            found = check_structural_staleness(conn, config_hash, dict(cfg), project_root)
 
-        # 1-4. Structural checks (shared with background._fast_staleness_check):
-        #      compile_commands.json, schema version, row format, refs.
-        reasons.extend(check_structural_staleness(conn, config_hash, dict(cfg), project_root))
+            # 5. Modified source files — files changed before daemon started.
+            #    watchfiles only detects NEW events, so without this check
+            #    already-stale files would never be reindexed.
+            modified = _count_modified_files(conn, config_hash, project_root, use_cache=True)
+            if modified > 0:
+                found.append(f"{modified} modified files")
 
-        # 5. Modified source files — files changed before daemon started.
-        #    watchfiles only detects NEW events, so without this check
-        #    already-stale files would never be reindexed.
-        modified = _count_modified_files(conn, config_hash, project_root, use_cache=True)
-        if modified > 0:
-            reasons.append(f"{modified} modified files")
+            # 6. Another checkout than the build: the run then builds
+            #    (`cli._index._plan_auto_build`).
+            moved = checkout_reason(cfg, live_head, project_root)
+            if moved:
+                found.append(moved)
+            reasons.extend(prefix + reason for reason in found)
+
+        # 7. Source files that compile_commands.json does not cover, which
+        #    came while no daemon ran: the watcher sees a new file only while
+        #    it runs.  Only where the run builds them on its own
+        #    (`cli._index._plan_auto_build`): for another backend a run
+        #    changes nothing, and the status tools name the command.
+        unindexed = _unindexed_sources(conn, project_id, project_root)
+        if unindexed:
+            reasons.append(f"{len(unindexed)} source file(s) not in compile_commands.json")
     finally:
         conn.close()
 
     return len(reasons) > 0, reasons
+
+
+def _unindexed_sources(conn, project_id: str, project_root: Path) -> list[str]:
+    """Return the new source files of the project that an index run builds on its own.
+
+    The function reads the build that the status tools check
+    (`variants.checked_build`), thus the daemon and `get_project_status` see
+    the same files.  The list is empty when the backend cannot build in the
+    background (`autobuild.project_state`): a run then changes nothing.
+    """
+    from ..config import load as load_config
+    from ..indexer.autobuild import AutobuildState
+    from ..indexer.autobuild import project_state as autobuild_state
+    from .shared.stale import find_unindexed_sources
+    from .shared.variants import checked_build
+
+    cfg = load_config(project_root)
+    checked = checked_build(conn, project_id, cfg, project_root)
+    if checked is None or not checked["compile_commands_path"]:
+        return []
+    found = find_unindexed_sources(
+        conn, checked["config_hash"], project_root, Path(checked["compile_commands_path"]),
+    )
+    if not found or autobuild_state(project_root, cfg) is not AutobuildState.WILL_BUILD:
+        return []
+    return found
 
 
 # ── Index subprocess ─────────────────────────────────────────────────────────
@@ -782,31 +953,34 @@ async def _wait_index(
 # ── DB helper ────────────────────────────────────────────────────────────────
 
 
-def _open_db(db_path: Path):
-    """Open the database, returning ``None`` on corruption."""
-    from ..indexer.db import DatabaseCorruptionError, open_db
-
-    try:
-        return open_db(db_path)
-    except DatabaseCorruptionError:
-        log.warning("Database corrupt — skipping staleness check")
-        return None
-
-
 def _optimize_db(db_dir: Path) -> None:
     """Run PRAGMA optimize to shrink the WAL file and defragment indexes.
 
-    Deliberately uses a full ``open_db`` (whitelisted write path): this
-    is a rare maintenance operation outside the request path, and WAL
-    allows concurrent readers while it runs.  Not a bug — do not
+    Deliberately uses a writable ``open_db`` (whitelisted write path):
+    this is a rare maintenance operation outside the request path, and
+    WAL allows concurrent readers while it runs.  Not a bug — do not
     "convert" this to the read-only quick open; writes need a writable
     connection.
+
+    WHY no integrity check: the daemon calls this after an index run that
+    ended with 0, and that run did the check.  A second check reads the
+    full file again, and the daemon does not use its result.  The next
+    index run does the check.
+
+    WHY the errors stop here: the reindex loop calls this function, and an
+    error of the open went out of the loop.  The daemon then stopped, and
+    no change got an index run.  The maintenance is not necessary, thus a
+    warning is sufficient.
     """
+    from ..indexer.db import open_db
+
     db_path = db_dir / "index.db"
     if not db_path.exists():
         return
-    conn = _open_db(db_path)
-    if conn is None:
+    try:
+        conn = open_db(db_path, skip_integrity_check=True)
+    except (sqlite3.Error, OSError):
+        log.warning("Cannot open the database for PRAGMA optimize", exc_info=True)
         return
     try:
         conn.execute("PRAGMA optimize")

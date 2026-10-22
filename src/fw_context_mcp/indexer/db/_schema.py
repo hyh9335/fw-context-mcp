@@ -56,6 +56,8 @@ __all__ = [
     "ROW_FORMAT_PAIRED_WITH",
     "_ensure_column",
     "drop_fts_triggers",
+    "missing_columns",
+    "row_format_effect",
     "row_format_is_newer",
     "row_format_is_older",
 ]
@@ -1237,6 +1239,34 @@ _CRITICAL_TABLES = _build_critical_tables()
 
 CURRENT_SCHEMA_VERSION = _derive_schema_version(_SCHEMA, _MIGRATION_ADD_COLUMNS)
 
+def missing_columns(conn: sqlite3.Connection) -> list[str]:
+    """Return ``table.column`` of each column of this version that the database does not have.
+
+    Only `open_db` of an index run adds the columns of
+    ``_MIGRATION_ADD_COLUMNS``.  The MCP server reads the database without
+    a migration, thus an index that an older version wrote lacks them, and
+    a read of such a column fails with ``IndexError``.  The callers check
+    this before they read a row, and name the old schema in place of the
+    failure.
+
+    WHY the columns and not CURRENT_SCHEMA_VERSION: the version is a hash
+    and has no direction.  An index of a newer version has each column of
+    this one, and a server that is older than the index must still answer
+    (``client_restart_required``).  The ``_schema_bump_`` columns only move
+    the version, and no code reads them.  A table that the database does
+    not have is not checked: each version since the columns came creates
+    every table.
+    """
+    missing: list[str] = []
+    for table, columns in _MIGRATED_COLUMNS.items():
+        present = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}  # nosec B608 — table names come from this module
+        if present:
+            missing.extend(
+                f"{table}.{column}" for column in sorted(columns)
+                if column not in present and not column.startswith("_schema_bump_")
+            )
+    return missing
+
 
 def _run_data_migrations(conn: sqlite3.Connection) -> None:
     """Run idempotent data backfills under SAVEPOINT and FTS5 rebuild.
@@ -1787,3 +1817,39 @@ def _run_structural_migration(conn: sqlite3.Connection) -> None:
     conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
     conn.commit()
     log.info("rows/2 -> rows/3 structural migration complete")
+
+
+_ROW_FORMAT_FAULTS: tuple[tuple[int, str], ...] = (
+    (0, "the stored text keeps inactive #ifdef branches, thus a body or a "
+        "file can show code that does not compile"),
+    (1, "a block comment in the stored text of a file lost its closing "
+        "marker, thus live code below it reads as commented out"),
+    (2, "the stored rows answer less than they should: a definition that "
+        "begins and ends on one line has no body, no macro is marked "
+        "function-like, no instance links to its template, and the value "
+        "of a macro holds its parameter list glued to its replacement text"),
+    (3, "a build with a GCC compiler was parsed with guessed toolchain "
+        "headers and the macros of clang: an ESP32 or AVR index holds host "
+        "headers from /usr/include and takes the #if branches of the host, "
+        "an ARM index saw __GNUC__ 4, and the expanded value of a macro can "
+        "be empty"),
+    (4, "the stored text of each file that an assembly unit reads has blank "
+        "directive lines, a short skipped block reads as live code, and a "
+        "header that C code also reads lost its C-only lines: search_content "
+        "and read_file can miss a #define or #include there"),
+)
+
+
+def row_format_effect(stored: str) -> str:
+    """Say what an index whose text carries *stored* gets wrong.
+
+    The answer names the OLDEST fault the text still has, because that is
+    the one that misleads the reader most.  Text of an unreadable or absent
+    format gets the oldest answer for the same reason: nothing says it is
+    free of any fault.
+    """
+    number = _row_format_number(stored)
+    for last_faulty, effect in _ROW_FORMAT_FAULTS:
+        if number is None or number <= last_faulty:
+            return effect
+    return "the stored rows carry a meaning this version does not describe"

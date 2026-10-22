@@ -92,6 +92,44 @@ class ProjectNotInitializedError(RuntimeError):
 
 
 _GLOBAL_CONFIG_PATH = Path.home() / ".fw-context" / "config.toml"
+
+
+class ConfigError(ValueError):
+    """Raised for a config file that fw-context cannot use.
+
+    The file cannot be read, it is not UTF-8 or not valid TOML, or a value
+    in it cannot be used (see :func:`config_value_problems`).  The message
+    names the file and the problem; a TOML error also names the line and
+    the column.
+
+    WHY an error and not the defaults: when fw-context ignores a file, it
+    loses each setting in it, the project ID too.  The project then reads
+    as not initialized.  ``fw-context init`` then writes a new ID over the
+    file: the config of the team is lost, and the index is no longer
+    linked to the project.  Before this check, ``load`` handled a value of
+    the wrong type in one of three ways.  It stopped with no file name, it
+    kept the value, or it used the default and wrote a warning to the log.
+
+    *removable* says that ``fw-context doctor --fix --only config`` can
+    remove each value that the message names.  The message then says so.
+    *values* says that the problem is a value (``config_value_problems``),
+    not the file: ``doctor`` then lists each such value of the files.
+    """
+
+    def __init__(self, path: Path, problem: str, *, removable: bool = False, values: bool = False) -> None:
+        self.path = path
+        self.problem = problem
+        self.removable = removable
+        self.values = values
+        # --only config: a full `doctor --fix` also pulls missing models.
+        action = (
+            "Correct the file, or remove each such value with 'fw-context doctor --fix --only config'"
+            if removable else "Correct the file"
+        )
+        super().__init__(f"{path}: {problem}. {action}, then do the command again.")
+
+
+_GLOBAL_CONFIG_PATH = fw_context_home() / "config.toml"
 _PROJECT_CONFIG_DIR = ".fw-context"
 _PROJECT_CONFIG_NAME = "config.toml"
 _PROJECT_LOCAL_CONFIG_NAME = "local.toml"
@@ -231,15 +269,15 @@ compile_commands = ".fw-context/build/compile_commands.json"
 # shadow_v2_enabled = false        # Phase-4 Slice-0 shadow v2 flag (default off = legacy only)
 
 [call_graph]
-# dispatch_bridges: map dispatch-registration APIs to their event-loop
-#   entry points for call-path tracing through async dispatch
-#   (EventQueue, work queues, thread starts, timers).
-#   Built-in defaults cover mbed-os, Zephyr, FreeRTOS.
-#   Add custom bridges for other RTOS/dispatch frameworks here.
+# dispatch_bridges: map a registration API to its dispatch entry point
+#   (EventQueue, work queues, thread starts, timers). The call graph gets
+#   an edge from the entry point to each callback of the API.
+#   The built-in list covers Mbed OS, Zephyr, FreeRTOS, ESP-IDF and the
+#   STM32 HAL. An entry can only change the entry point of an API of the
+#   built-in list: the indexer records the calls of these APIs only.
 #
 # [call_graph.dispatch_bridges]
-# "my_rtos::Task::start" = "my_rtos::Task::_thread_entry"
-# "my_rtos::Timer::attach" = "my_rtos::Timer::_on_timeout"
+# "events::EventQueue::call_every" = "my_app::event_loop"
 
 # LLM and local-path settings belong in local.toml (gitignored).
 # See local.toml for ollama_url, model, db_dir, etc.
@@ -485,18 +523,17 @@ class IndexConfig:
             trust dense-only routing in ``AdaptiveFusionPhase``.  Below this
             threshold FTS5 is used as fallback.  Set higher for projects
             with immature embedding quality (default 3, tuned on the Mbed project).
-        max_symbol_body_lines: Maximum number of source lines stored per
-            function/method body in the index.  Bodies longer than this are
-            truncated.  Default 1000.
+        max_symbol_body_lines: Maximum number of lines of one symbol body
+            that ``get_source`` and ``get_symbol_context`` return (the
+            config of the project of the query).  The index stores the
+            whole body.  Default 1000.
         shadow_v2_enabled: Phase-4 Slice-0 shadow v2 feature flag. Default
-            False = legacy behavior only (no v2 DB, no v2 writes, byte-identical
             legacy path). When explicitly enabled, ONLY the Slice-0 shadow
             test path may create ``index-v2.db`` (M-C separate v2 store) —
             it never writes production worlds, never indexes source into v2,
             and never changes query results.
         shadow_v2_db: Explicit override for the v2 store file path. Default
             None = the M-C convention ``<db_dir>/<project_id>/index-v2.db``
-            (physically separate from the legacy ``index.db``).
     """
 
     db_dir: Path = field(default_factory=lambda: Path.home() / ".fw-context" / "index")
@@ -580,6 +617,10 @@ class Config:
     index: IndexConfig = field(default_factory=IndexConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     cache_server: CacheServerConfig | None = None
+    #: One line for each value that ``load`` did not use: ``<file>: <problem>``.
+    #: The value of a lower file, or the default, applies to the key.  See
+    #: ``_TUNING_KEYS``.  The status tools give it to the caller.
+    config_warnings: list[str] = field(default_factory=list)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -601,30 +642,6 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def _safe_int(val, default: int = 0) -> int:
-    """Coerce *val* to int, returning *default* on failure.
-
-    **Why safe?**  TOML values come from user-edited files — typos like
-    ``num_ctx = "auto"`` or ``timeout = "inf"`` crash the server if not
-    caught.  ``_safe_int`` logs a warning and returns the default so the
-    server starts with a working (but potentially wrong) value.
-    """
-    try:
-        return int(val)
-    except (ValueError, TypeError):
-        log.warning("Invalid int value %r — using default %d", val, default)
-        return default
-
-
-def _safe_float(val, default: float = 0.0) -> float:
-    """Coerce *val* to float, returning *default* on failure."""
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        log.warning("Invalid float value %r — using default %.3f", val, default)
-        return default
-
-
 def _apply_section(
     data: dict,
     section_name: str,
@@ -642,6 +659,10 @@ def _apply_section(
     list[str], Optional[int] with sentinel values).  The converter strings
     provide a compact, self-documenting mapping from TOML types to Python
     dataclass attribute types — no per-field handler functions needed.
+
+    ``load`` checks each file before (``_check_layer``), thus a conversion
+    does not fail.  A value of the wrong type is an error that names the
+    file, not a warning and the default.
     """
     if section := data.get(section_name, {}):
         for key, attr, conv in fields:
@@ -684,15 +705,15 @@ def _build_cache_server_config(data: dict) -> CacheServerConfig | None:
     return CacheServerConfig(
         url=cs.get("url", ""),
         token=token,
-        batch_size=cs.get("batch_size", 100),
-        force=cs.get("force", False),
+        batch_size=int(cs.get("batch_size", 100)),
+        force=_convert_bool(cs.get("force", False)),
     )
 
 def _from_dict(data: dict) -> Config:
     """Convert merged TOML dict to Config with field mapping tables.
 
     Each mapping entry: (toml_key, attr_name, converter).
-    Converters: "str" | "bool" | "list" | "dict" | "path" | "int(N)" | "float(N)"
+    Converters: "str" | "bool" | "list" | "dict" | "str_table" | "path" | "int" | "float"
 
     Why table-driven instead of reflection-based?
     - Reflection (``setattr(cfg.__dict__[k], ...)``) couples TOML key names
@@ -747,45 +768,33 @@ def _convert(value, conv: str):
         ``"bool"`` — coerce to bool (handles strings "true"/"false"/"yes"/"no"/"1"/"0")
         ``"list"`` — coerce to list (wraps scalar in list)
         ``"dict"`` — coerce to dict
+        ``"str_table"`` — coerce to dict (a table of strings)
         ``"path"`` — wrap in ``Path`` and expand ``~``
-        ``"int(N)"`` — coerce to int, default N on failure
-        ``"float(N)"`` — coerce to float, default N on failure
+        ``"int"`` — coerce to int (also a string such as ``"4096"``)
+        ``"float"`` — coerce to float (also a string such as ``"1.5"``)
+
+    The value passed ``_expected_type`` first.  WHY no default on a
+    failure: the default hid the value of the user, and a warning in a log
+    is not seen.
     """
-    # Exact-match converters (fast path) — dict lookup instead of if/elif chain.
-    # Each converter is a lambda or builtin, stored once at module load.
-    if conv in _CONVERTERS:
-        return _CONVERTERS[conv](value)
-
-    # Prefix-match converters: "int(N)" / "float(N)".
-    # Format: "int(16384)" → int conversion, default 16384 on failure.
-    if conv.startswith("int("):
-        return _safe_int(value, int(conv[4:-1]))
-    if conv.startswith("float("):
-        return _safe_float(value, float(conv[6:-1]))
-
-    return value  # fallback — unknown converter, pass through
+    return _CONVERTERS[conv](value)
 
 
 def _convert_bool(value) -> bool:
     """Coerce *value* to bool, handling string representations."""
-    if isinstance(value, bool):
-        return value
     if isinstance(value, str):
-        v = value.strip().lower()
-        if v in ("true", "yes", "1", "on"):
-            return True
-        if v in ("false", "no", "0", "off", ""):
-            return False
+        return value.strip().lower() in _TRUE_STRINGS
     return bool(value)
 
 
 def _convert_list(value) -> list:
-    """Coerce *value* to list — wraps scalar values."""
-    if isinstance(value, list):
-        return value
-    if isinstance(value, str):
-        return [value]
-    return list(value)
+    """Coerce *value* to list — wraps a string in a list.
+
+    ``_expected_type`` refuses each other type.  ``list(value)`` made a
+    list of the keys of a TOML table (``key = {X = 1}`` became ``["X"]``)
+    without a word.
+    """
+    return [value] if isinstance(value, str) else value
 
 
 # Dispatch table for exact-match converters — dict lookup is O(1) and
@@ -795,7 +804,10 @@ _CONVERTERS: dict[str, Callable[..., Any]] = {
     "bool": _convert_bool,
     "list": _convert_list,
     "dict": dict,
+    "str_table": dict,
     "path": lambda v: Path(v).expanduser(),
+    "int": int,
+    "float": float,
 }
 
 
@@ -839,7 +851,7 @@ _BUILD_FIELDS: list[tuple[str, str, str]] = [
     ("pre_build", "pre_build", "str"),
     ("activate", "activate", "str"),
     ("python", "python", "str"),
-    ("timeout", "timeout", "float(7200)"),
+    ("timeout", "timeout", "float"),
     ("source_dir", "source_dir", "str"),
     ("sysbuild", "sysbuild", "bool"),
     ("build_dir", "build_dir", "str"),
@@ -864,6 +876,7 @@ _INDEX_FIELDS: list[tuple[str, str, str]] = [
     ("shadow_v2_db", "shadow_v2_db", "path"),
     ("v2_write_authority", "v2_write_authority", "bool"),
     ("legacy_compatibility_mode", "legacy_compatibility_mode", "bool"),
+    ("transient_defines", "transient_defines", "list"),
 ]
 
 _LLM_FIELDS: list[tuple[str, str, str]] = [
@@ -873,15 +886,15 @@ _LLM_FIELDS: list[tuple[str, str, str]] = [
     ("embed_model", "embed_model", "str"),
     ("embed_query_prompt", "embed_query_prompt", "str"),
     ("embed_doc_prompt", "embed_doc_prompt", "str"),
-    ("embed_dim", "embed_dim", "int(-1)"),  # -1 = auto-detect (maps to None)
-    ("num_ctx", "num_ctx", "int(16384)"),
-    ("timeout", "timeout", "float(600.0)"),
+    ("embed_dim", "embed_dim", "int"),  # -1 = auto-detect (maps to None)
+    ("num_ctx", "num_ctx", "int"),
+    ("timeout", "timeout", "float"),
     ("keep_alive", "keep_alive", "str"),
     ("debug_log", "debug_log", "path"),
     ("analyze_symbols", "analyze_symbols", "bool"),
     ("analyze_vendor", "analyze_vendor", "bool"),
     ("reranker_model", "reranker_model", "str"),
-    ("ollama_max_concurrent", "ollama_max_concurrent", "int(1)"),
+    ("ollama_max_concurrent", "ollama_max_concurrent", "int"),
     ("chat_api_base", "chat_api_base", "str"),
     ("chat_api_key", "chat_api_key", "str"),
     ("chat_api_format", "chat_api_format", "str"),
@@ -923,19 +936,12 @@ def _build_variants(data: dict) -> list[BuildVariant]:
         return []
 
     variants: list[BuildVariant] = []
+    # `_variant_problems` checked each table of each file before the merge.
     for table in raw:
-        if not isinstance(table, dict):
-            log.warning("[[build.variants]] entry is not a table — skipping %r", table)
-            continue
-        name = table.get("name")
-        if not name:
-            log.warning("[[build.variants]] entry missing required 'name' — skipping")
-            continue
+        name = table["name"]
 
         images: list[BuildImage] = []
         for img in table.get("images") or []:
-            if not isinstance(img, dict):
-                continue
             images.append(
                 BuildImage(
                     name=img.get("name", ""),
@@ -961,14 +967,13 @@ def _build_variants(data: dict) -> list[BuildVariant]:
                 continue
             overrides[_BUILD_KEY_TO_ATTR.get(key, key)] = value
 
-        env = table.get("env") or {}
         variants.append(
             BuildVariant(
                 name=name,
                 description=table.get("description", ""),
                 board=table.get("board"),
                 build_dir=table.get("build_dir"),
-                env=dict(env) if isinstance(env, dict) else {},
+                env=dict(table.get("env") or {}),
                 images=images,
                 overrides=overrides,
                 index_overrides=index_overrides,
@@ -1112,6 +1117,473 @@ def _validate_config_safety(proj_data: dict, proj_path: Path) -> None:
         log.warning(msg)
         print(f"⚠ {msg}", file=sys.stderr)
 
+#: The ``[llm]`` keys that hold a URL.  ``load`` reads the host of each.
+_URL_KEYS = ("ollama_url", "chat_api_base")
+
+
+def url_problem(value: str) -> str | None:
+    """Return why ``urlparse`` cannot read the host of *value*, or None.
+
+    ``load`` and the writers of the LLM settings use the same check.  WHY
+    a writer checks before it writes: a value that ``load`` refuses makes
+    the file unusable, and each tool then stops on it.
+    """
+    try:
+        _ = urlparse(value).hostname  # urlparse checks the host, and raises ValueError
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+#: The strings that ``_convert_bool`` reads as a switch.  A TOML bool is
+#: the normal form.  The strings are older forms, and they still work.
+_TRUE_STRINGS = frozenset({"true", "yes", "1", "on"})
+_FALSE_STRINGS = frozenset({"false", "no", "0", "off", ""})
+
+#: The keys of ``[cache_server]`` (``_build_cache_server_config``).
+_CACHE_SERVER_FIELDS: list[tuple[str, str, str]] = [
+    ("url", "url", "str"),
+    ("token", "token", "str"),
+    ("batch_size", "batch_size", "int"),
+    ("force", "force", "bool"),
+]
+
+#: The sections that ``_check_layer`` checks against their field table.
+_CHECKED_SECTIONS: tuple[tuple[str, list[tuple[str, str, str]]], ...] = (
+    ("project", _PROJECT_FIELDS),
+    ("build", _BUILD_FIELDS),
+    ("index", _INDEX_FIELDS),
+    ("llm", _LLM_FIELDS),
+    ("cache_server", _CACHE_SERVER_FIELDS),
+    ("updates", _UPDATES_FIELDS),
+)
+
+#: The keys of a ``[[build.variants]]`` table that are not a ``[build]`` or
+#: an ``[index]`` key, with their converter (``_build_variants``).
+_VARIANT_FIELDS: dict[str, str] = {
+    "name": "str", "description": "str", "board": "str", "build_dir": "str", "env": "str_table",
+}
+
+#: The keys of an image of a variant; each is a string (``BuildImage``).
+_IMAGE_FIELDS: tuple[str, ...] = ("name", "description", "dir", "type", "board")
+
+#: The converter of each key of ``[build]`` and ``[index]``, for an override in a variant.
+_OVERRIDE_CONVERTERS: dict[str, str] = {key: conv for key, _, conv in (*_BUILD_FIELDS, *_INDEX_FIELDS)}
+
+
+#: The keys whose default does not change which data fw-context reads or
+#: makes, or where the data goes.  A value of the wrong type there gives a
+#: warning: the key keeps the value of a lower file, or its default, and
+#: the tools keep working.  Each other key gives a ConfigError.
+#:
+#: WHY two levels (decision of the user, 2026-10-18): with a ConfigError for
+#: each value, one typo in a timeout stopped every MCP tool.  A default of
+#: the index path, of the build or of the embedding model gives answers
+#: about other data, and must stop.  A new key is critical until it is in
+#: this list.
+_TUNING_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("project", "name"),
+    ("index", "index_refs"),
+    ("index", "index_embeddings"),
+    ("index", "rerank_top_k"),
+    ("index", "min_dense_count"),
+    ("index", "max_symbol_body_lines"),
+    ("index", "purge_max_missing_percent"),
+    ("build", "timeout"),
+    ("build", "clean"),
+    ("llm", "enabled"),
+    ("llm", "model"),
+    ("llm", "num_ctx"),
+    ("llm", "timeout"),
+    ("llm", "keep_alive"),
+    ("llm", "analyze_symbols"),
+    ("llm", "analyze_vendor"),
+    ("llm", "reranker_model"),
+    ("llm", "ollama_max_concurrent"),
+    ("llm", "chat_api_key"),
+    ("llm", "chat_api_format"),
+    ("llm", "auto_pull"),
+    ("llm", "stream"),
+    ("cache_server", "token"),
+    ("cache_server", "batch_size"),
+    ("cache_server", "force"),
+    ("updates", "check"),
+})
+
+
+@dataclass(frozen=True)
+class ValueProblem:
+    """A value of one config file that ``load`` cannot use.
+
+    *keys* is the place of the value in the file: the section, the key,
+    and in an array the position of the table.  ``fw-context doctor --fix
+    --only config`` removes the value at that place
+    (``housekeeping.remove_unusable_values``).
+
+    *removable* is False for ``[project] id``.  Without an ID the project
+    reads as not initialized, and ``fw-context init`` then writes a new ID:
+    the index of the project is lost.  The user must correct the ID.
+
+    *critical* is False for a key of ``_TUNING_KEYS``: ``load`` then gives
+    a warning, not a ConfigError.
+    """
+
+    keys: tuple[str | int, ...]
+    message: str
+    removable: bool = True
+    critical: bool = True
+
+
+def config_value_problems(layer: dict) -> list[ValueProblem]:
+    """Return each value of one config file that ``load`` cannot use, in the order of the file.
+
+    *layer* is the parsed TOML of one file.  The types come from the field
+    tables, thus a new key needs no change here.  A key that fw-context
+    does not know is not a problem here: ``load`` warns about it.
+
+    WHY a list and not the first problem: ``fw-context doctor`` shows each
+    value, and ``doctor --fix --only config`` removes each one in one run.  The message
+    holds no value, because a key such as ``chat_api_key`` holds a secret.
+    """
+    problems: list[ValueProblem] = []
+
+    def check(keys: tuple[str | int, ...], label: str, value: object, conv: str, *, strict: bool = False) -> None:
+        expected = _expected_type(value, conv, strict=strict)
+        if expected is not None:
+            problems.append(ValueProblem(
+                keys, f"{label} must be {expected}, not {_toml_type(value, conv, strict=strict)}",
+                removable=keys != ("project", "id"),
+                # A key of a variant table is always critical: it changes the build.
+                critical=keys not in _TUNING_KEYS,
+            ))
+
+    for name in sorted(_KNOWN_SECTIONS):
+        if name in layer and not isinstance(layer[name], dict):
+            problems.append(ValueProblem(
+                (name,), f"'{name}' must be a table ([{name}]), not {_toml_type(layer[name])}",
+                # [updates] holds only a key of _TUNING_KEYS, and load does not read it.
+                critical=name != "updates",
+            ))
+    for section, fields in _CHECKED_SECTIONS:
+        table = layer.get(section)
+        if isinstance(table, dict):
+            for key, _attr, conv in fields:
+                if key in table:
+                    check((section, key), f"[{section}] {key}", table[key], conv)
+    llm = layer.get("llm")
+    if isinstance(llm, dict):
+        for key in _URL_KEYS:
+            value = llm.get(key)
+            if isinstance(value, str) and (problem := url_problem(value)) is not None:
+                problems.append(ValueProblem(("llm", key), f"[llm] {key} is not a valid URL ({problem})"))
+    build = layer.get("build")
+    if isinstance(build, dict) and "variants" in build:
+        _variant_problems(build["variants"], problems, check)
+    graph = layer.get("call_graph")
+    if isinstance(graph, dict) and "dispatch_bridges" in graph:
+        check(("call_graph", "dispatch_bridges"), "[call_graph] dispatch_bridges", graph["dispatch_bridges"], "str_table")
+    return problems
+
+
+def _variant_problems(variants: object, problems: list[ValueProblem], check: Callable[..., None]) -> None:
+    """Add the problems of ``[build] variants`` to *problems*; *check* adds the problem of a value.
+
+    A table without a name is a problem of the whole table: no query can
+    name its build, and ``_build_variants`` cannot read it.  An override is
+    checked with *strict*: ``build_variant_config`` uses its value as it
+    is, without the converters of ``[build]``, thus ``"4096"`` is not a
+    number there.
+    """
+    if not isinstance(variants, list):
+        problems.append(ValueProblem(
+            ("build", "variants"), f"[build] variants must be an array of tables ([[build.variants]]), not {_toml_type(variants)}",
+        ))
+        return
+    for position, table in enumerate(variants):
+        keys: tuple[str | int, ...] = ("build", "variants", position)
+        if not isinstance(table, dict):
+            problems.append(ValueProblem(keys, f"[[build.variants]] entry {position + 1} must be a table, not {_toml_type(table)}"))
+            continue
+        name = table.get("name")
+        if not isinstance(name, str) or not name:
+            problems.append(ValueProblem(keys, f"[[build.variants]] entry {position + 1} must have a name (a string that is not empty)"))
+            continue
+        label = f"[[build.variants]] {name!r}"
+        for key, value in table.items():
+            if key == "images":
+                _image_problems(value, (*keys, "images"), label, problems, check)
+            elif (conv := _VARIANT_FIELDS.get(key) or _OVERRIDE_CONVERTERS.get(key)) is not None:
+                check((*keys, key), f"{label} {key}", value, conv, strict=True)
+
+
+def _image_problems(
+    images: object, keys: tuple[str | int, ...], label: str, problems: list[ValueProblem], check: Callable[..., None],
+) -> None:
+    """Add the problems of the ``images`` of one variant to *problems*; *check* adds the problem of a value."""
+    if not isinstance(images, list):
+        problems.append(ValueProblem(keys, f"{label} images must be an array of tables, not {_toml_type(images)}"))
+        return
+    for position, image in enumerate(images):
+        if not isinstance(image, dict):
+            problems.append(ValueProblem(
+                (*keys, position), f"{label} image {position + 1} must be a table, not {_toml_type(image)}",
+            ))
+            continue
+        for key in _IMAGE_FIELDS:
+            if key in image:
+                check((*keys, position, key), f"{label} image {position + 1} {key}", image[key], "str")
+
+
+def _expected_type(value: object, conv: str, *, strict: bool = False) -> str | None:
+    """Return what *value* must be for the converter *conv*, or None when ``_convert`` can use it.
+
+    Without *strict*, a string that holds a number or a switch passes too
+    (``"4096"``, ``"yes"``): an older config wrote them, and ``_convert``
+    reads them.  With *strict* only the TOML type passes.
+    """
+    if conv == "str":
+        return None if isinstance(value, str) else "a string"
+    if conv == "path":
+        if not isinstance(value, str):
+            return "a string"
+        try:
+            Path(value).expanduser()
+        except RuntimeError:
+            # "~name/x" for a user that does not exist on this machine.
+            return "a path whose home directory (~) is known"
+        return None
+    if conv == "bool":
+        if isinstance(value, bool) or (
+            not strict and isinstance(value, str) and value.strip().lower() in _TRUE_STRINGS | _FALSE_STRINGS
+        ):
+            return None
+        return "true or false"
+    if conv == "list":
+        if isinstance(value, list) and all(isinstance(item, str) for item in value):
+            return None
+        if not strict and isinstance(value, str):
+            return None
+        return "an array of strings" if strict else "an array of strings, or a string"
+    if conv == "dict":
+        # make_vars: `NAME=value` on the make command line, thus a number works too.
+        if isinstance(value, dict) and all(_is_number(item) or isinstance(item, str) for item in value.values()):
+            return None
+        return "a table of strings and numbers"
+    if conv == "str_table":
+        # env: the environment of a process holds strings only.
+        if isinstance(value, dict) and all(isinstance(item, str) for item in value.values()):
+            return None
+        return "a table of strings"
+    if conv in ("int", "float"):
+        kind: type = int if conv == "int" else float
+        if _is_number(value) and (conv == "float" or isinstance(value, int)):
+            return None
+        if not strict and isinstance(value, str) and _reads_as(value, kind):
+            return None
+        return "an integer" if conv == "int" else "a number"
+    raise ValueError(f"unknown converter {conv!r}")  # a fault of a field table, not of the file
+
+
+def _is_number(value: object) -> bool:
+    """Say if *value* is a TOML integer or float.  A bool is a subclass of int in Python, and no number."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _reads_as(text: str, kind: type) -> bool:
+    """Say if ``kind(text)`` gives a value."""
+    try:
+        kind(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _toml_type(value: object, conv: str = "", *, strict: bool = False) -> str:
+    """Name the TOML type of *value* for a message, without the value: it can be a secret.
+
+    With *strict* a string is only "a string": ``"9"`` holds a number, but
+    an override of a variant must be a TOML number.
+    """
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, int):
+        return "an integer"
+    if isinstance(value, float):
+        return "a number"
+    if isinstance(value, str):
+        if conv in ("int", "float") and not strict:
+            return "a string that holds no integer" if conv == "int" else "a string that holds no number"
+        return "a string"
+    if isinstance(value, list):
+        return "an array with an item of a different type" if conv == "list" else "an array"
+    if isinstance(value, dict):
+        return "a table with a value of a different type" if conv in ("dict", "str_table") else "a table"
+    return f"a {type(value).__name__}"  # a date or a time of TOML
+
+
+#: The (file, problem) pairs that got a log line in this process: ``load``
+#: runs many times in one MCP session.
+_value_warned: set[tuple[Path, str]] = set()
+
+
+def _check_layer(layer: dict, path: Path, warnings: list[str]) -> None:
+    """Raise ``ConfigError`` for the first critical value of one config file that ``load`` cannot use.
+
+    A value of a key of ``_TUNING_KEYS`` is removed from *layer* instead:
+    the value of a lower file, or the default, then applies.  Its problem
+    goes to *warnings* (``Config.config_warnings``), and to the log one
+    time.  ``fw-context doctor`` lists it, and the status tools give it to
+    the caller.
+
+    WHY one file at a time, before the merge: only then is the file of a
+    value known, and the error must name it.  These values gave a crash
+    with no file name (``db_dir = 5``, ``variants = 3``), a value of the
+    wrong type in the config (``[project] id = 5``), or a warning and the
+    default.  ``urlparse`` raised ``ValueError`` for ``"http://[::1"``, and
+    that stopped the MCP server before its tools were there.
+    """
+    problems = config_value_problems(layer)
+    critical = [problem for problem in problems if problem.critical]
+    if critical:
+        more = f" (and {len(critical) - 1} more)" if len(critical) > 1 else ""
+        raise ConfigError(path, critical[0].message + more, removable=all(p.removable for p in critical), values=True)
+    for problem in problems:
+        # A key of _TUNING_KEYS, or the section [updates].
+        if len(problem.keys) == 1:
+            layer.pop(problem.keys[0])
+        else:
+            section, key = problem.keys
+            layer[section].pop(key)
+        warnings.append(f"{path}: {problem.message}")
+        if (path, problem.message) not in _value_warned:
+            _value_warned.add((path, problem.message))
+            # A warning, one time for each file and problem: each command
+            # shows it, also `fw-context index`, which can run for hours with
+            # the default of a switch.  The MCP status tools give it to the
+            # caller in `config_warnings`.
+            log.warning(
+                "%s: %s. fw-context uses the value of a lower file or the default. "
+                "Run 'fw-context doctor --fix --only config' to remove the value.",
+                path, problem.message,
+            )
+
+
+#: ``[index]`` keys that fw-context does not use any more.  They were an
+#: allowlist of the compilers that the index run could ask for their system
+#: headers and macros.  fw-context now asks the compiler of the build in all
+#: cases, because the build runs that compiler too.
+_RETIRED_INDEX_KEYS: tuple[str, ...] = ("query_driver", "query_driver_extra", "query_driver_auto")
+
+#: The file in which fw-context kept the allowlist of a project.  fw-context
+#: does not read or write it any more.
+_RETIRED_TOOLCHAINS_FILE = "toolchains.toml"
+
+#: The files that got the warning about a retired key or file in this
+#: process.  WHY: ``load()`` runs many times in one MCP session, and one
+#: warning for each file is sufficient.
+_retired_warned: set[Path] = set()
+
+
+def _warn_retired_once(path: Path, what: str, remedy: str = "You can remove it.") -> None:
+    """Warn one time for each *path* in this process that fw-context ignores *what*.
+
+    The warning goes to the log only.  It went to stderr too, and a CLI run
+    logs to stderr, thus the user saw each warning two times.  A process
+    without a log handler still shows it: the ``logging`` module writes a
+    warning to stderr when no handler is set.
+    """
+    if path in _retired_warned:
+        return
+    _retired_warned.add(path)
+    log.warning(
+        "%s: %s has no effect. fw-context asks the compiler of the build for its system "
+        "headers and macros in all cases, as the build runs it too. %s",
+        path, what, remedy,
+    )
+
+
+def _drop_retired_keys(layer: dict, path: Path) -> None:
+    """Remove the retired ``[index]`` keys from one config layer, and warn.
+
+    WHY remove before the merge, and not only leave the keys unread: a
+    ``[[build.variants]]`` table copies each key that is not an ``[index]``
+    field into its ``[build]`` overrides, and ``build_variant_config`` then
+    reports a retired key as an unknown ``[build]`` key.  That message is
+    wrong.  The file of the user is not changed.
+    """
+    tables: list[dict] = []
+    index = layer.get("index")
+    if isinstance(index, dict):
+        tables.append(index)
+    # A malformed file (``build = "x"``) must not crash load(): the other
+    # layers of the config still apply, as for any other typo.
+    build = layer.get("build")
+    variants = build.get("variants") if isinstance(build, dict) else None
+    if isinstance(variants, list):
+        tables.extend(v for v in variants if isinstance(v, dict))
+    found = sorted({key for table in tables for key in _RETIRED_INDEX_KEYS if key in table})
+    for table in tables:
+        for key in _RETIRED_INDEX_KEYS:
+            table.pop(key, None)
+    if found:
+        _warn_retired_once(
+            path, "[index] " + ", ".join(found), "The next 'fw-context index' removes it from the file.",
+        )
+
+
+#: The keys of ``[build]`` that selected the build of a query.  No code reads
+#: them since 2026-10: a query names its build, and fw-context selects none.
+_RETIRED_SELECTION_KEYS = ("default_variant", "default_image")
+
+#: The files that got the warning about a selection key in this process.
+#: ``load()`` runs many times in one MCP session.
+_selection_keys_warned: set[Path] = set()
+
+
+def _drop_selection_keys(layer: dict, path: Path) -> None:
+    """Remove ``[build] default_variant`` and ``default_image`` from one config layer, and warn one time.
+
+    WHY a warning and not an error: an older ``config.toml`` keeps working.
+    WHY not silence: the operator who wrote the key expects that it selects
+    a build, and a query without a selector now gets a refusal that lists
+    the builds.  The file of the user is not changed.
+
+    WHY a ``[[build.variants]]`` table too: such a table copies each key
+    that is not an ``[index]`` field into its ``[build]`` overrides, and
+    ``build_variant_config`` then reports the key as unknown.  That message
+    is wrong, as for ``_drop_retired_keys``.
+    """
+    build = layer.get("build")
+    if not isinstance(build, dict):
+        return
+    variants = build.get("variants")
+    tables = [build, *(v for v in variants if isinstance(v, dict))] if isinstance(variants, list) else [build]
+    found = sorted({key for table in tables for key in _RETIRED_SELECTION_KEYS if key in table})
+    for table in tables:
+        for key in _RETIRED_SELECTION_KEYS:
+            table.pop(key, None)
+    if found and path not in _selection_keys_warned:
+        _selection_keys_warned.add(path)
+        log.warning(
+            "%s: [build] %s %s no effect. A query names its build with variant and image, "
+            "and fw-context selects none. You can remove %s.",
+            path, ", ".join(found), "has" if len(found) == 1 else "have", "it" if len(found) == 1 else "them",
+        )
+
+
+def _warn_retired_toolchains_file(project_root: Path) -> None:
+    """Warn when the project still has the retired ``toolchains.toml``.
+
+    The next ``fw-context index``, ``fw-context cleanup`` or ``doctor --fix``
+    removes the file (``housekeeping.clean``): fw-context wrote it, and no
+    version reads it.  Until then, a process that only loads the config
+    says so.
+    """
+    path = project_root / _PROJECT_CONFIG_DIR / _RETIRED_TOOLCHAINS_FILE
+    if path.is_file():
+        _warn_retired_once(path, "this file", "The next 'fw-context index' removes it.")
+
+
 def _is_loopback_url(url: str) -> bool:
     """True if *url*'s host is a loopback address.
 
@@ -1140,12 +1612,158 @@ _config_cache: OrderedDict[tuple, tuple[float, Config]] = OrderedDict()
 _CONFIG_CACHE_MAX = 50
 
 
+def read_config_file(path: Path) -> dict:
+    """Parse the config file *path*, or return ``{}`` when it does not exist.
+
+    Raises:
+        ConfigError: the file cannot be read, or it is not UTF-8 or not
+            valid TOML.  The config readers (``load``) and writers
+            (``_toml_editor``) use this one function, thus the two give the
+            same message for one file.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    except UnicodeDecodeError as exc:
+        raise ConfigError(path, f"not UTF-8: {exc}") from exc
+    except OSError as exc:
+        raise ConfigError(path, f"cannot be read: {exc.strerror or exc}") from exc
+    try:
+        return tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(path, f"not valid TOML: {exc}") from exc
+
+
+#: The ``[llm]`` keys that select the LLM backend: on or off, the chat model
+#: or the chat API, and the embedding model.  ``fw-context init`` reads them
+#: to tell which config file selects the backend, and its option "use the
+#: global settings" removes them from ``local.toml``.
+LLM_BACKEND_KEYS: tuple[str, ...] = (
+    "enabled", "model", "embed_model", "chat_api_base", "chat_api_key", "chat_api_format",
+)
+
+
+def llm_key_sources(project_root: Path) -> dict[str, str]:
+    """Return the config file that sets each key of ``LLM_BACKEND_KEYS``.
+
+    The value is ``"global"``, ``"project"`` (``config.toml``) or ``"local"``
+    (``local.toml``): the last file that sets the key, thus the file whose
+    value applies, because ``load`` merges the three in this order.  A key
+    that no file sets is absent: its value comes from the defaults or from
+    the automatic detection.
+
+    WHY a function and not a field of ``Config``: the merged config does
+    not keep where a value came from, and ``fw-context init`` must tell a
+    project that selects its own backend from a project that uses the
+    global settings.  WHY the paths are read at each call: tests point
+    ``_GLOBAL_CONFIG_PATH`` and ``_PROJECT_CONFIG_DIR`` to their own files
+    after the import.
+
+    Raises:
+        ConfigError: a config file cannot be read, or it is not valid TOML.
+    """
+    layers = (
+        ("global", _GLOBAL_CONFIG_PATH),
+        ("project", project_root / _PROJECT_CONFIG_DIR / _PROJECT_CONFIG_NAME),
+        ("local", project_root / _PROJECT_CONFIG_DIR / _PROJECT_LOCAL_CONFIG_NAME),
+    )
+    sources: dict[str, str] = {}
+    for layer, path in layers:
+        table = read_config_file(path).get("llm")
+        if not isinstance(table, dict):
+            continue
+        for key in LLM_BACKEND_KEYS:
+            if key in table:
+                sources[key] = layer
+    return sources
+
+
+def load_update_settings() -> UpdatesConfig:
+    """Read ``[updates]`` from the global config file, and nothing else.
+
+    WHY not :func:`load`: ``load`` resolves the embedding model (it runs
+    ``nvidia-smi`` and asks Ollama) and creates the global config file.
+    The MCP server reads this section before ``mcp.run()``, where a slow
+    start makes the client time out before it gets the tools, and
+    ``fw-context version`` must answer at once.  This function reads one
+    file and writes nothing.
+
+    A missing file, a file that does not parse, a section that is not a
+    table, and a value of the wrong type give the defaults.  The log gets
+    only a debug line: ``load`` reports the same file at each command, and
+    ``get_project_status`` calls this function at each call.
+    """
+    settings = UpdatesConfig()
+    path = _GLOBAL_CONFIG_PATH
+    try:
+        data = read_config_file(path)
+    except ConfigError:
+        log.debug("Cannot read %s — [updates] uses the defaults", path, exc_info=True)
+        return settings
+    section = data.get("updates")
+    if isinstance(section, dict):
+        usable = {
+            key: section[key] for key, _, conv in _UPDATES_FIELDS
+            if key in section and _expected_type(section[key], conv) is None
+        }
+        if len(usable) < len(section.keys() & {key for key, _, _ in _UPDATES_FIELDS}):
+            log.debug("%s: a value of [updates] has the wrong type — it uses the default", path)
+        _apply_section({"updates": usable}, "updates", _UPDATES_FIELDS, settings)
+    return settings
+
+
+#: The project files that got the warning about ``[updates]`` in this
+#: process.  ``load()`` runs many times in one MCP session.
+_project_updates_warned: set[Path] = set()
+
+
+def _warn_project_updates_once(layer: dict, path: Path) -> None:
+    """Warn one time for each *path* that a project file sets ``[updates]``.
+
+    WHY: fw-context reads ``[updates]`` from the global config only (see
+    :class:`UpdatesConfig`).  A team that writes ``check = false`` into the
+    committed config to stop requests to PyPI must learn that the key has
+    no effect there.
+    """
+    if "updates" not in layer or path in _project_updates_warned:
+        return
+    _project_updates_warned.add(path)
+    log.warning(
+        "%s: [updates] has no effect in a project config. Set it in the global config %s, "
+        "or set FW_CONTEXT_NO_UPDATE_CHECK=1.",
+        path, _GLOBAL_CONFIG_PATH,
+    )
+
+
+def _mtime_signature(paths: tuple[Path | None, ...]) -> tuple[float | None, ...]:
+    """The mtime of each of *paths*, None for a path that is absent.
+
+    A project file may be missing (see :func:`load`), thus a file that
+    appears or goes changes the signature as an edit does.
+    """
+    signature: list[float | None] = []
+    for p in paths:
+        try:
+            signature.append(p.stat().st_mtime if p is not None else None)
+        except OSError:
+            signature.append(None)
+    return tuple(signature)
+
+
 def load(project_root: Path | None = None) -> Config:
     """Load merged config for the given project root.
 
-    Creates default config files on first use.  TOML parse errors in user
-    configs are logged and the built-in defaults are used instead — a broken
-    config file must not prevent the MCP tools from loading.
+    Creates the global config on first use, never a project file: a
+    missing ``.fw-context/config.toml`` or ``local.toml`` reads as empty.
+    A read-only tool on a project that ``fw-context init`` never saw must
+    not write into it; ``init`` and the writers (``_write_project_id``,
+    ``update_local_toml``) create the files they write.
+
+    Raises:
+        ConfigError: a config file (global, project or local) cannot be
+            read, or it is not UTF-8 or not valid TOML.  The message names
+            the file, and for TOML the line and the column.
 
     Results are cached per (global_path, proj_path, local_path) tuple and
     invalidated when any source file's mtime changes.
@@ -1155,11 +1773,12 @@ def load(project_root: Path | None = None) -> Config:
     ``[llm] num_ctx = 8192`` — shallow merge would overwrite the entire
     ``[llm]`` dict, discarding ``embed_model``.  Deep merge preserves both.
 
-    **Why graceful degradation?**  The MCP server is a plumbing tool — if
-    it fails to start because of a typo in ``local.toml``, the developer
-    loses all fw-context tools in their AI assistant.  A more frustrating
-    failure mode: the bug is in the tool they'd use to debug the config.
-    Log loudly, continue with defaults.
+    **Why an error and not the defaults?**  A file that ``load`` ignored
+    lost each setting in it, the project ID too: the project read as not
+    initialized, and ``fw-context init`` then wrote a new ID over the
+    file.  A different ``db_dir`` or ``ollama_url`` from the defaults is
+    also a silent change of the index or of the server.  The MCP server
+    still starts: each tool gives the error, which names the file.
     """
     data: dict = {}
 
@@ -1184,10 +1803,11 @@ def load(project_root: Path | None = None) -> Config:
 
     # Phase 1: load global config (always present — _ensure_global_config
     # creates it from template if missing).
-    try:
-        data = tomllib.loads(global_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.exception("Failed to parse %s — using defaults", global_path)
+    data = read_config_file(global_path)
+    warnings: list[str] = []
+    _check_layer(data, global_path, warnings)
+    _drop_retired_keys(data, global_path)
+    _drop_selection_keys(data, global_path)
 
     if project_root is not None:
         assert proj_path is not None
@@ -1195,25 +1815,26 @@ def load(project_root: Path | None = None) -> Config:
         # Phase 2: deep-merge project config (shared via git).
         # Uses _deep_merge so nested sections accumulate — [index] keys
         # from global and project config coexist.
-        try:
-            proj_data = tomllib.loads(proj_path.read_text(encoding="utf-8"))
-            data = _deep_merge(data, proj_data)
-            # Security: validate committed config doesn't contain dangerous settings.
-            # pre_build, command, and non-loopback ollama_url in committed config.toml
-            # are potential RCE / data exfiltration vectors.
-            _validate_config_safety(proj_data, proj_path)
-        except (OSError, ValueError):
-            log.exception("Failed to parse %s — ignoring project config", proj_path)
+        proj_data = read_config_file(proj_path)
+        _check_layer(proj_data, proj_path, warnings)
+        _drop_retired_keys(proj_data, proj_path)
+        _drop_selection_keys(proj_data, proj_path)
+        _warn_project_updates_once(proj_data, proj_path)
+        data = _deep_merge(data, proj_data)
+        # A non-loopback ollama_url in the committed config.toml sends
+        # source code to a host that the repository selects.
+        _validate_config_safety(proj_data, proj_path)
 
         assert local_path is not None
 
         # Phase 3: deep-merge local config (gitignored, per-developer).
         # This is the last merge — local.toml values have highest precedence.
-        try:
-            local_data = tomllib.loads(local_path.read_text(encoding="utf-8"))
-            data = _deep_merge(data, local_data)
-        except (OSError, ValueError):
-            log.exception("Failed to parse %s — ignoring local config", local_path)
+        local_data = read_config_file(local_path)
+        _check_layer(local_data, local_path, warnings)
+        _drop_retired_keys(local_data, local_path)
+        _drop_selection_keys(local_data, local_path)
+        _warn_project_updates_once(local_data, local_path)
+        data = _deep_merge(data, local_data)
 
         # Security: a committed or local config can redirect LLM calls (which
         # include source-code snippets) to an arbitrary host. Warn loudly.
@@ -1242,6 +1863,7 @@ def load(project_root: Path | None = None) -> Config:
             )
 
     cfg = _from_dict(data)
+    cfg.config_warnings = warnings
     from ..llm.auto_model import resolve_embed_model
     resolve_embed_model(cfg.llm)
     cfg.index.db_dir = cfg.index.db_dir.expanduser().resolve()
@@ -1318,20 +1940,24 @@ def _format_toml_value(key: str, value: object) -> str:
     Args:
         key: TOML key name.
         value: Value to format (str → quoted, bool → true/false,
-            int/float → unquoted number).
+            int/float → unquoted number).  A value of a different type is
+            written as the string that ``str()`` gives.
 
     Returns:
         ``"key = value\\n"`` string suitable for insertion into a TOML file.
+
+    WHY ``tomli_w`` and not a quote around the text: a ``"`` or a ``\\``
+    in a value (a model name, an API key) made a line that is not valid
+    TOML.  ``tomli_w`` escapes them, and a ``\\n`` too, thus the value
+    stays on one line (the line ends at the first ``\\n``).  It keeps
+    U+0085, U+2028 and U+2029, thus the reader of the file must split
+    only on ``\\n`` (``_edit_llm_table``).
     """
-    if isinstance(value, bool):
-        val = "true" if value else "false"
-    elif isinstance(value, int):
-        val = str(value)
-    elif isinstance(value, float):
-        val = str(value)
-    else:
-        val = f'"{value}"'
-    return f"{key} = {val}\n"
+    import tomli_w  # lazy — only needed when actually writing
+
+    if not isinstance(value, (bool, int, float)):
+        value = str(value)
+    return tomli_w.dumps({key: value})
 
 
 def _update_local_toml(
@@ -1368,8 +1994,60 @@ def _update_local_toml(
     local_path = project_root / _PROJECT_CONFIG_DIR / _PROJECT_LOCAL_CONFIG_NAME
     if not local_path.exists():
         _ensure_project_local_config(project_root)
+    _edit_llm_table(local_path, updates, clear_keys=clear_keys, uncomment=True)
 
-    lines = local_path.read_text(encoding="utf-8").splitlines(keepends=True)
+
+def update_global_llm_key(key: str, value: object) -> Path:
+    """Set one key of ``[llm]`` in the global config, and keep its comments.
+
+    Only an active line of *key* is replaced; else the line goes to the end
+    of ``[llm]``.  WHY not a commented line, as ``local.toml`` does: the
+    global template holds several commented examples of one key, for
+    example one ``embed_model`` for each kind of machine, and the comment
+    above each describes it.  A value written over the first example then
+    stood under the text of a different machine.  WHY not
+    ``_toml_editor.set_key``: it writes through ``tomli_w``, which removes
+    every comment of the file.
+
+    Returns the path of the global config.
+
+    Raises:
+        ConfigError: the global config cannot be read, or it is not valid TOML.
+        OSError: the file cannot be written.
+    """
+    path = _ensure_global_config()
+    # Before the edit: a line editor cannot see that a file is not valid
+    # TOML, and it would write more text into it.
+    read_config_file(path)
+    _edit_llm_table(path, {key: value}, clear_keys=None, uncomment=False)
+    return path
+
+
+def _edit_llm_table(
+    path: Path,
+    updates: dict[str, object],
+    *,
+    clear_keys: list[str] | None,
+    uncomment: bool,
+) -> None:
+    """Write *updates* to the ``[llm]`` table of *path* and remove *clear_keys*, line by line.
+
+    The shared editor of ``_update_local_toml`` and
+    ``update_global_llm_key``: it keeps each comment, blank line and other
+    section.  *uncomment* True lets a value replace a commented line of
+    its key (``# key = …``), thus a template default becomes active in its
+    place.  False replaces only an active line.
+    """
+    # A split on "\n" only, not `splitlines`: that splits also on U+0085,
+    # U+2028 and U+2029, which `tomli_w` keeps in a string value.  Before,
+    # the next write replaced a part of such a line, and the rest made the
+    # file not valid TOML.  `read_text` already gives "\n" for "\r\n".
+    original_text = path.read_text(encoding="utf-8")
+    lines = re.findall(r"[^\n]*\n|[^\n]+\Z", original_text)
+    # A file whose last line has no "\n" (some editors write it so): a key
+    # inserted after that line joined it, and the file was not valid TOML.
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
 
     to_write = {k: v for k, v in updates.items() if v is not None}
     to_clear = set(clear_keys or ())
@@ -1415,20 +2093,20 @@ def _update_local_toml(
 
     if llm_start == -1 and to_write:
         # No [llm] section — append one at the end of the file
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
         lines.append("\n[llm]\n")
         llm_start = len(lines)
         llm_end = len(lines)
 
     # For each key: find and replace existing line, or insert before llm_end.
-    # Regex matches both active and commented-out keys (``# key = value``)
-    # so the user can uncomment a template default by running configure_llm.
+    # With *uncomment*, the regex matches both active and commented-out keys
+    # (``# key = value``) so the user can uncomment a template default by
+    # running configure_llm.
+    key_prefix = r"#?\s*" if uncomment else ""
     for key, value in to_write.items():
         found = False
         for i in range(llm_start, llm_end):
             stripped = lines[i].strip()
-            if re.match(rf"^#?\s*{re.escape(key)}\s*=", stripped):
+            if re.match(rf"^{key_prefix}{re.escape(key)}\s*=", stripped):
                 lines[i] = _format_toml_value(key, value)
                 found = True
                 break
@@ -1436,4 +2114,27 @@ def _update_local_toml(
             lines.insert(llm_end, _format_toml_value(key, value))
             llm_end += 1
 
-    local_path.write_text("".join(lines), encoding="utf-8")
+    # The editor finds the table only by the line "[llm]".  Another form of
+    # the same table (`[llm]  # note`, `["llm"]`, `llm = {…}`, `llm.model =
+    # …`) made it append a second [llm] table, and a removed line of a
+    # multi-line string left its end behind: the file was then not valid
+    # TOML, and `load` refused it.  For the global config that stops each
+    # project of the machine.  Thus the new text must parse, else the file
+    # does not change.
+    new_text = "".join(lines)
+    try:
+        tomllib.loads(new_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(
+            path, f"the edit of [llm] gives text that is not valid TOML ({exc}); the file is not changed",
+        ) from exc
+    if new_text == original_text:
+        return
+    # Atomic: a reader in another process (the MCP server, the daemon) saw
+    # an empty file during a plain write, and cached the defaults.  To the
+    # file that a symlink points to: a rename over the symlink replaced it
+    # with a regular file, and a config that a dotfile manager links was
+    # then no longer linked.
+    from fw_context_mcp.config._toml_editor import _atomic_write
+
+    _atomic_write(path.resolve(), new_text)

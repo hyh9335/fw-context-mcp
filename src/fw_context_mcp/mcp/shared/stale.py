@@ -57,7 +57,7 @@ _MTIME_MATCH_EPS_S: float = 0.001
 # ── Mtime cache ──
 # Cache for _count_modified_files results with a 30-second TTL.
 # Invalidation is done explicitly by _invalidate_modified_cache after
-# write operations (reindex_file_impl, file watcher).  The background
+# write operations (reindex_file, file watcher).  The background
 # reindex is a separate OS process and cannot invalidate this cache;
 # the TTL ensures staleness is bounded to at most 30 seconds.
 #
@@ -72,7 +72,7 @@ _CACHE_TTL_S: float = 30.0  # shared TTL for mtime cache and header staleness ca
 def _invalidate_modified_cache(config_hash: str | None = None) -> None:
     """Invalidate the mtime cache.  If *config_hash* is None, clear all entries.
 
-    NOTE on who calls this: reindex_file_impl and reset_index, both in
+    NOTE on who calls this: reindex_file and reset_index, both in
     mcp/handlers/maintenance.py.  The file watcher does NOT and cannot — it
     reindexes in a subprocess, as the module docstring says — so the TTL is
     the only bound on an edit the daemon picked up.
@@ -91,7 +91,9 @@ def _path_matches_patterns(path: str, patterns: list[str]) -> bool:
 
 
 # ── Structural staleness ──────────────────────────────────────────────────
-# Shared by background._fast_staleness_check and daemon._staleness_check.
+# daemon._staleness_check uses `check_structural_staleness`.  The state of
+# the index in each query answer (`index_state`) uses `quick_structural_reasons`,
+# the part without the count of refs.
 
 
 def check_structural_staleness(
@@ -103,13 +105,46 @@ def check_structural_staleness(
     """Check structural staleness — compile_commands.json, schema, row format, refs.
 
     Returns a list of human-readable reasons the index needs a reindex.
-    These are the checks that both the background reindex trigger and the
-    daemon startup perform — file-level mtime checks are added separately
-    by callers that need them.
+    The check at the start of the daemon (`daemon._staleness_check`) uses
+    these reasons.  It adds the check of each file (the stored hash against
+    the file on disk) and the other reasons itself.
 
     All imports are lazy to avoid circular dependencies at module level.
     """
     from ...config import load as load_config
+
+    reasons = quick_structural_reasons(conn, cfg)
+
+    # 4. Missing refs (and indirect call sites when refs are missing)?
+    # Not in quick_structural_reasons: the count reads each reference row
+    # of the build, and a query answer cannot pay for that.
+    proj_cfg = load_config(root)
+    if proj_cfg.index.index_refs:
+        ref_count = conn.execute(
+            "SELECT COUNT(*) FROM refs WHERE config_hash=?",
+            (config_hash,),
+        ).fetchone()[0]
+        if ref_count == 0:
+            reasons.append("refs missing")
+            ics_count = conn.execute(
+                "SELECT COUNT(*) FROM indirect_call_sites WHERE config_hash=?",
+                (config_hash,),
+            ).fetchone()[0]
+            if ics_count == 0:
+                reasons.append("indirect call sites missing")
+
+    return reasons
+
+
+def quick_structural_reasons(conn, cfg) -> list[str]:
+    """Return the structural reasons of the build *cfg* that cost no scan.
+
+    *cfg* is a ``build_configs`` row.  The checks are one stat of
+    compile_commands.json, the schema version and one column of the row.
+    WHY a function of its own: each query answer gives the state of the
+    index of its build (`index_state.annotate_index_state`), and it can pay
+    for these checks only.
+    """
     from ...indexer.db import (
         CURRENT_ROW_FORMAT,
         CURRENT_SCHEMA_VERSION,
@@ -153,24 +188,21 @@ def check_structural_staleness(
         reasons.append(
             f"row format {stored_format or '(none)'} != {CURRENT_ROW_FORMAT}"
         )
-
-    # 4. Missing refs (and indirect call sites when refs are missing)?
-    proj_cfg = load_config(root)
-    if proj_cfg.index.index_refs:
-        ref_count = conn.execute(
-            "SELECT COUNT(*) FROM refs WHERE config_hash=?",
-            (config_hash,),
-        ).fetchone()[0]
-        if ref_count == 0:
-            reasons.append("refs missing")
-            ics_count = conn.execute(
-                "SELECT COUNT(*) FROM indirect_call_sites WHERE config_hash=?",
-                (config_hash,),
-            ).fetchone()[0]
-            if ics_count == 0:
-                reasons.append("indirect call sites missing")
-
     return reasons
+
+
+def checkout_reason(cfg, live_head: str, root: Path) -> str:
+    """Return the reason "checkout changed" of the build *cfg*, or "".
+
+    *cfg* is a ``build_configs`` row, and *live_head* is the text of the
+    file HEAD of the tree now (`git_context.read_head`).  The daemon and
+    the query answers give the same words for the same fact.
+    """
+    from ...indexer.git_context import head_moved, stored_head
+
+    description = str(cfg["description"] or "") if "description" in cfg.keys() else ""
+    indexed, live = head_moved(stored_head(cfg), description, live_head, root)
+    return f"checkout changed from {indexed} to {live}" if indexed else ""
 
 
 def _stale_files(conn, config_hash: str, file_paths: list[str], root: Path) -> list[str]:
@@ -306,13 +338,27 @@ def _count_modified_files(
     *,
     use_cache: bool = False,
 ) -> int:
-    """Count files whose on-disk mtime is newer than the stored mtime.
+    """Count the indexed files whose content no longer matches the index.
 
-    Files with mtime=0 (pre-migration databases) are skipped — their
-    mtime is unknown, not "modified".
+    The hash decides, for each file: the stored ``source_hash`` against the
+    file on disk.  For a row with a hash, no file time takes part.  In
+    earlier versions, the time was a filter: fw-context did not hash a file
+    whose time was the stored time.  The index run and its content pass do not always
+    write the time of the text that the row describes (a file saved during
+    the parse), and such a row read as unchanged.  To hash every file costs
+    0.02 to 0.12 s on the largest test projects (measured: 1914 files,
+    26.6 MB, and 1453 files, 38.6 MB).
 
-    Deduplicates by resolved absolute path, keeping the maximum stored
-    mtime.  This prevents false positives from duplicate ``files`` rows
+    A row without a hash has only its time, and only one direction is
+    readable from it: newer than the stored time is a change.  Each writer
+    stores a hash now, and the index run gives one to an old header row
+    when the manifest proves it (``_backfill_header_source_hashes``); a row
+    with neither a hash nor a time says nothing about a file that exists.  A
+    file that is gone is a change, for every row: ``_file_differs`` gives the
+    same answers.
+
+    Deduplicates by resolved absolute path, keeping the row with a hash,
+    then the one with the newest stored mtime.  This prevents false positives from duplicate ``files`` rows
     (e.g. one with an absolute path whose mtime was updated and one with
     a relative path whose mtime is stale).
 
@@ -893,6 +939,103 @@ def _check_header_staleness(
     return stale_count, affected
 
 
+def after_the_run(action: str) -> str:
+    """Return the advice to wait for the index run, and then to do *action*.
+
+    The text starts after the article ("an"), thus a caller puts it in the
+    middle of a sentence or at its start.  WHY a reason gives this text when
+    an index run is in progress or scheduled: the command of the reason is
+    often the command that runs, and a caller that follows it asks for the
+    same work a second time.  The run can also leave the reason standing,
+    for example a run that does not build, thus the action stays in the
+    text.
+
+    The text holds no dash and no colon, because a reason can put it after
+    either.
+    """
+    return f"index run is in progress or scheduled; wait for it, and when this reason stays after the run, {action}"
+
+
+def with_action(fact: str, action: str, bg_running: bool) -> str:
+    """Return the sentence *fact* and then *action*, or the advice to wait for the run.
+
+    *action* is an instruction without a subject, in lower case, as
+    ``autobuild.build_advice`` gives it.  See :func:`after_the_run` for the
+    reason to wait.
+    """
+    if bg_running:
+        return f"{fact}. An {after_the_run(action)}."
+    return f"{fact}. {action[0].upper()}{action[1:]}."
+
+
+def outdated_index_fact(conn) -> str | None:
+    """Return the fact of an index that an older version wrote, or None.
+
+    Such an index lacks the columns of this version (`missing_columns`),
+    and a read of a build row fails.  Each entry path of the server asks
+    this before it reads a row: a query, the state of a query, the status
+    tools, the list of the projects and the check at the start of the
+    daemon.  When the daemon starts, that check starts the index run whose
+    `open_db` adds the columns.  WHY a reason and not columns that read as
+    empty: the old rows are not the index of this version, and only a run
+    makes them that.
+    """
+    from ...indexer.db import missing_columns
+
+    missing = missing_columns(conn)
+    if not missing:
+        return None
+    shown = ", ".join(missing[:5]) + (f" and {len(missing) - 5} more" if len(missing) > 5 else "")
+    return f"schema_mismatch: an older version wrote this index; it lacks the columns {shown} of this version"
+
+
+def outdated_index_reason(conn, bg_running: bool) -> str | None:
+    """Return :func:`outdated_index_fact` with its action, or None.
+
+    *bg_running* is the state of an index run of the project, as the
+    caller read it: during a run the reason tells the caller to wait
+    (`with_action`), because a second run would take over the run that
+    adds the columns.
+    """
+    fact = outdated_index_fact(conn)
+    return with_action(fact, "run `fw-context index`", bg_running) if fact else None
+
+
+def latest_builds(conn, project_id: str) -> list:
+    """Return the newest completed build of each ``(variant, image)`` of *project_id*.
+
+    One row for each pair, the build that a query of that pair reads.  An
+    older build of a pair is left behind by an interrupted run, and a build
+    that is still indexing answers no query, thus neither is here.
+    """
+    from ...indexer.db import get_builds_for_scope
+
+    seen: set[tuple[str, str]] = set()
+    rows = []
+    for row in get_builds_for_scope(conn, project_id):
+        pair = (row["variant"] or "", row["image"] or "")
+        if pair not in seen:
+            seen.add(pair)
+            rows.append(row)
+    return rows
+
+
+def build_label(row) -> str:
+    """Return ``variant/image`` of a build row, as the CLI writes it."""
+    return "/".join(part for part in (row["variant"] or "", row["image"] or "") if part)
+
+
+def stored_row_format(row) -> str:
+    """Return the row format that a ``build_configs`` row records.
+
+    An absent column or an empty value gives ``""``.  ``row_format_is_older``
+    reads that as an old format, which asks for the reindex — the safe
+    direction: a reindex costs one run, and text of an unknown meaning costs
+    every answer that quotes it.
+    """
+    return str((row["row_format"] if "row_format" in row.keys() else "") or "")
+
+
 def _with_stale_recovery(
     root: Path,
     db_path: Path,
@@ -960,11 +1103,12 @@ def _with_stale_recovery(
 
     safe_rows, stale_f, dirty, new_sources = executor.execute_sync(_query, config_hash)
 
-    if stale_f or dirty:
+    if stale_f or dirty or new_sources:
         # Kept here, not in annotate_stale: this path knows that the project
-        # has a database, thus _db_path cannot raise.  A new source file does
-        # not start the daemon: only a build repairs that, and the daemon
-        # does not build.
+        # has a database, thus _db_path cannot raise.  A new source file
+        # starts the daemon too: the check at its start finds the file, and
+        # its index run builds it where the backend can build on its own
+        # (`cli._index._plan_auto_build`).
         _ensure_daemon_running(root)
     return annotate_stale(
         safe_rows, stale_f, empty_dirty_count=dirty, empty_new_sources=new_sources
@@ -978,9 +1122,14 @@ def _with_stale_recovery(
 # use the same detection: compare the mtime of every file that the result
 # names against the mtime that the index holds.
 
+# The two texts below give the fact and no action.  The action depends on
+# whether an index run is in progress, and the state of the index in the
+# same answer gives it (`index_state.annotate_index_state`).  WHY: this text
+# said "Background reindex in progress" also when no run was there, and
+# "Run 'fw-context index'" also when a run was about to start.
 STALE_RESULT_MESSAGE = (
-    "Results may be stale — {count} file(s) changed. Background reindex in "
-    "progress. Run 'fw-context index' to force full update."
+    "Results can be out of date — {count} file(s) changed after the last "
+    "index run."
 )
 
 # An empty result names no file, thus the per-record check has nothing to
@@ -991,16 +1140,21 @@ STALE_RESULT_MESSAGE = (
 EMPTY_RESULT_STALE_MESSAGE = (
     "No result, and {count} indexed file(s) changed after the last index run. "
     "What you look for can be in one of them, thus an empty result is not "
-    "proof that it does not exist. Run 'fw-context index'."
+    "proof that it does not exist."
 )
 
 # A file that compile_commands.json does not cover is a stronger case than a
-# changed file, and it needs a different command: only a build writes that
-# file, thus a plain reindex leaves the caller in a circle.
+# changed file: only a build writes that file.  The text names no command:
+# the command depends on the backend.  `--build` fails for a database of the
+# user (`[index] compile_commands`) and for a build that runs in an IDE.
+# The state of the answer (`index_state.annotate_index_state`) and
+# `get_project_status` name it, from one function
+# (`autobuild.build_advice`).
 EMPTY_RESULT_NEW_SOURCE_MESSAGE = (
     "No result, and {count} source file(s) are not in compile_commands.json "
-    "(first: {first}). A plain reindex cannot see them, because they have no "
-    "translation unit. Run `fw-context index --build`."
+    "(first: {first}). They have no translation unit, and only a build adds "
+    "them. When no index run is in progress or scheduled, get_project_status "
+    "names the command that adds them."
 )
 
 # The handlers do not agree on one name for the path of a record, thus a
@@ -1094,7 +1248,12 @@ def annotate_stale(
     A list gets the warning as its first record, which matches the shape that
     ``_with_stale_recovery`` gives.  A dict gets ``stale_warning`` and
     ``stale`` keys instead — a leading record would break the dict contract
-    of the source handlers.
+    of the source handlers.  The record of a list holds ``stale`` too, and
+    the warning about *empty_new_sources* also holds ``unindexed_sources``
+    (the count): the state of the index
+    (`index_state.annotate_index_state`) reads the keys in the two shapes,
+    and it does not parse the text.  WHY a key of its own: such a file did
+    not change, and only a build adds it.
 
     Returns *result* unchanged when no condition holds.
 
@@ -1104,24 +1263,23 @@ def annotate_stale(
     no database — ``_db_path`` raises there, and a warning must never fail
     the query it describes.
     """
+    facts: dict = {"stale": True}
     if stale_files:
         message = STALE_RESULT_MESSAGE.format(count=len(stale_files))
     elif empty_new_sources:
         message = EMPTY_RESULT_NEW_SOURCE_MESSAGE.format(
             count=len(empty_new_sources), first=empty_new_sources[0]
         )
+        facts["unindexed_sources"] = len(empty_new_sources)
     elif empty_dirty_count:
         message = EMPTY_RESULT_STALE_MESSAGE.format(count=empty_dirty_count)
     else:
         return result
 
     if isinstance(result, list):
-        return [{"warning": message}, *result]
+        return [{"warning": message, **facts}, *result]
     if isinstance(result, dict):
-        annotated = dict(result)
-        annotated["stale_warning"] = message
-        annotated["stale"] = True
-        return annotated
+        return {**result, "stale_warning": message, **facts}
     return result
 
 

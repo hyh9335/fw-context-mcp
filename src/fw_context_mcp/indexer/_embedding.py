@@ -26,8 +26,22 @@ from ..llm.embedder_factory import get_embedder
 from ..utils import SAFE_EXCEPT, is_fatal
 from .db import open_db
 from .db._embeddings import _vec_to_blob
+from .db._projects import EMBEDDABLE_KINDS
 
 log = logging.getLogger(__name__)
+
+
+class EmbeddingsIncomplete(RuntimeError):
+    """The embeddings of a build are not complete: the model was not reachable, or batches failed.
+
+    WHY an exception and not only a log line: the embedding step logged a
+    warning and returned, and the run stamped the build as complete.
+    `semantic_search` and `smart_search` then missed symbols, and nothing
+    told the user.  The postprocess step records the exception, the build
+    gets ``manifest_verification = "partial"``, and the status tools ask
+    the LLM to tell the user (`index_state.manifest_reason`).  The text of
+    the exception names the cause.
+    """
 
 
 def _embed_model_key(embed_model: str, embed_bodies: bool) -> str:
@@ -242,8 +256,15 @@ def _build_embeddings(
     * ``upsert_embeddings`` — legacy BLOB table (backward compatibility).
     * ``upsert_embeddings_vec`` — ``sqlite-vec`` vec0 table for KNN search.
 
-    When Ollama is unreachable or returns an error for a batch, a warning is
-    logged and the batch is skipped (non-fatal — remaining batches continue).
+    Raises:
+        EmbeddingsIncomplete: Ollama is not reachable, the model is not
+            installed (``reindex_file`` only), or batches failed after their
+            retries.  A failed batch does not stop the other batches: the
+            exception comes after the last batch, and each written batch is
+            committed.  WHY an exception and not a log line: the run stamps
+            the build ``"partial"`` from it, and the status tools tell the
+            user.  Before, the build looked complete and the search by
+            meaning missed symbols without a word.
     """
 
 
@@ -260,17 +281,23 @@ def _build_embeddings(
         try:
             resp = http_get(llm_config.ollama_url.rstrip("/") + "/api/tags", timeout=5.0)
             resp.raise_for_status()
-        except SAFE_EXCEPT as e:
+        except (httpx.HTTPError, *SAFE_EXCEPT) as e:
+            # httpx.HTTPError: a refused connection and a status error are
+            # not OSError, thus SAFE_EXCEPT alone let them out of the step.
             if is_fatal(e):
                 raise
-            log.warning("Ollama not reachable — skipping embedding generation")
-            return
-        # Model-not-installed guard for reindex_file: warn and skip.
-        # The embedder's HTTP 404 detection + auto-pull handles full indexes —
-        # no separate pull logic needed here.
+            raise EmbeddingsIncomplete(
+                f"Ollama at {llm_config.ollama_url} is not reachable ({e}); no embeddings were written"
+            ) from e
+        # Model-not-installed guard for reindex_file: report and skip.  WHY
+        # the repair names `doctor --fix`: `auto_pull` is off by default,
+        # thus `fw-context index` does not install the model, and the full
+        # check also finds the other causes of a failed embedding step.
         if symbol_ids is not None and not _model_installed(llm_config.ollama_url, llm_config.embed_model):
-            log.warning("Embedding model not installed. Run manual reindex to pull it.")
-            return
+            raise EmbeddingsIncomplete(
+                f"the embedding model {llm_config.embed_model} is not installed; "
+                "run 'fw-context doctor --fix'"
+            )
     model = _embed_model_key(embedder.name, True)
 
     # ── Incremental re-embedding (Phase 0) ──
@@ -311,6 +338,7 @@ def _build_embeddings(
             pass  # content_hash column missing (pre-migration) — fall back to full embed
 
     # ── Phase 1: SELECT symbols to embed (read-only) ──
+    kind_placeholders = ", ".join("?" * len(EMBEDDABLE_KINDS))
     if symbol_ids:
         id_placeholders = ",".join("?" * len(symbol_ids))
         rows = conn.execute(
@@ -321,25 +349,23 @@ def _build_embeddings(
                 WHERE s.config_hash = ?
                   AND s.is_definition = 1
                   AND s.id IN ({id_placeholders})
-                  AND s.kind IN ('function', 'method', 'constructor', 'destructor',
-                                'class', 'struct', 'union', 'typedef', 'enum', 'varglobal')
+                  AND s.kind IN ({kind_placeholders})
                 ORDER BY CASE WHEN s.docstring IS NOT NULL AND LENGTH(s.docstring) > 30
                           THEN 0 ELSE 1 END""",
-            (config_hash, *symbol_ids),
+            (config_hash, *symbol_ids, *EMBEDDABLE_KINDS),
         ).fetchall()
     else:
         rows = conn.execute(
-            """SELECT s.id, s.name, s.qualified_name, s.kind, s.file_path,
-                      s.signature, s.is_definition, s.docstring, s.summary,
-                      s.source, s.is_project
-               FROM symbols s
-               WHERE s.config_hash = ?
-                 AND s.is_definition = 1
-                 AND s.kind IN ('function', 'method', 'constructor', 'destructor',
-                               'class', 'struct', 'union', 'typedef', 'enum', 'varglobal')
-               ORDER BY CASE WHEN s.docstring IS NOT NULL AND LENGTH(s.docstring) > 30
-                         THEN 0 ELSE 1 END""",
-            (config_hash,),
+            f"""SELECT s.id, s.name, s.qualified_name, s.kind, s.file_path,
+                       s.signature, s.is_definition, s.docstring, s.summary,
+                       s.source, s.is_project
+                FROM symbols s
+                WHERE s.config_hash = ?
+                  AND s.is_definition = 1
+                  AND s.kind IN ({kind_placeholders})
+                ORDER BY CASE WHEN s.docstring IS NOT NULL AND LENGTH(s.docstring) > 30
+                          THEN 0 ELSE 1 END""",
+            (config_hash, *EMBEDDABLE_KINDS),
         ).fetchall()
     if not rows:
         log.info("No definition symbols to embed (model=%s)", model)
@@ -521,6 +547,10 @@ def _build_embeddings(
 
     _phase2_idx = 0
     batch_num = 0
+    # The batches that failed after their retries, and the last error: the
+    # other batches are stored, and the step then reports what is missing.
+    failed_batches = 0
+    last_failure: BaseException | None = None
     _done_ids: set[int] = set()
     while _phase2_idx < len(desc_rows):
         batch: list[tuple] = []
@@ -552,6 +582,8 @@ def _build_embeddings(
         if embs is None:
             elapsed = time.monotonic() - t0
             log.warning("[%d] embedding batch failed %s: %s", batch_num, _fmt_dur(elapsed), _last_exc)
+            failed_batches += 1
+            last_failure = _last_exc
             continue
 
         if embedding_dim is None and embs:
@@ -587,6 +619,10 @@ def _build_embeddings(
                 batch_num = 0
                 _phase2_idx = 0
                 _done_ids.clear()
+                # The restart embeds each row again: a batch that failed
+                # before it is not missing after it.
+                failed_batches = 0
+                last_failure = None
                 log.info("Restarting embeddings with new dimension %d...", embedding_dim)
                 continue
             else:
@@ -648,6 +684,10 @@ def _build_embeddings(
         pass
 
     log.info("Embeddings stored: %d embedding rows (model=%s)", total, model)
+    if failed_batches:
+        raise EmbeddingsIncomplete(
+            f"{failed_batches} embedding batch(es) failed ({last_failure}); the other embeddings were written"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -166,6 +166,286 @@ def _plan_auto_build(
     )
 
 
+def _checked_build(conn, project_root: Path, cfg):
+    """Return the build that the checks of an index run read, or None without one.
+
+    One build (``active_build``): the application of a build of several
+    images, else the newest build.  The newest build only when no build
+    system names the application: the newest one is the program that the
+    last run did last, a bootloader after a failed application.  The MCP
+    server checks every build (``get_project_status``).
+    """
+    from ..config import derive_project_id
+    from ..indexer.db import get_active_config
+    from ..mcp.shared.variants import active_build
+
+    project_id = derive_project_id(project_root)
+    row, _refusal = active_build(conn, project_id, cfg, project_root)
+    return row if row is not None else get_active_config(conn, project_id)
+
+
+def _indexed_compile_commands(project_root: Path, db_path: Path) -> Path | None:
+    """Give the compile_commands.json of the active index, or None without one.
+
+    ``build.checked_compile_commands`` needs it: only the file that the
+    index came from is checked.  A database that cannot be read counts as no
+    index; the run that opens it next gives the real error.
+    """
+    if not db_path.exists():
+        return None
+    from ..config import load as load_config
+    from ..indexer.db import open_db
+
+    try:
+        conn = open_db(db_path)
+    except SAFE_EXCEPT:
+        log.debug("could not read the active compile_commands.json", exc_info=True)
+        return None
+    try:
+        active = _checked_build(conn, project_root, load_config(project_root=project_root))
+    finally:
+        conn.close()
+    if not active or not active["compile_commands_path"]:
+        return None
+    return Path(active["compile_commands_path"])
+
+
+def _build_if_missing(
+    args: argparse.Namespace, project_root: Path, cfg, detected_system: str | None,
+    indexed: Path | None,
+) -> None:
+    """Turn ``--build`` on when a build directory of the default compile_commands.json is gone.
+
+    *indexed* is the file of the active index (``_indexed_compile_commands``).
+    A missing compile_commands.json is not handled here: the default path of
+    ``_resolve_compile_commands`` builds then, in the build directory of the
+    user, and it gives its own error when it cannot.  When fw-context cannot
+    run the build of the project (a stub such as STM32CubeIDE, see
+    ``build.can_run_build``), nothing is turned on, and
+    ``_refuse_without_build`` stops the run.
+    """
+    from ..indexer.build import can_run_build, checked_compile_commands
+
+    cc = checked_compile_commands(project_root, cfg, indexed)
+    if cc is None or not cc.exists():
+        return
+    reason = autobuild.build_missing_reason(cc)
+    if reason and can_run_build(cfg.build, cfg.build.system or detected_system):
+        args.build = True
+        print(f"{reason} — running the build (--build)", file=sys.stderr)
+
+
+def _refuse_without_build(
+    project_root: Path, cfg, detected_system: str | None, indexed: Path | None,
+    *, at_the_end: bool = False,
+) -> str:
+    """Give the error that stops a run whose build is not there, or "".
+
+    Called when the run builds nothing, and at the end of a run that ended
+    well (*at_the_end*).  *indexed* is the file of the active index.  Before
+    the run, a missing compile_commands.json is left to
+    ``_resolve_compile_commands``, which builds or gives its own error.  At
+    the end, nothing builds any more, and a build of fw-context keeps its
+    database in its output directory, thus a missing database is a build
+    that went away during the run.  The text names what the user must do: a
+    build that fw-context can run is ``fw-context index --build``; any other
+    build runs outside of fw-context (an IDE), and ``fw-context index``
+    follows it.
+    """
+    from ..indexer.build import can_run_build, checked_compile_commands
+
+    cc = checked_compile_commands(project_root, cfg, indexed)
+    if cc is None or (not at_the_end and not cc.exists()):
+        return ""
+    reason = autobuild.build_missing_reason(cc)
+    if not reason:
+        return ""
+    if can_run_build(cfg.build, cfg.build.system or detected_system):
+        return (f"{reason}. fw-context does not index without the build, because each unit would get "
+                "no answer of its compiler. Run 'fw-context index --build'.")
+    return (f"{reason}, and fw-context cannot run the build of this project. fw-context does not "
+            "index without the build. Run the build outside of fw-context (for example in the "
+            "IDE), then run 'fw-context index'.")
+
+
+def _run_selects(row, args: argparse.Namespace | None, has_variants: bool) -> bool:
+    """Say whether a run with *args* indexes the build of *row* (``--variant``, ``--variants``, ``--image``, ``--exclude-image``).
+
+    The same filters as ``_select_variants`` and ``_filter_images``:
+    ``--variant`` wins over ``--variants``, and a project without variants
+    (*has_variants* False) ignores both, as its run does.
+    """
+    if args is None:
+        return True
+    variant = str(row["variant"] or "")
+    image = str(row["image"] or "")
+    requested: set[str] | None = None
+    if has_variants and getattr(args, "variant", None):
+        requested = {args.variant}
+    elif has_variants and getattr(args, "variants", None):
+        requested = {v.strip() for v in args.variants.split(",") if v.strip()}
+    if requested is not None and variant not in requested:
+        return False
+    if getattr(args, "image", None) and image != args.image:
+        return False
+    return not (image and image in set(getattr(args, "exclude_image", None) or []))
+
+
+def _checkout_moves(
+    conn: sqlite3.Connection, project_id: str, project_root: Path, args: argparse.Namespace | None = None,
+) -> list[tuple[str, str, str]]:
+    """Return ``(build label, indexed checkout, live checkout)`` for each build of another checkout.
+
+    Each completed build that a run with *args* indexes (all of them
+    without *args*), compared with the HEAD of the tree
+    (``git_context.head_moved``).  WHY only those: a run of one image
+    builds and records that image, and a build that the run leaves out
+    kept the old checkout.  It started the build of the next run of that
+    image again, and again, without end.
+    """
+    from ..indexer.git_context import head_moved, read_head, stored_head
+    from ..mcp.shared.stale import build_label, latest_builds
+
+    live = read_head(project_root)
+    rows = latest_builds(conn, project_id)
+    # A build with a variant name means a project with variants.
+    has_variants = any(row["variant"] for row in rows)
+    moves = []
+    for row in rows:
+        if not _run_selects(row, args, has_variants):
+            continue
+        description = str(row["description"] or "") if "description" in row.keys() else ""
+        indexed, now = head_moved(stored_head(row), description, live, project_root)
+        if indexed:
+            moves.append((build_label(row), indexed, now))
+    return moves
+
+
+def _records_checkout(
+    args: argparse.Namespace, cfg, detected_system: str | None, project_root: Path, project_id: str,
+    db_path: Path, explicit_cc: bool,
+) -> bool:
+    """Say whether this run records the checkout of the tree on its builds (``runner.run``).
+
+    True when one of these is true:
+
+    * the run builds (``--build``, or the plan turned it on);
+    * no build of the run has another checkout;
+    * fw-context does not make the database (the user gives it, or
+      fw-context cannot run the build: a stub such as STM32CubeIDE, or a
+      build system that no builder knows), and the user started the run.
+      No run of fw-context can build that database, thus only the user
+      can give the database of the new checkout, and a run of the user
+      says that the user did.  A database from CI or from git keeps an
+      older time, thus the time of the file cannot decide for the user;
+    * fw-context does not make the database, the run is in the background
+      (the daemon), and the database is newer than the checkout
+      (:func:`_database_after_checkout`).
+      The daemon starts a run for each change after a checkout, also
+      before the user builds again.
+
+    False after a checkout that this run does not build, for a database
+    that fw-context makes: compile_commands.json still belongs to the old
+    checkout, and the
+    recorded checkout keeps the reason in each answer until a build.
+    Before this rule a plain run recorded the new branch and the reason
+    went away, while the index still read the old database.  That was also
+    true for a database that fw-context does not make: each plain run, the
+    run of the daemon too, recorded the checkout.  And for a build system
+    that no builder knows, no run recorded it, thus the reason never went
+    away.
+
+    A project of variants records only the builds that the run made
+    (``built_pairs`` in ``_run_multi``): each variant reads its own
+    database, and a file of the user is not one of them.  A run that builds
+    on another path (a missing or stale database) records the build that it
+    made (``args.build_ran``, see ``_run_single`` and ``_run_multi``).
+    """
+    from ..indexer.build import can_run_build, default_compile_commands
+
+    if getattr(args, "build", False) or not db_path.exists():
+        return True
+    from ..indexer.db import open_db
+
+    conn = open_db(db_path)
+    try:
+        moved = _checkout_moves(conn, project_id, project_root, args)
+    finally:
+        conn.close()
+    if not moved:
+        return True
+    if cfg.build.variants:
+        return False
+    fw_context_makes_database = not explicit_cc and can_run_build(
+        cfg.build, cfg.build.system or detected_system,
+    )
+    if fw_context_makes_database:
+        return False
+    if not getattr(args, "background", False):
+        return True
+    given = getattr(args, "compile_commands", None)
+    if given:
+        database = Path(given) if Path(given).is_absolute() else (project_root / given).resolve()
+    else:
+        database = default_compile_commands(project_root, cfg)
+    return _database_after_checkout(database, project_root)
+
+
+def _database_after_checkout(database: Path, project_root: Path) -> bool:
+    """Say whether *database* is newer than the last checkout of the tree at *project_root*.
+
+    The time of the file HEAD is the time of the last checkout: git writes
+    HEAD for a checkout, and a commit on a branch changes the branch and not
+    HEAD.  A rebase, a commit on a detached HEAD and a checkout of the same
+    branch also write HEAD: the answer is then False until the user builds
+    again, and the reason stays longer than necessary, never shorter.
+
+    WHY ``>`` and not ``>=``: on a file system with a coarse time (FAT has 2
+    s), a database written just before the checkout can have the same time.
+    WHY ``lstat``: with ``core.preferSymlinkRefs`` HEAD is a link to the ref
+    of the branch, and each commit changes the time of that ref.
+
+    A tree without git has no checkout, thus True.  A database or a HEAD
+    that cannot be read answers False, thus the reason stays until the next
+    run.
+    """
+    from ..indexer.git_context import head_path
+
+    head = head_path(project_root)
+    if head is None:
+        return True
+    try:
+        return database.stat().st_mtime > head.lstat().st_mtime
+    except OSError:
+        return False
+
+
+def _note_build(args: argparse.Namespace) -> None:
+    """Remember that this run built the database that it indexes, on a path other than ``--build``.
+
+    The run then records the checkout of the tree (``_records_checkout``):
+    the database belongs to it.
+    """
+    args.build_ran = True
+
+
+def _may_build_in_background(cfg, detected_system: str | None) -> bool:
+    """Say if a background run may start the build of this project.
+
+    The backend decides, see ``builders.background_build_safe``: it must
+    write its output into the build tree of fw-context, or compile nothing.
+    A ``[build] command`` never may: it runs a build that the user wrote,
+    and fw-context does not know where that build puts its output.
+    """
+    from ..indexer.builders import background_build_safe, registry
+
+    if cfg.build.command:
+        return False
+    system = cfg.build.system or detected_system
+    builder_cls = registry.get(system) if system else None
+    return builder_cls is not None and background_build_safe(builder_cls(), cfg.build)
+
+
 def _resolve_compile_commands(
     args: argparse.Namespace,
     project_root: Path,
@@ -192,15 +472,12 @@ def _resolve_compile_commands(
     explicit_cc = bool(args.compile_commands)
 
     if args.build:
-        # `--background` means "skip the build" for a run that a user did not
-        # ask for, because a build competes for the CPU and for the output
-        # directory.  One case earns an exception: fw-context turned the
-        # build on itself, after it found a source file that
-        # compile_commands.json does not cover, and only a build can repair
-        # that.  It is allowed only with an isolated output directory, which
-        # `_plan_auto_build` grants to a backend that keeps its artifacts
-        # apart from the ones of the build of the user.
-        if bg and not cfg.build.isolated_build_dir:
+        # A background run builds only with a backend that may build on its
+        # own (`builders.background_build_safe`): fw-context turned the build
+        # on itself, after it found a missing build, a source file that
+        # compile_commands.json does not cover, or another checkout, and the
+        # user did not ask for it.
+        if bg and not _may_build_in_background(cfg, detected_system):
             print("error: --build and --background are mutually exclusive", file=sys.stderr)
             return None, False
         from ..indexer.build import generate_compile_commands
@@ -871,11 +1148,111 @@ def cmd_index(args: argparse.Namespace) -> int:
     project_id = derive_project_id(project_root)
     db_path = cfg.index.db_dir / project_id / "index.db"
 
-    # ── Automatic build for a source file that the build system never saw ──
-    # Such a file has no translation unit, thus a plain reindex skips it and
-    # reports success.  Only a build writes it into compile_commands.json.
-    # `_plan_auto_build` returns a non-empty list only when the backend can
-    # build without touching the output of the build of the user.
+    # A retired key stops the run before any build.  Each build goes to
+    # .fw-context/build/<variant>/out, and a config that still names another
+    # directory says something that the build does not do.  The marker gives
+    # the same text to each MCP answer, because a background run has no
+    # terminal.
+    from ..indexer.build import retired_build_dir_keys
+
+    retired = retired_build_dir_keys(cfg.build)
+    if retired:
+        text = (
+            f"{', '.join(retired)} in .fw-context/config.toml has no effect: each build "
+            "goes to .fw-context/build/<variant>/out. Remove the key, then run "
+            "'fw-context index --build'."
+        )
+        print(f"error: {text}", file=sys.stderr)
+        autobuild.record_problem(db_path.parent, text)
+        return 1
+
+    # A wrong [index] transient_defines also stops the run before any build:
+    # an entry that matches no macro makes each build parse each unit again.
+    from ..config.settings import transient_defines_problems
+
+    problems = transient_defines_problems(cfg)
+    if problems:
+        # Each text of the marker names the command that comes after the
+        # repair: the status tools and the query answers give it as is.
+        text = (
+            "; ".join(problems)
+            + ". Correct .fw-context/config.toml or the global config, then run 'fw-context index'."
+        )
+        print(f"error: {text}", file=sys.stderr)
+        autobuild.record_problem(db_path.parent, text)
+        return 1
+
+    # Each variant builds its own database, thus [index] compile_commands
+    # with a database of the user would have no effect for them: an error,
+    # and not a file that the run ignores without a word.
+    from ..indexer.build import explicit_compile_commands, user_database
+
+    if cfg.build.variants and user_database(project_root, cfg) is not None:
+        text = (
+            "[index] compile_commands names a database of your own, and [[build.variants]] build "
+            "their own databases. Remove one of the two from .fw-context/config.toml, then run "
+            "'fw-context index'."
+        )
+        print(f"error: {text}", file=sys.stderr)
+        autobuild.record_problem(db_path.parent, text)
+        return 1
+
+    # A project file that holds more than one build (each [env:<name>] of
+    # platformio.ini) gives one variant for each, when the config declares
+    # none.  The build system answers, thus the set is the set that its
+    # build makes.  An explicit compile_commands.json (on the command line,
+    # or in [index] compile_commands) and a [build] command name their build
+    # themselves.
+    if (
+        not cfg.build.variants and not cfg.build.command
+        and not getattr(args, "compile_commands", None)
+        and explicit_compile_commands(project_root, cfg) is None
+    ):
+        from ..indexer.builders import implicit_variants
+        from ..indexer.builders import registry as builder_registry
+
+        builder_cls = builder_registry.get(detected_system) if detected_system else None
+        try:
+            found = implicit_variants(builder_cls() if builder_cls else None, project_root, cfg.build)
+        except (RuntimeError, OSError) as exc:
+            # OSError: the program of [build] python or of pio is not there.
+            # The command comes before the error: the error can hold the
+            # output of the build system, and the command must not read as
+            # a part of it.
+            text = (
+                "cannot list the builds of the project. Repair the cause, then run "
+                f"'fw-context index'. The error:\n{exc}"
+            )
+            print(f"error: {text}", file=sys.stderr)
+            autobuild.record_problem(db_path.parent, text)
+            return 1
+        if found:
+            cfg.build.variants = found
+            print(f"The project builds {len(found)} variants: {', '.join(v.name for v in found)}")
+
+    # A compile_commands.json that the user names is the input of this run.
+    # No automatic build may replace it: `--build` comes before the explicit
+    # file in `_resolve_compile_commands`, thus a build would drop the file.
+    # The user names it on the command line, or in [index] compile_commands
+    # for a build that fw-context can run (`build.user_database`).
+    explicit_cc = bool(getattr(args, "compile_commands", None)) or user_database(project_root, cfg) is not None
+    # The file of the active index: only the build of that file is checked
+    # (`build.checked_compile_commands`).
+    indexed_cc = _indexed_compile_commands(project_root, db_path)
+
+    # ── A run of the user without a build: build first ──
+    # The run asks the compiler of each unit in the build directory, thus a
+    # missing build gives units without the answer of the compiler.  The
+    # user started this run, thus it builds as `--build` does.  A background
+    # run takes the path below, which builds only with a backend that may
+    # build on its own.
+    if not bg and not getattr(args, "build", False) and not explicit_cc and not cfg.build.variants:
+        _build_if_missing(args, project_root, cfg, detected_system, indexed_cc)
+
+    # ── Automatic build: a missing build, a source that the build never saw,
+    # or another checkout ──
+    # A plain reindex cannot repair any of them.  `_plan_auto_build` returns
+    # a non-empty list only when the backend may build on its own.
     auto_build_sources: list[str] = []
     if not getattr(args, "build", False):
         auto_build_sources, auto_build_cfg, auto_build_reason = _plan_auto_build(
@@ -944,6 +1321,45 @@ def cmd_index(args: argparse.Namespace) -> int:
         elif auto_build_sources:
             autobuild.record_failure(db_path.parent, auto_build_sources)
         return exit_code
+
+    # The run ended well, but the check is done again and not taken from
+    # its start: another run can refuse, and write its marker, while this
+    # one runs, and the build can go away meanwhile.  A plain clear would
+    # then remove a true warning.  The file of the index is read again,
+    # because this run wrote it.
+    refusal = "" if explicit_cc else _refuse_without_build(
+        project_root, cfg, detected_system, _indexed_compile_commands(project_root, db_path),
+        at_the_end=True,
+    )
+    if refusal:
+        autobuild.record_problem(db_path.parent, refusal, build_missing=True)
+    else:
+        autobuild.clear_problem(db_path.parent)
+
+    if not multi and getattr(args, "build", False):
+        _record_still_uncovered(project_root, db_path, cfg)
+
+    _ensure_watcher_after_index(project_root)
+    return 0
+
+
+
+def _run_single(
+    args: argparse.Namespace,
+    cfg,
+    project_root: Path,
+    project_id: str,
+    db_path: Path,
+    detected_system: str | None,
+    bg: bool,
+    run_kwargs: dict,
+) -> int:
+    """Build (when needed), validate and index the single ``[build]``.
+
+    Called ONLY inside _owned_index — the build writes the files the index
+    run reads, so it has to be excluded the same way the indexing is.
+    """
+    from ..indexer.runner import IndexStopped, run
 
     # ── Resolve compile_commands.json ──
     cc_result = _resolve_compile_commands(args, project_root, cfg, detected_system, bg)
@@ -1016,7 +1432,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     return 0
 
 
-def _record_still_uncovered(project_root: Path, db_path: Path) -> None:
+def _record_still_uncovered(project_root: Path, db_path: Path, cfg) -> None:
     """Remember the sources a build ran for and still did not cover.
 
     Called only after a run that built.  What is left uncovered then is not
@@ -1034,16 +1450,22 @@ def _record_still_uncovered(project_root: Path, db_path: Path) -> None:
 
     Best-effort: a marker that cannot be written costs one repeated report,
     never a wrong answer, thus no failure here may break the index run.
+
+    The build is the one that the status tools check for new sources
+    (`_checked_build`, the application of a build of several images).  The
+    newest build was the program that the run did last, for example the
+    bootloader of `--image bootloader`: a file of the bootloader that the
+    application does not compile then stayed out of the marker, and the
+    status reported it as a new source after each build.
     """
-    from ..config import derive_project_id
-    from ..indexer.db import get_active_config, open_db
+    from ..indexer.db import open_db
     from ..mcp.shared.stale import find_unindexed_sources
     from ..utils import compute_source_hash
 
     try:
         conn = open_db(db_path)
         try:
-            active = get_active_config(conn, derive_project_id(project_root))
+            active = _checked_build(conn, project_root, cfg)
             if not active or not active["compile_commands_path"]:
                 return
             # limit=None, and that is not a detail.  record_excluded

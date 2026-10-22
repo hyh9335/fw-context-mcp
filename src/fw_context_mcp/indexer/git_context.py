@@ -138,3 +138,40 @@ def branch_moved_since(description: str, project_root: Path) -> tuple[str, str]:
     if not current or current == indexed:
         return "", ""
     return indexed, current
+
+
+def read_head(project_root: Path) -> str:
+    """Return the checkout of the tree at *project_root*: the text of the file HEAD, or "" without git.
+
+    ``ref: refs/heads/<branch>`` on a branch, the SHA of the commit on a
+    detached HEAD (a checkout of a tag or of a commit).  WHY the text of
+    the file and not the commit: a commit on a branch changes the branch
+    and not HEAD, and it changes no file of the tree that the watcher does
+    not see.  A checkout changes HEAD, and a checkout makes
+    compile_commands.json of the old tree wrong.
+
+    Two cases where HEAD moves without a checkout:
+
+    * A rebase detaches HEAD and moves it to each commit that it makes.
+      While it runs, the answer is the branch that git names in
+      ``head-name`` of its state directory: the branch that the rebase
+      updates when it ends.  The changed files reach the index as the files
+      of a commit do.
+    * A commit on a detached HEAD moves it to the new commit.
+      :func:`head_moved` reads the reflog of HEAD for that case.
+    """
+    path = head_path(project_root)
+    if path is None:
+        return ""
+    for name in _REBASE_DIRS:
+        try:
+            rebased = (path.parent / name / "head-name").read_text(encoding=_GIT_ENCODING).strip()
+        except (OSError, UnicodeDecodeError):
+            continue
+        # A rebase of a detached HEAD writes "detached HEAD": no branch.
+        if rebased.startswith("refs/"):
+            return _REF_PREFIX + rebased
+    try:
+        return path.read_text(encoding=_GIT_ENCODING).strip()
+    except (OSError, UnicodeDecodeError):
+        return ""

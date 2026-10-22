@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 
 from .protocol import BuildSystem
+from ._linker import LinkRecord
 
 log = logging.getLogger(__name__)
 
@@ -163,3 +164,127 @@ from . import makefile  # noqa: F401, E402, I001
 # Keil MDK and IAR EWARM via keil2clangd
 from . import keil  # noqa: F401, E402, I001
 from . import iar  # noqa: F401, E402, I001
+
+
+def output_compile_commands(builder: BuildSystem | None, out_dir: Path, cfg) -> dict[str, Path]:
+    """Return the compilation databases that the build in *out_dir* produced.
+
+    The key is the image name, and "" names the only program of a build that
+    makes one.  Only files that exist are in the result, thus an empty result
+    means that the build is not there.  *cfg* is the ``BuildConfig`` of the
+    build, because the configuration selects the command, and the command
+    selects where the database is (``west build`` or ``west build
+    --sysbuild``).
+
+    ``output_compile_commands`` is an OPTIONAL method of a backend, for a
+    build system that puts the database somewhere else than
+    ``out/compile_commands.json``: one database per image (Zephyr sysbuild),
+    or one per environment (PlatformIO).  A backend without the method writes
+    ``out/compile_commands.json``.  The concrete classes implement the
+    ``BuildSystem`` protocol structurally, thus a default on the protocol
+    would never reach them.
+    """
+    from ..build_layout import COMPILE_COMMANDS_NAME
+
+    probe = getattr(builder, "output_compile_commands", None) if builder is not None else None
+    if probe is not None:
+        return dict(probe(out_dir, cfg))
+    single = out_dir / COMPILE_COMMANDS_NAME
+    return {"": single} if single.is_file() else {}
+
+
+def application_database(builder: BuildSystem | None, out_dir: Path) -> Path | None:
+    """Return the database of the application of a build in *out_dir*, or None.
+
+    The checks of ``fw-context index`` read the build whose index read this
+    database (``mcp.shared.variants.active_build``).  No query reads it: a
+    query names its image.  ``application_database`` is an
+    OPTIONAL method of a backend whose build makes the application and other
+    programs of lower rank: ESP-IDF makes the application and its
+    bootloader, and a Zephyr sysbuild names its default image in
+    ``domains.yaml``.  None when the backend does not name one.  The
+    database need not exist: ESP-IDF answers
+    with a path alone, thus the answer holds while a clean build has removed
+    *out_dir*.
+    """
+    probe = getattr(builder, "application_database", None) if builder is not None else None
+    if probe is None:
+        return None
+    # A backend can answer None for one build: Zephyr without sysbuild.
+    database = probe(out_dir)
+    return Path(database) if database is not None else None
+
+
+def implicit_variants(builder: BuildSystem | None, project_root: Path, cfg) -> list:
+    """Return the variants that the project file of the build system declares.
+
+    ``implicit_variants`` is an OPTIONAL method of a backend whose project
+    file holds more than one build: each ``[env:<name>]`` of
+    ``platformio.ini`` is a build of its own.  The caller asks only for a
+    project without ``[[build.variants]]``.  The method returns a list of
+    ``BuildVariant``, an empty list for one build, and it raises
+    RuntimeError when the build system cannot answer.  It may also set the
+    one build on *cfg*, as the PlatformIO backend sets ``environment``.
+    """
+    probe = getattr(builder, "implicit_variants", None) if builder is not None else None
+    if probe is None:
+        return []
+    return list(probe(project_root, cfg))
+
+
+def link_record(
+    builder: BuildSystem | None,
+    project_root: Path,
+    *,
+    compile_commands: Path | None = None,
+    variant: str = "",
+    units: list | None = None,
+) -> LinkRecord | None:
+    """Return what *builder* knows about the link of this build, or None.
+
+    None means "the backend does not know", and the pass then keeps the
+    rows of an earlier run.  A record with no script means "the link names
+    no script", and the pass removes them.  `get_linker_scripts` cannot
+    give that difference: its empty list means both.  A database whose
+    build directory holds no `build.ninja` gives an empty list that means
+    "do not know".
+
+    ``get_link_record`` is an OPTIONAL method with the arguments of
+    ``get_linker_scripts``.  It is not on the ``BuildSystem`` protocol, for
+    the same reason that ``build_multi`` is not: only a backend that records
+    the link command has the answer, and a protocol method would make each
+    backend write an empty one.  It also gives the ``--defsym`` definitions,
+    because a linker script can use a name that only the link command
+    defines.
+
+    A backend without the method answers through ``get_linker_scripts``: a
+    non-empty list is a record, and an empty list is None.  A backend that
+    raises, or that answers with a wrong type, gives None.
+    """
+    if builder is None:
+        return None
+    probe = getattr(builder, "get_link_record", None)
+    if probe is None:
+        scripts = linker_scripts(
+            builder, project_root,
+            compile_commands=compile_commands, variant=variant, units=units,
+        )
+        return LinkRecord(scripts=scripts) if scripts else None
+    try:
+        found = probe(
+            project_root,
+            compile_commands=compile_commands,
+            variant=variant,
+            units=units,
+        )
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        log.debug("get_link_record failed for %r", builder, exc_info=True)
+        return None
+    if found is None or not isinstance(found, LinkRecord) or not isinstance(found.defsyms, dict):
+        return None
+    if not all(isinstance(path, Path) for path in found.scripts) or not all(
+        isinstance(name, str) and (expression is None or isinstance(expression, str))
+        for name, expression in found.defsyms.items()
+    ):
+        return None
+    return found

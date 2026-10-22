@@ -29,6 +29,10 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..config.settings import Config
 
 # ── Data model ──────────────────────────────────────────────────────────
 
@@ -89,37 +93,68 @@ def run_full_check(
     """Complete dependency audit.
 
     Checks in dependency order; dependent checks return ``"skipped"``
-    when a prerequisite failed.  Loads config once for Ollama/model checks.
+    when a prerequisite failed.  Loads config once for the checks of
+    ``_NEEDS_CONFIG``.  When that load raises ``ConfigError``, the check
+    ``config`` gives the error, and the checks of ``_NEEDS_CONFIG`` are
+    ``skipped``.
 
     When *subset* is given, only checks whose ``name`` is in *subset* run
     (in ``CHECK_ORDER`` order).  Used by ``get_environment_status`` for the
     ``not_initialized`` path — pip-only checks that do not depend on a
     project config.  Default ``None`` runs the full audit (unchanged for
-    ``doctor``).
+    ``doctor``).  When *subset* holds a check of ``_NEEDS_CONFIG`` and
+    the config does not load, the check ``config`` also runs.  WHY: if
+    not, the subset gives only ``skipped`` rows, and ``exit_code``
+    reports no error.
 
     WHY: Loading config is slow (it triggers TOML parsing and build
     system detection).  Doing it once and sharing across multiple
     checks avoids redundant I/O.
     """
+    from ..config import ConfigError
     from ._checks import CHECK_ORDER
 
     results: list[DepCheckResult] = []
     ctx: dict = {}  # mutable state shared across checks (e.g. cfg)
 
+    def _config_problem() -> ConfigError | None:
+        # One load for all checks.  When the load raises ConfigError, the
+        # loop skips each check that reads the config: the check "config"
+        # reports it.  A different error is not kept: each check that
+        # reads the config then reports it as "check crashed".
+        if "config_problem" not in ctx:
+            try:
+                ctx["cfg"] = load_project_config(project_root)
+                ctx["config_problem"] = None
+            except ConfigError as exc:
+                ctx["config_problem"] = exc
+        return ctx["config_problem"]
+
+    def _config_row_is_necessary() -> bool:
+        # A subset that skips a check for a config that does not load must
+        # give the row "config" too.  Without it, `doctor --only
+        # db-integrity` gave "All checks passed." and exit code 0.
+        return subset is not None and bool(subset & _NEEDS_CONFIG) and _config_problem() is not None
+
     for name, fn in CHECK_ORDER:
-        if subset is not None and name not in subset:
+        if subset is not None and name not in subset and name != "config":
             continue
         try:
-            if name in ("ollama", "chat-model", "embed-model"):
-                if "cfg" not in ctx:
-                    from ..config import load as load_config
-                    from ..utils import resolve_project_root
-
-                    try:
-                        root = resolve_project_root(str(project_root) if project_root else None)
-                    except OSError:
-                        root = None
-                    ctx["cfg"] = load_config(root)
+            if name == "config":
+                # In the try: the load can raise an error that is not a
+                # ConfigError, for example a project name of two projects.
+                # The row "check crashed" then reports it.
+                if subset is not None and name not in subset and not _config_row_is_necessary():
+                    continue
+                r = fn(_config_problem(), project_root)
+            elif name in _NEEDS_CONFIG and (problem := _config_problem()) is not None:
+                r = DepCheckResult(
+                    name=name,
+                    status="skipped",
+                    message=f"the config file {problem.path} cannot be used (check config)",
+                    critical=False,
+                )
+            elif name in ("ollama", "chat-model", "embed-model"):
                 r = fn(ctx["cfg"].llm)
             elif name in ("db-integrity", "disk-space"):
                 r = fn(project_root)
@@ -141,6 +176,32 @@ def run_full_check(
     return results
 
 
+#: The checks that read the config of the project through ``load``.  When
+#: the load raises ``ConfigError``, ``run_full_check`` gives them ``skipped``.
+#: ``obsolete-files`` is not one of them: it catches the error of ``load``,
+#: and it reports a config file that it cannot parse.  A skip hides that
+#: result.
+_NEEDS_CONFIG = frozenset({"ollama", "chat-model", "embed-model", "db-integrity", "disk-space"})
+
+
+def load_project_config(project_root: str | Path | None = None) -> Config:
+    """Load the config of the project of *project_root*, or of the current directory.
+
+    The Ollama checks, the recheck after a fix, and the model pulls of
+    ``doctor --fix`` read it.  WHY one function: the three must read the
+    same config.  A pull that reads a different config can send the model
+    to a different Ollama server.  The recheck then finds the model missing.
+    """
+    from ..config import load as load_config
+    from ..utils import resolve_project_root
+
+    try:
+        root = resolve_project_root(str(project_root) if project_root else None)
+    except OSError:
+        root = None
+    return load_config(root)
+
+
 # ── Fixes ───────────────────────────────────────────────────────────────
 
 
@@ -148,6 +209,7 @@ def run_fixes(
     results: list[DepCheckResult],
     project_root: str | Path | None = None,
     skip_model_pulls: bool = False,
+    fix_config: bool = True,
 ) -> list[DepCheckResult]:
     """Attempt auto-repair for every non-ok result that has a fix.
 
@@ -161,25 +223,65 @@ def run_fixes(
     interactive ``prompt_llm_config`` flow and must never happen without
     consent.  ``doctor --fix`` keeps the default False (unchanged behaviour).
 
+    When *fix_config* is False, the row ``config`` stays as it is: its fix
+    removes values from the config files, ``config.toml`` of the team too.
+    ``fw-context init`` passes False, and ``doctor --fix --only <checks>``
+    passes False when the list does not name ``config``.  Then the row
+    ``config`` only names the error (``run_full_check``).
+
+    The run of the fixes keeps the first ``.bak`` copy of each config file
+    (``housekeeping.one_copy_per_file``).
+
     WHY: A fix may succeed (pip install works) but the installation may
     still be broken (wrong architecture, missing .so dependency).
     Re-checking after every fix gives the user accurate status rather
     than falsely reporting success.
     """
+    from ..housekeeping import one_copy_per_file
+
+    with one_copy_per_file():
+        return _run_fixes(results, project_root, skip_model_pulls=skip_model_pulls, fix_config=fix_config)
+
+
+def _run_fixes(
+    results: list[DepCheckResult],
+    project_root: str | Path | None,
+    *,
+    skip_model_pulls: bool,
+    fix_config: bool,
+) -> list[DepCheckResult]:
+    """The loop of :func:`run_fixes`."""
     from ._fixes import FIXABLE, run_fix
 
     updated: list[DepCheckResult] = []
+    config_fixed = False
     for r in results:
+        if config_fixed and r.status == "skipped" and r.name in _NEEDS_CONFIG:
+            # The check skipped a config that did not load.  After the fix
+            # of "config" it can run, and its own fix can follow.
+            try:
+                r = _recheck(r.name, project_root)
+            except Exception as exc:
+                r = DepCheckResult(name=r.name, status="error", message=f"recheck failed: {exc}", critical=r.critical)
         if skip_model_pulls and r.name in ("chat-model", "embed-model"):
             updated.append(r)  # leave as-is — prompt_llm_config owns model pulls
             continue
-        if r.status in ("ok", "skipped", "error") or r.name not in FIXABLE:
+        if not fix_config and r.name == "config":
+            updated.append(r)
+            continue
+        # An "error" has a fix only when the check gives a fix command:
+        # "config" for a value that the fix can remove.  A row of "config"
+        # without one (a file without write permission) gets no fix either:
+        # the fix only said "fix failed".
+        no_fix = (r.status == "error" or r.name == "config") and not r.fix_cmd
+        if r.status in ("ok", "skipped") or no_fix or r.name not in FIXABLE:
             updated.append(r)
             continue
         ok, msg = run_fix(r.name, r, project_root)
         if ok:
             try:
                 updated.append(_recheck(r.name, project_root))
+                config_fixed = config_fixed or (r.name == "config" and updated[-1].status == "ok")
                 if r.name == "sqlite-vec":
                     _reset_vec_cache()
             except Exception as exc:
@@ -192,12 +294,21 @@ def run_fixes(
                     )
                 )
         else:
+            # The fix of config can remove a part of the values.  The fix
+            # command of the row before the fix then told to run it again,
+            # and the next run removed nothing.
+            fix_cmd = r.fix_cmd
+            if r.name == "config":
+                try:
+                    fix_cmd = _recheck(r.name, project_root).fix_cmd
+                except Exception:
+                    fix_cmd = None
             updated.append(
                 DepCheckResult(
                     name=r.name,
                     status=r.status,
                     message=f"fix failed: {msg}",
-                    fix_cmd=r.fix_cmd,
+                    fix_cmd=fix_cmd,
                     instructions=r.instructions,
                     critical=r.critical,
                 )
@@ -207,7 +318,9 @@ def run_fixes(
 
 def _recheck(name: str, project_root: str | Path | None = None) -> DepCheckResult:
     """Re-run a single check by name after a successful fix."""
+    from ..config import ConfigError
     from ._checks import (
+            check_config,
         check_db_integrity,
         check_disk_space,
         check_libclang_python,
@@ -222,16 +335,16 @@ def _recheck(name: str, project_root: str | Path | None = None) -> DepCheckResul
         check_watchfiles,
     )
 
+    if name == "config":
+        try:
+            load_project_config(project_root)
+        except ConfigError as exc:
+            return check_config(exc, project_root)
+        return check_config(None, project_root)
+
     cfg = None
     if name in ("ollama", "chat-model", "embed-model"):
-        from ..config import load as load_config
-        from ..utils import resolve_project_root
-
-        try:
-            root = resolve_project_root(str(project_root) if project_root else None)
-        except OSError:
-            root = None
-        cfg = load_config(root)
+        cfg = load_project_config(project_root)
 
     _map: dict = {
         "pysqlite3": check_pysqlite3,

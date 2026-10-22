@@ -221,11 +221,20 @@ def watchfiles_instructions(ctx: dict) -> str:
 
 
 def db_integrity_instructions(ctx: dict) -> str:
-    """How to recover from database corruption."""
+    """How to recover when the check cannot read the index database.
+
+    The check gives these instructions only for an error that shows damage
+    (``indexer.db.error_shows_damage``).  WHY the text still names the
+    two cases: a user can also read it for the message of a different tool.
+    A lock or a missing permission does not damage the database, and a
+    delete of such a database removes a good index.
+    """
     return (
-        "The index database is corrupt.  Rebuild:\n"
-        "  fw-context reset_index\n"
-        "  fw-context index --build"
+        "When the message shows damage (for example 'malformed'), delete the\n"
+        "  database with the MCP tool reset_index(confirm=True), then run:\n"
+        "  fw-context index\n"
+        "A lock or a missing permission does not damage the database: repair\n"
+        "that cause, and do not delete the database."
     )
 
 

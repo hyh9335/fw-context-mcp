@@ -68,6 +68,8 @@ import asyncio
 import json
 import logging
 import re
+import shlex
+import sys
 import threading
 import time
 from collections.abc import Generator
@@ -396,9 +398,14 @@ def call_ollama(
                 temperature=temperature,
                 num_predict=num_predict,
             )
-        # fmt == "ollama": use the detected endpoint (may be a remote Ollama)
+        # fmt == "ollama": use the detected endpoint (may be a remote Ollama).
+        # WHY not the raw chat_api_base as the server: the pull of
+        # `auto_pull` went to ".../api/api/pull" for ".../api", and to
+        # ".../api/generate/api/pull" for ".../api/generate".
+        from .chat_router import chat_ollama_server
+
         url = endpoint
-        base_url = cfg.chat_api_base
+        base_url = chat_ollama_server(cfg) or cfg.chat_api_base
     else:
         url = cfg.ollama_url.rstrip("/") + "/api/generate"
         base_url = cfg.ollama_url
@@ -691,6 +698,36 @@ def _parse_parameter_size(size_str: str) -> float:
 
 
 
+def _without_ollama(result: dict, cfg: LLMConfig, ollama_embedding: bool, cause: str, *, server_runs: bool) -> dict:
+    """Complete *result* for an ``ollama_url`` that fw-context cannot use, and return it.
+
+    *cause* is the sentence that tells why: the server does not run, or it
+    does not give the answer of Ollama.  The status depends on what needs
+    Ollama: nothing when the chat goes to an API and the embedding model
+    runs locally.  *server_runs* selects the advice: a server that runs and
+    is not Ollama (a proxy page) needs a correct ``ollama_url``, not a
+    start of Ollama.
+    """
+    result["ollama_running"] = False
+    repair = "Correct ollama_url so that it names an Ollama server" if server_runs else "Install and start Ollama"
+    if cfg.chat_api_base and not ollama_embedding:
+        result["status"] = "ok"
+    elif cfg.chat_api_base:
+        result["status"] = "embedding_unavailable"
+        link = "." if server_runs else ": https://ollama.com"
+        result["message"] = (
+            f"{cause} Chat is configured on an external API, but embedding "
+            f"requires local Ollama. Semantic search is disabled. {repair}{link}"
+        )
+    else:
+        result["status"] = "not_configured"
+        result["message"] = (
+            f"{cause} No chat API is configured. Options: (1) {repair[0].lower()}{repair[1:]}, "
+            "(2) configure a cloud API via the configure_llm tool."
+        )
+    return result
+
+
 def check_setup(cfg: LLMConfig) -> dict:
     """Check LLM backend connectivity and model availability.
 
@@ -707,10 +744,20 @@ def check_setup(cfg: LLMConfig) -> dict:
         ``status`` values:
             - ``"ok"`` — chat and embedding backends ready.
             - ``"disabled"`` — ``cfg.enabled`` is False.
-            - ``"not_configured"`` — Ollama not running and no chat_api_base.
-            - ``"embedding_unavailable"`` — Ollama down but chat on external API.
-            - ``"model_missing"`` — Ollama running but chat model not installed.
-            - ``"error"`` — unexpected error probing Ollama.
+            - ``"not_configured"`` — Ollama cannot be used and no
+              chat_api_base.  Ollama does not run, or ``ollama_url`` names
+              a server that is not Ollama; ``message`` says which.
+            - ``"embedding_unavailable"`` — Ollama cannot be used (as
+              above), chat on external API, and the embedding model is an
+              Ollama model.  With a local embedding model the status is
+              ``"ok"``.
+            - ``"model_missing"`` — Ollama running, and the chat model is not
+              on the Ollama server of the chat calls (``ollama_url``, or the
+              Ollama server of ``chat_api_base``), or the Ollama embedding
+              model is not installed.  ``message`` names the command for
+              each missing model (`ollama_pull_command`).
+            - ``"error"`` — unexpected error probing Ollama, or the Ollama
+              server of ``chat_api_base`` gives no model list.
 
         Common keys: ``chat_api`` (dict), ``ollama_running`` (bool),
         ``installed_models`` (list, when Ollama is up), ``message`` (str),
@@ -747,22 +794,12 @@ def check_setup(cfg: LLMConfig) -> dict:
         resp = http_get(base_url + "/api/tags", timeout=5.0)
         resp.raise_for_status()
     except httpx.ConnectError:
-        result["ollama_running"] = False
-        if cfg.chat_api_base:
-            result["status"] = "embedding_unavailable"
-            result["message"] = (
-                "Ollama is not running. Chat is configured on an external "
-                "API, but embedding requires local Ollama. Semantic search "
-                "will be disabled. Start Ollama: https://ollama.com"
-            )
-        else:
-            result["status"] = "not_configured"
-            result["message"] = (
-                "Ollama is not running and no chat API is configured. "
-                "Options: (1) install and start Ollama, (2) configure a "
-                "cloud API via the configure_llm tool."
-            )
-        return result
+        return _without_ollama(result, cfg, ollama_embedding, "Ollama is not running.", server_runs=False)
+    except httpx.HTTPStatusError as e:
+        # A server answers, with an HTTP error: the same case as the page of
+        # a proxy below, thus the same status and the same advice.
+        cause = f"{base_url}/api/tags gave HTTP {e.response.status_code}, not the model list of Ollama."
+        return _without_ollama(result, cfg, ollama_embedding, cause, server_runs=True)
     except Exception as e:
         result["ollama_running"] = False
         result["status"] = "error"
@@ -770,18 +807,29 @@ def check_setup(cfg: LLMConfig) -> dict:
         return result
 
     # ── Ollama running — check models ──
-    models = resp.json().get("models", [])
+    from ._diag import not_ollama_message, tag_models
+
+    models = tag_models(resp)
+    if models is None:
+        # The same answer as for a server that does not run: a setup that
+        # needs no Ollama (chat on an API, local embeddings) is "ok".
+        return _without_ollama(result, cfg, ollama_embedding, not_ollama_message(cfg.ollama_url), server_runs=True)
     installed = [m["name"] for m in models]
     result["ollama_running"] = True
     result["ollama_url"] = cfg.ollama_url
     result["installed_models"] = installed
     result["num_ctx"] = cfg.num_ctx
+
+    def _details(model: dict) -> dict:
+        details = model.get("details")
+        return details if isinstance(details, dict) else {}
+
     model_details = [
         {
             "name": m["name"],
-            "parameter_size": m.get("details", {}).get("parameter_size", "unknown"),
-            "family": m.get("details", {}).get("family", "unknown"),
-            "quantization": m.get("details", {}).get("quantization_level", "unknown"),
+            "parameter_size": _details(m).get("parameter_size", "unknown"),
+            "family": _details(m).get("family", "unknown"),
+            "quantization": _details(m).get("quantization_level", "unknown"),
         }
         for m in models
     ]
@@ -792,41 +840,52 @@ def check_setup(cfg: LLMConfig) -> dict:
     result["configured_embed_model"] = cfg.embed_model
     result["embedding_installed"] = embed_found
 
-    if cfg.chat_api_base:
-        # Chat goes to external API — Ollama only needs embedding model
-        if embed_found:
-            result["status"] = "ok"
-        else:
-            result["status"] = "model_missing"
-            result["message"] = (
-                f"Embedding model '{cfg.embed_model}' is not installed. Run: ollama pull {cfg.embed_model}"
-            )
-    else:
-        # Chat on Ollama — check chat model too
-        model_found = _check_model_installed(cfg.model, installed)
-        result["configured_model"] = cfg.model
+    # The chat model is on the Ollama server of the chat calls: the server
+    # of ollama_url, or the Ollama server of chat_api_base.  `None`: an
+    # OpenAI-compatible API runs it, and an Ollama server does not have to
+    # hold it.  WHY: with chat_api_base on an Ollama server, the chat calls
+    # go there, and this check did not look for the model at all.
+    # detect_chat_endpoint above already raises ValueError for a format that
+    # is not valid.
+    from ._diag import installed_models
+    from .chat_router import chat_ollama_server
 
-        if model_found and embed_found:
-            result["status"] = "ok"
-        else:
-            result["status"] = "model_missing"
-            messages: list[str] = []
-            if not model_found:
-                messages.append(f"Chat model '{cfg.model}' is not installed. Run: ollama pull {cfg.model}")
-                # If the largest installed model is <7B parameters, suggest cloud API.
-                # Models <7B generally produce poor-quality code analysis;
-                # the operator may want to use an external API instead.
-                max_size = max(
-                    (_parse_parameter_size(md["parameter_size"]) for md in model_details),
-                    default=0.0,
-                )
-                if max_size < 7.0:
-                    result["suggest_cloud"] = True
-            if not embed_found:
-                messages.append(
-                    f"Embedding model '{cfg.embed_model}' is not installed. Run: ollama pull {cfg.embed_model}"
-                )
-            result["message"] = " ".join(messages)
+    chat_server = chat_ollama_server(cfg)
+    messages: list[str] = []
+    chat_models: list[str] | None = []
+    same_server = chat_server is not None and chat_server.rstrip("/") == base_url
+    if chat_server is not None:
+        result["configured_model"] = cfg.model
+        chat_models = installed if same_server else installed_models(chat_server)
+    if chat_models is None:
+        messages.append(f"The Ollama server {chat_server} of chat_api_base gives no model list (/api/tags).")
+    elif chat_server is not None and not _check_model_installed(cfg.model, chat_models):
+        messages.append(
+            f"Chat model '{cfg.model}' is not installed. Run: {ollama_pull_command(cfg.model, chat_server)}"
+        )
+        # If the largest installed model is <7B parameters, suggest cloud API.
+        # Models <7B generally produce poor-quality code analysis;
+        # the operator may want to use an external API instead.
+        # Only the server of ollama_url gives the sizes of its models.
+        max_size = max(
+            (_parse_parameter_size(md["parameter_size"]) for md in model_details),
+            default=0.0,
+        )
+        if same_server and max_size < 7.0:
+            result["suggest_cloud"] = True
+    # The text of the embedding model is also in the message of "error": the
+    # operator reads only `message` for that status.
+    if not embed_found:
+        messages.append(
+            f"Embedding model '{cfg.embed_model}' is not installed. "
+            f"Run: {ollama_pull_command(cfg.embed_model, cfg.ollama_url)}"
+        )
+    if chat_models is None:
+        result["status"] = "error"
+    else:
+        result["status"] = "model_missing" if messages else "ok"
+    if messages:
+        result["message"] = " ".join(messages)
 
     if cfg.debug_log:
         result["debug_log"] = str(cfg.debug_log)
@@ -850,12 +909,35 @@ class ChatApiError(OllamaError):
     """
 
 
+def ollama_pull_command(model: str, url: str, system: str | None = None) -> str:
+    """Return the shell command that pulls *model* onto the Ollama server at *url*.
+
+    The ``ollama`` CLI has no option for the server: it reads
+    ``OLLAMA_HOST``.  The command always sets it, in the syntax of
+    PowerShell on Windows and of a POSIX shell on the other systems.
+    *system* is a value of ``sys.platform``; ``None`` is this system.
+
+    WHY always, also for the default ``ollama_url``: a plain ``ollama pull``
+    uses the ``OLLAMA_HOST`` of the shell of the person.  When that names
+    a different server, the model goes there, and the check still finds
+    it missing.  The process that makes the command cannot know that
+    shell: the MCP server runs in the environment of its client.
+    """
+    if (system or sys.platform) == "win32":
+        # A PowerShell string in single quotes: a quote in it is doubled.
+        host = url.replace("'", "''")
+        name = model.replace("'", "''")
+        return f"$env:OLLAMA_HOST='{host}'; ollama pull '{name}'"
+    return f"OLLAMA_HOST={shlex.quote(url)} ollama pull {shlex.quote(model)}"
+
+
 class OllamaModelNotFoundError(OllamaError):
     """Raised when the requested model is not installed in Ollama.
 
-    The error message includes the exact ``ollama pull`` command to run.
+    The error message includes the exact ``ollama pull`` command to run,
+    for the server at *url* (`ollama_pull_command`).
     """
 
     def __init__(self, model: str, url: str) -> None:
         self.model = model
-        super().__init__(f"Model '{model}' not found in Ollama at {url}. Run: ollama pull {model}")
+        super().__init__(f"Model '{model}' not found in Ollama at {url}. Run: {ollama_pull_command(model, url)}")

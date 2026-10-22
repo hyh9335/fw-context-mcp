@@ -75,10 +75,11 @@ fingerprint dimension is fingerprint-based (W6 / AUD-R5).
 **Variables:** ``find_variables``.
 
 **Maintenance tools:** ``get_active_build``, ``get_environment_status``,
-``check_dependencies``, ``list_projects``, ``list_variants``,
-``get_project_info``, ``check_ollama``, ``configure_llm``,
-``reindex_file``, ``reset_index``.  All of them run under the maintenance
-lock (ADR-006 b) and serialize against in-flight queries.
+``get_project_status``, ``get_build_info``, ``check_dependencies``,
+``list_projects``, ``list_variants``, ``get_project_info``,
+``check_ollama``, ``configure_llm``, ``reindex_file``, ``reset_index``.
+All of them run under the maintenance lock (ADR-006 b) and serialize
+against in-flight queries.
 
 **MCP Resources:** ``fw-context://stats``, ``fw-context://projects``,
 ``fw-context://symbols/{name}``, ``fw-context://skills/fw-review``.
@@ -103,10 +104,12 @@ from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from ..utils import resolve_project_root
+from ..config import ConfigError
+from ..utils import AmbiguousProjectError, resolve_project_root
 from .background import _ensure_daemon_running
 from .handlers import callgraph, conditionals, inheritance, maintenance, search, source, variables, variants
 from .shared.context import _check_server_ready, _integrity_checked
+from .shared.index_state import annotate_index_state
 
 log = logging.getLogger(__name__)
 
@@ -192,7 +195,18 @@ def _error_envelope(result):
     )
 
 
-def _wrap_tool(fn, maintenance: bool = False):
+def _config_error(tool: str, exc: ConfigError) -> list[dict]:
+    """The answer of a tool that stopped on a config file it cannot use.
+
+    WHY not "Internal server error" with a traceback: the cause is a file
+    of the user, not fw-context.  The message names the file and the
+    problem, and the action is to correct the file.
+    """
+    log.warning("Tool %s: %s", tool, exc)
+    return [{"error": str(exc)}]
+
+
+def _wrap_tool(fn, *, maintenance: bool = False, annotate: bool = True):
     """Wrap a tool handler: error boundary + async dispatch + MCP progress.
 
     Sync handlers are dispatched to a background thread via
@@ -217,6 +231,15 @@ def _wrap_tool(fn, maintenance: bool = False):
     can mutate the index must never race a live query), then takes
     ``_MAINT_LOCK`` so two maintenance calls never interleave.  Lock order
     is always ``_SERVER_LOCK`` then ``_MAINT_LOCK``.
+    Each answer of the handler gets the state of the index of its build
+    when that index is not current (``annotate_index_state``): an index
+    run that is active or scheduled, a failed run, or a reason that no run
+    repairs.  It goes here, and not into each handler, because every query
+    tool passes through this wrapper, and a handler that someone adds
+    later gets it too.  ``annotate=False`` leaves it out, for a tool that
+    writes the index and does not answer from it: the state of a reindex
+    told the caller that its answer came from the last index run, and a
+    run that waits told it to repeat the reindex.
 
     **Why two code paths (sync vs async)?**  Sync handlers execute
     blocking SQLite queries and libclang traversal.  Running them on
@@ -316,6 +339,8 @@ def _wrap_tool(fn, maintenance: bool = False):
                         # propagate exactly as a bare handler would (the
                         # finally below releases the slot first).
                         raise exception
+                    if isinstance(exception, ConfigError):
+                        return _config_error(fn.__name__, exception)
                     # ADR-006 (c): raised exceptions leave the wire as
                     # isError=true.  Re-raise and let the MCP layer convert;
                     # the boundary only guarantees the server survives it.
@@ -324,7 +349,11 @@ def _wrap_tool(fn, maintenance: bool = False):
                 result = task.result()
                 if _is_error_payload(result):
                     return _error_envelope(result)
-                return result
+                if not annotate:
+                    return result
+                return await asyncio.to_thread(
+                    annotate_index_state, result, kw
+                )
             finally:
                 _release_slot()
         return _wrapper
@@ -333,9 +362,9 @@ def _wrap_tool(fn, maintenance: bool = False):
     # Dispatched to ``asyncio.to_thread`` so the event loop stays free
     # for progress notifications and the ping thread.
     @functools.wraps(fn, assigned=("__module__", "__name__", "__qualname__", "__doc__"))
-    async def _wrapper(*a, ctx: MCPContext | None = None, **kw):
+    async def _sync_wrapper(*a, ctx: MCPContext | None = None, **kw):
         start = time.monotonic()
-        _wrap_debug(f"[sync] {fn.__name__} ctx={'P' if ctx is not None else 'N'} ann={list(_wrapper.__annotations__.keys())}")
+        _wrap_debug(f"[sync] {fn.__name__} ctx={'P' if ctx is not None else 'N'} ann={list(_sync_wrapper.__annotations__.keys())}")
         try:
             await _acquire_slot(fn.__name__, ctx)
         except TimeoutError:
@@ -383,6 +412,8 @@ def _wrap_tool(fn, maintenance: bool = False):
                     # propagate exactly as a bare handler would (the
                     # finally below releases the slot first).
                     raise exception
+                if isinstance(exception, ConfigError):
+                    return _config_error(fn.__name__, exception)
                 # ADR-006 (c): raised exceptions leave the wire as
                 # isError=true.  Re-raise and let the MCP layer convert;
                 # the boundary only guarantees the server survives it.
@@ -391,7 +422,11 @@ def _wrap_tool(fn, maintenance: bool = False):
             result = task.result()
             if _is_error_payload(result):
                 return _error_envelope(result)
-            return result
+            if not annotate:
+                return result
+            return await asyncio.to_thread(
+                annotate_index_state, result, kw
+            )
         finally:
             _release_slot()
     return _wrapper
@@ -781,7 +816,26 @@ mcp = FastMCP(
         "  That is an answer, not a failure: the code does not compile.\n"
         "• A file can come back with every line blank.  read_file marks it\n"
         "  with all_lines_inactive and a warning.  Such a file holds code,\n"
-        "  and the active build compiles none of it — NOT an empty file.\n\n"
+        "  and that build compiles none of it — NOT an empty file.\n\n"
+        "AN INDEX THAT IS NOT CURRENT.  When the index of the build of a query\n"
+        "is not current, the answer says so: a dict gets `index_state` and\n"
+        "`index_warning`, a list gets a leading row with `warning` and\n"
+        "`index_state`.  The answer then comes from the last index run.  Act\n"
+        "on `index_state`:\n"
+        '• "reindexing" or "pending" — an index run updates the index.  WAIT:\n'
+        "  repeat the call, or call get_project_status after about 30 s.  Use\n"
+        "  the old answer only when the user tells you to continue.  Do not\n"
+        "  start a second index run.\n"
+        '• "not_scheduled" — no index run updates the index.  Tell the user\n'
+        "  the command that the warning names.  When it names none, call\n"
+        "  get_project_status: it names the command.\n"
+        '• "failed" — the last index run failed, because the build is not\n'
+        "  there or the run stopped.  A dict also gets `build_warning`.  Give\n"
+        "  the text to the user: it names the command that repairs it.\n"
+        "No `index_state`: the quick checks of the query found no reason.  They\n"
+        "can miss a changed header, a changed file that the answer does not\n"
+        "name, or a new source file when the answer is not empty.\n"
+        "get_project_status does the full check of each build.\n\n"
         "TOOL SELECTION (pick the right one):\n"
         '• Symbol by exact/prefix name _____ → lookup_symbol (e.g. "uart_", "main")\n'
         '• Symbols by concept/topic _________ → search_code (e.g. "interrupt handler")\n'
@@ -878,6 +932,74 @@ mcp = FastMCP(
         "   call that follows, get_active_build included.\n"
         "Do not invent other parameter names. An unknown argument causes an\n"
         "error that names it.\n\n"
+        "A PROJECT THAT HOLDS SEVERAL BUILDS — one project can hold several\n"
+        "builds on two axes: `variant` is the board, `image` is the program.\n"
+        "A Zephyr project has `app`, `mcuboot` and `stage0`, an ESP-IDF\n"
+        "project has its application and `bootloader`, and a bootloader is\n"
+        "NOT the application.\n"
+        "ONE QUERY ANSWERS FOR ONE BUILD, AND YOU SELECT IT.  A project of\n"
+        "several builds has no active build, and fw-context selects none for\n"
+        "you: no default from the config, no application from the build\n"
+        "system, no completion of a part of a pair.  On a project of more\n"
+        "than one build, give the arguments of one build exactly as the\n"
+        "error lists them: the `variant`, the `image`, or the two.  A query\n"
+        "that names no build, or a part of one, gets an\n"
+        "error that lists each build with the arguments to repeat the call.\n"
+        "An answer that blends a bootloader with an application serves no\n"
+        "question, and two builds of one application repeat nearly every row.\n"
+        "• Select the build from the task.  If the task does not identify one\n"
+        "  build, ask the user.  Do not select a build from its position in a\n"
+        "  list.\n"
+        "• get_project_status lists every build in `builds`, with its state\n"
+        "  and counts.  get_build_info(variant, image) gives the config_hash,\n"
+        "  board, memory map and defines of one build.  Both read the INDEX\n"
+        "  and not only the config, thus a build indexed with --variant is\n"
+        "  listed even when config.toml no longer declares it.\n"
+        "• Pass `variant` and `image` to every tool that answers about code,\n"
+        "  smart_search and semantic_search included.\n"
+        "• To learn whether a symbol is in the bootloader TOO, ask twice, once\n"
+        "  per build.  Two plain answers beat one blended answer.\n"
+        "• reindex_file is not a query: without `variant` and `image` it\n"
+        "  re-parses the file in each build that compiles it.  Give the\n"
+        "  arguments of one build to re-parse only that build.\n\n"
+        "READING PAST THE FIRST PAGE — each tool that can give a long list\n"
+        "pages it, and says how much there is:\n"
+        "• A list answer leads with a page notice and takes an `offset`:\n"
+        "  lookup_symbol, search_code, search_bodies, search_content,\n"
+        "  smart_search, semantic_search, find_callers, find_references,\n"
+        "  find_all_callers_recursive, find_callees_recursive,\n"
+        "  find_indirect_call_sites, find_indirect_targets, find_variables,\n"
+        "  find_dead_code, find_hotspots, find_wrapper_callers,\n"
+        "  trace_data_flow, get_template_instances, get_vector_table.\n"
+        "• A dict answer holds the notice under the key `page`:\n"
+        "  get_class_members, get_file_map with `kind`, and read_file, which\n"
+        "  pages LINES and names the next page with `start_line`, not\n"
+        "  `offset`.  get_inheritance_chain (transitive) has `all_bases_page`\n"
+        "  and `all_derived_page`.\n"
+        "• get_symbol_context and get_source cut each list: `<list>_total`\n"
+        "  counts it, and `<list>_hint` names the tool that pages a cut list.\n"
+        "• smart_search: no offset, or 0, is a NEW search.  A larger offset\n"
+        "  pages the stored answer of the last search of the same query.\n"
+        "• semantic_search: `total_capped: true` means that `total` is a\n"
+        "  lower bound — the search reaches 4096 vector rows at most.\n"
+        "• find_call_path has no pages: the paths cannot be counted.  A\n"
+        "  trailing `info` says when paths can be left out.\n"
+        "The notice is {total, offset, shown, more}, plus `hint` when `more`\n"
+        "is true.  It is ALWAYS\n"
+        "there when the answer holds a row, thus a full page never leaves you\n"
+        "guessing whether more exists.\n"
+        "• Find the notice by its KEYS, not by its position.  A `warning`\n"
+        "  row comes before it when the index is stale, and so does the row\n"
+        "  that reports a query FTS5 could not parse.\n"
+        "• When `more` is true, call again with offset=<offset + shown>.\n"
+        "  The `hint` spells out that call, with each argument that changes\n"
+        "  the answer: the filters, and the project and the build.\n"
+        "• Do NOT conclude \"that is all of them\" from one page.  Read\n"
+        "  `total` — a hot function can have hundreds of call sites, and a\n"
+        "  common name such as `read` can name hundreds of symbols.\n"
+        "• Each order is stable, thus two pages never overlap and never skip\n"
+        "  a row.\n"
+        "• An `info` row that names an offset means you walked past the end.\n\n"
         "PARAMETER NAMES — every tool rejects an unknown argument, thus a guess\n"
         "costs a whole call.  The full schema of each tool is in the tool list.\n"
         "Read it there.  Three names cover almost every tool:\n"
@@ -921,6 +1043,16 @@ mcp = FastMCP(
         '  • status="ready" or "reindexing" — fw-context is fully operational.\n'
         "    bg_reindex_running does NOT mean the index is unavailable. Continue.\n"
         '  • status="reindex_needed" — queries still work, but schedule fw-context index.\n'
+        "→ DECISION after get_project_status():\n"
+        "  • reindex_state of each build in builds — the values of index_state\n"
+        "    above.  null: the index of that build is current.  Continue.\n"
+        '    "reindexing" or "pending": wait.  "not_scheduled" or "failed": tell\n'
+        "    the user the command.  Read it for the build that the task needs.\n"
+        '  • status="ready" or "reindexing" — queries work.  Read reindex_state\n'
+        "    of the build before you continue.\n"
+        '  • status="reindex_needed" — queries still work, and a reason needs a\n'
+        '    command.  It wins over "reindexing".  When bg_reindex_running=True,\n'
+        "    an index run is active or scheduled: do not start a second one.\n"
         "  • client_restart_required=True — NOT a status, and NO command repairs\n"
         "    it. The index holds a newer row format than this session reads, thus\n"
         "    the index is correct and this session is the old reader. Queries keep\n"
@@ -944,7 +1076,37 @@ mcp = FastMCP(
         '    get_active_build() again to confirm status="ready".\n'
         "    NOTE: init and index are NEVER combined — each requires its own\n"
         "    operator confirmation before execution.\n"
-        '  • status="error" — DB corruption or access error. Use other tools.\n\n'
+        '  • status="config_error" — a config file of fw-context cannot be used:\n'
+        "    it cannot be read, it is not UTF-8 or not valid TOML, a section is\n"
+        "    not a table, a key that selects the data or where data goes has a\n"
+        "    value of the wrong type, or a URL is not valid. `config_file` names it,\n"
+        "    and `index_message` gives the problem (for TOML also the line). Tell\n"
+        "    the operator the file and the problem. Do NOT run `fw-context init`\n"
+        "    or `fw-context index`: they cannot repair the file. When\n"
+        "    `index_message` names `fw-context doctor --fix --only config`, that\n"
+        "    command removes each value that cannot be used. Run it, or correct\n"
+        "    the file, only with the approval of the operator, then call\n"
+        "    get_project_status() again.\n"
+        "  • `config_warnings` (a list, with a status other than config_error) —\n"
+        "    values of a config file that fw-context did not use: a lower file\n"
+        "    or the default applies, and the tools work. Tell the operator each\n"
+        "    line. With the approval of the operator, `fw-context doctor --fix\n"
+        "    --only config` removes them.\n"
+        "  • `analysis.complete: false` — the LLM analysis of some symbols is\n"
+        "    missing. The tools work, and they give no llm_analysis for those\n"
+        "    symbols. When `index_message` says that symbols wait for the analysis\n"
+        "    and names `fw-context index`, tell the operator, and run it only\n"
+        "    with the approval of the operator: the LLM can need hours.\n"
+        "  • `index_message` says that definitions have no embedding — the\n"
+        "    search by meaning (semantic_search, smart_search) does not find\n"
+        "    them. Tell the operator the command that the message names.\n"
+        "  • NO status, only `error` — the index holds no build config. There is\n"
+        '    no status="error".\n'
+        '  • The call fails with an error of SQLite (for example "database disk\n'
+        '    image is malformed") — fw-context cannot read the index. Call\n'
+        "    check_dependencies: the message of its check db-integrity tells if the\n"
+        "    database is damaged. Ask the operator before you delete it with\n"
+        "    reset_index.\n\n"
         "REVIEW WORKFLOW — when reviewing C/C++ code changes (per changed symbol):\n"
         "0. find_hotspots(project_only=True) — identify highest-impact functions FIRST.\n"
         "   Prioritize review of hotspots (20+ callers) over leaf functions.\n"
@@ -983,7 +1145,8 @@ mcp = FastMCP(
         "  discovery, fw-context is for IMPACT verification. They complement each\n"
         "  other; neither replaces the other.\n\n"
         "Search: lookup_symbol, search_code, search_bodies (body text),\n"
-        "search_content (full file content), smart_search, semantic_search.\n"
+        "search_content (full file content), smart_search, semantic_search,\n"
+        "find_variables.\n"
         "Call graph: find_callers, find_references, find_call_path,\n"
         "find_all_callers_recursive, find_callees_recursive, find_hotspots,\n"
         "find_dead_code, find_wrapper_callers, trace_data_flow,\n"
@@ -992,17 +1155,16 @@ mcp = FastMCP(
         "Inheritance: get_inheritance_chain, get_class_members,\n"
         "get_template_instances, get_method_overrides.\n"
         "Source: get_source, get_symbol_context, get_file_map, explain_symbol, read_file.\n"
-         "Maintenance: get_active_build, get_environment_status,\n"
-         "check_dependencies, list_projects, list_variants, get_project_info,\n"
-         "check_ollama, configure_llm, reindex_file, reset_index.\n\n"
+         "Maintenance: get_project_status, get_build_info,\n"
+         "check_dependencies, list_projects, get_project_info,\n"
+         "check_ollama, configure_llm, reindex_file,\n"
+         "reset_index.\n\n"
          "MULTIPROJECT / MULTIDEVICE — when get_active_build() returns multi=true:\n"
          "  • The project indexes N variants × M images (boards/cores).\n"
          "  • get_active_build() lists variants/images/variant_images/active_variant.\n"
          "  • Every query tool takes variant=<name> and (sysbuild) image=<name>.\n"
          "  • FAIL-CLOSED: a query without variant errors (listing variants) unless\n"
-         "    [build] default_variant is set — never guess a variant silently.\n"
          "  • variant=\"*\" = all variants (explicit only); image omitted = all images\n"
-         "    of the variant (results annotated with variant/image).\n"
          "  • list_variants() shows the authoritative per-build config_hash + counts.\n"
          "  • \"hledej v nRF52840\" → variant=\"nrf52840\"; \"ukaž stage0\" → image=\"stage0\".\n\n"
         "REVIEW SKILL — MANDATORY (not optional): When reviewing C/C++ firmware\n"
@@ -1033,7 +1195,9 @@ mcp = FastMCP(
         "LLM SETUP — after get_active_build returns status='ready', call\n"
         "check_ollama to verify the LLM backend:\n"
         "  • status='ok' — LLM ready. Continue.\n"
-        "  • status='not_configured' — Ollama not running, no chat API. ASK:\n"
+        "  • status='not_configured' — Ollama cannot be used, no chat API.\n"
+        "    Read `message`: when ollama_url names a server that is not\n"
+        "    Ollama, tell the operator to correct ollama_url. Else ASK:\n"
         "    'Use local Ollama or a cloud API?'\n"
         "    - Local: guide operator to install from https://ollama.com.\n"
         "      For intranet: download installer on an internet machine,\n"
@@ -1042,18 +1206,27 @@ mcp = FastMCP(
         "    - Cloud: ask for URL, key, model. Call configure_llm.\n"
         "      If URL is external, ALWAYS warn: source code will be sent\n"
         "      to that endpoint — ensure compliance with data security.\n"
-        "  • status='model_missing' — Chat model not installed.\n"
+        "  • status='disabled' — [llm] enabled = false. Continue; no LLM calls.\n"
+        "  • status='error' — report `message` to the operator.\n"
+        "  • status='model_missing' — Chat or embedding model not installed;\n"
+        "    `message` names each missing model and the command that pulls\n"
+        "    it. Each command sets OLLAMA_HOST to the server that must hold\n"
+        "    the model, in the syntax of PowerShell on Windows and of a\n"
+        "    POSIX shell on other systems. In a different shell (for\n"
+        "    example bash on Windows), set OLLAMA_HOST to the same server in\n"
+        "    the syntax of that shell, then run `ollama pull <model>`.\n"
+        "    Without OLLAMA_HOST, the model can go to a different server.\n"
         "    YOU estimate download size from model name (your knowledge).\n"
         "    Report to operator with caveat: size may be inaccurate.\n"
         "    ALWAYS ASK: 'Download this model, or configure a separate\n"
         "    cloud chat API (no download needed)?'\n"
-        "    - Download by me: run `ollama pull {model}` via bash.\n"
+        "    - Download by me: run each command of `message` in your shell.\n"
         "      On failure, check stderr for network errors (timeout,\n"
         "      unreachable, no such host). If network issue: suggest\n"
         "      offline install — pull on internet machine, copy\n"
         "      ~/.ollama/models/, or download GGUF + ollama create.\n"
-        "    - Download manually: tell operator to run `ollama pull\n"
-        "      {model}` (NOTE: outside normal flow). Include offline\n"
+        "    - Download manually: tell operator to run each command of\n"
+        "      `message` (NOTE: outside normal flow). Include offline\n"
         "      instructions for intranet.\n"
         "    - Cloud API: ask URL/key/model, call configure_llm.\n"
         "  • status='model_missing' + suggest_cloud=true — No model\n"
@@ -1061,8 +1234,9 @@ mcp = FastMCP(
         "    Check model_details for installed models. Emphasize cloud\n"
         "    API option.\n"
         "  • status='embedding_unavailable' — Chat works (cloud) but\n"
-        "    embedding needs Ollama. Warn: semantic search disabled.\n"
-        "    Offer to guide Ollama setup.\n"
+        "    embedding needs Ollama, and Ollama cannot be used. Warn:\n"
+        "    semantic search disabled. `message` names the cause: offer\n"
+        "    to guide Ollama setup, or to correct ollama_url.\n"
         "  • chat_api.compliance_warning present — ALWAYS show to operator.\n"
         "    Recommend local or internal API first.\n"
         "Model downloads are LARGE (multi-GB). ALWAYS ask before pulling.\n"
@@ -1136,6 +1310,13 @@ mcp = FastMCP(
 # deliberately NOT registered — ``_*``/``*_impl`` names never go on the wire
 # (ADR-006 a).
 #
+# The exception: reindex_file.  A re-parse runs libclang for each build
+# that compiles the file, tens of seconds each on a large project.  Without
+# the wrapper the call ran on the event loop: no notice reached the client,
+# which can close the connection after about 15 s without one, and no
+# other coroutine ran.  It gets no index state (annotate=False): it writes
+# the index and does not answer from it.
+#
 # All search, call graph, symbol source, inheritance, and variable tools
 # ARE wrapped — they may run for seconds to minutes (BFS traversal,
 # Ollama HTTP calls, libclang re-parsing) and need progress notifications
@@ -1154,11 +1335,13 @@ mcp.tool()(_with_project_selector(_wrap_tool(maintenance.check_dependencies, mai
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.check_ollama, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.configure_llm, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.get_active_build, maintenance=True)))
+mcp.tool()(_with_project_selector(_wrap_tool(maintenance.get_build_info, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.get_environment_status, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.get_project_info, maintenance=True)))
+mcp.tool()(_with_project_selector(_wrap_tool(maintenance.get_project_status, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.list_projects, maintenance=True)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.list_variants, maintenance=True)))
-mcp.tool()(_with_project_selector(_wrap_tool(maintenance.reindex_file, maintenance=True)))
+mcp.tool()(_with_project_selector(_wrap_tool(maintenance.reindex_file, maintenance=True, annotate=False)))
 mcp.tool()(_with_project_selector(_wrap_tool(maintenance.reset_index, maintenance=True)))
 
 # search.py
@@ -1629,6 +1812,10 @@ def main() -> None:
          agent can ask the operator and run index via bash.  The ping
          thread starts, thus the watcher daemon starts as soon as the
          operator creates the index.
+       - If a config file cannot be used (``ConfigError``): server starts
+         normally — ``get_project_status()`` returns ``config_error``, and
+         the other tools give the error.  The ping thread starts, thus the
+         watcher daemon starts when the operator corrects the file.
     2. When ready, pre-marks the database as integrity-checked.
     3. Ensures the persistent watcher daemon is running for the project
        (spawns it if this is the first MCP server).
@@ -1659,6 +1846,9 @@ def main() -> None:
         _check_server_ready()
     except RuntimeError as exc:
         log.info("Project not ready at startup: %s", exc)
+    except ConfigError as exc:
+        # The server must start: each tool then gives this error.
+        log.error("A config file cannot be used: %s", exc)
 
     # Phase 2: fast dependency pre-flight — warn on degraded deps, never exit.
     # Missing optional dependencies (e.g., nvidia-smi for GPU detection) are
@@ -1688,8 +1878,22 @@ def main() -> None:
         from ..config import load as load_config
         from ..config.settings import ProjectNotInitializedError
         project_id = derive_project_id(root)
+        cfg = load_config(project_root=root)
     except ProjectNotInitializedError:
         log.info("Project not initialized at %s — get_active_build() will report not_initialized", root)
+        mcp.run()
+        return
+    except ConfigError as exc:
+        # NOT the path of a project that is not initialized: that one tells
+        # the caller to run `fw-context init`, which wrote a new project ID
+        # over the file.  get_project_status() gives "config_error", and the
+        # other tools give the error.  The ping thread starts the watcher
+        # when the operator corrects the file.
+        log.error("A config file cannot be used: %s — each tool gives this error", exc)
+        try:
+            _start_ping_thread(root)
+        except (RuntimeError, OSError):
+            log.exception("Ping thread startup failed — no automatic reindex until the server restarts")
         mcp.run()
         return
 
@@ -1697,7 +1901,6 @@ def main() -> None:
     # If not, we DON'T set the sentinel — the server starts normally so
     # that get_active_build() can return status="no_index", allowing the
     # agent to ask the operator and run `fw-context index` via bash.
-    cfg = load_config(project_root=root)
     db_path = cfg.index.db_dir / project_id / "index.db"
     if not db_path.exists():
         log.info("No index found at %s — get_active_build() will report no_index", db_path)
@@ -1715,14 +1918,12 @@ def main() -> None:
         mcp.run()
         return
 
-    # Project is ready — pre-mark integrity check and start normally.
-    # GOTCHA — integrity_check on large DBs is I/O-bound (10-30 s for
-    # 3+ GB).  If it runs here via _open_db_safe during MCP server startup,
-    # the MCP client times out during tool discovery and fw-context tools
-    # never appear.  The check already ran during ``fw-context index``, so
-    # we skip it by pre-marking the DB — a corrupt DB will be caught by
-    # individual queries via _open_db_safe.
-    _integrity_checked.add(str(db_path.resolve()))
+    # Project is ready.  No step of the startup and no query tool does an
+    # integrity check of the database: the check reads the full database
+    # file, and on a large database the MCP client then times out during
+    # tool discovery, so the fw-context tools never appear.  `open_db` of
+    # the index run checks the database, and so does `reset_index`.  A
+    # query that reads a damaged page gets the error of SQLite.
 
     try:
         _ensure_daemon_running(root)
@@ -1770,12 +1971,14 @@ def _start_ping_thread(root: Path) -> None:
                     continue
                 log.debug("Daemon ping failed — the ping thread spawns a new watcher daemon")
                 _ensure_daemon_running(root)
-            except (RuntimeError, OSError):
+            except (RuntimeError, OSError, ConfigError):
                 # RuntimeError — the project is not initialized, or it
                 # has no index yet.  _db_path() raises it through
-                # _check_server_ready().  The two states are temporary,
-                # because the operator can still run init or index.  The
-                # loop must stay alive and try again on the next tick.
+                # _check_server_ready().  ConfigError — a config file is
+                # not valid, also for one tick while the user edits it.
+                # The states are temporary, because the operator can
+                # still run init or index, or correct the file.  The loop
+                # must stay alive and try again on the next tick.
                 log.debug("Could not start the watcher daemon", exc_info=True)
 
     # daemon=True: killed on process exit — no explicit stop mechanism needed

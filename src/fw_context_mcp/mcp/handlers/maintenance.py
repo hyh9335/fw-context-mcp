@@ -14,7 +14,6 @@ Public MCP handlers in this module:
     check_dependencies       — read-only dependency audit (structured results)
     configure_llm            — write per-developer LLM settings to local.toml
     reindex_file             — re-parse a single source file into the index
-    reindex_file_impl        — same as above with an ``--analysis`` equivalent
     reset_index              — delete the symbol database
     list_projects            — enumerate all indexed projects
     get_project_info         — look up a project by UUID4 in the global registry
@@ -33,7 +32,7 @@ from typing import Annotated
 
 from pydantic import Field
 
-from ...config import derive_project_id
+from ...config import ConfigError, derive_project_id
 from ...config import load as load_config
 from ...config.settings import Config
 from ...indexer.autobuild import AutobuildState
@@ -47,6 +46,7 @@ from ...indexer.db import (
     WriteLockTimeout,
     compute_analysis_coverage,
     count_refs,
+    error_shows_damage,
     get_active_config,
     get_all_builds_for_project,
     get_all_projects,
@@ -59,6 +59,7 @@ from ...indexer.db import (
     open_db,
     row_format_is_newer,
     row_format_is_older,
+    symbols_without_embedding,
     transaction,
 )
 from ...indexer.git_context import branch_moved_since
@@ -74,31 +75,67 @@ from ..shared.context import (
     get_executor,
     invalidate_executor,
 )
+from ..shared.index_state import RUN_STATES, WAIT_ADVICE, index_state, manifest_reason
 from ..shared.stale import (
     _check_header_staleness,
     _count_modified_files,
     find_unindexed_sources,
+    latest_builds,
+    outdated_index_fact,
+    outdated_index_reason,
+    stored_row_format,
 )
+from ..shared.stale import after_the_run as _after_the_run
+from ..shared.stale import with_action as _with_action
+from ..shared.variants import IMAGE_DESCRIPTION, VARIANT_DESCRIPTION
 
 log = logging.getLogger(__name__)
 
 
-# What to tell the caller for each outcome of the automatic build.  Three
-# different sentences, because the required action differs: none, run the
-# build, or look at why the build failed.
-_AUTOBUILD_ADVICE: dict[AutobuildState, str] = {
-    AutobuildState.WILL_BUILD: (
-        "fw-context builds them on its own; no command is needed"
-    ),
-    AutobuildState.UNSUPPORTED: (
-        "this build system cannot build in the background without touching "
-        "the output of your own build — run `fw-context index --build`"
-    ),
-    AutobuildState.BACKOFF: (
-        "an automatic build for these files failed recently — run "
-        "`fw-context index --build` and read the error"
-    ),
-}
+#: The command of the degraded `_warning` when `reindex_needed` is true and
+#: no index run is in progress or scheduled: each reason then names its own
+#: action.  The message of a project of several builds looks for it.
+_REASON_COMMAND = "the command that reindex_reasons names"
+
+#: What a build with ``manifest_verification = "partial"`` misses: the
+#: embedding step failed (`_embedding.EmbeddingsIncomplete`), and the rest
+#: of the index is complete.
+PARTIAL_EMBEDDINGS = "semantic_search and smart_search can miss symbols (manifest verification: partial)"
+
+
+def _new_source_advice(auto_state: AutobuildState, bg_running: bool, rebuild: str) -> str:
+    """Return the advice for a source file that compile_commands.json does not cover.
+
+    *rebuild* is the action that makes compile_commands.json again
+    (``autobuild.build_advice``).  A build that failed is not an outcome
+    here: the failed run writes its own text (``autobuild.read_problem``),
+    which comes first.
+
+    WHY *bg_running*: "fw-context builds them on its own" is true only when
+    an index run comes.  The daemon schedules one for a new file
+    (`daemon._staleness_check`), and without a daemon nothing does.  For
+    another backend a run in progress gets the same advice as a checkout:
+    wait, and act when the reason stays.  The state of a query also asks to
+    wait during a run.
+
+    The text comes after a dash in the reason, and after a colon in the
+    message, thus it holds no dash and no colon of its own.
+    """
+    if auto_state is AutobuildState.WILL_BUILD:
+        if bg_running:
+            return "fw-context builds them on its own; no command is needed"
+        return (
+            "fw-context builds them in the next index run, and no index run is in "
+            "progress or scheduled; run `fw-context index`"
+        )
+    run = _after_the_run(rebuild)
+    if auto_state is AutobuildState.USER_DATABASE:
+        # `rebuild` says that fw-context does not build that file.
+        return f"an {run}" if bg_running else rebuild
+    if bg_running:
+        # The fact comes first: the condition of the action is the run.
+        return f"fw-context does not build them on its own. An {run}"
+    return f"fw-context does not build them on its own; {rebuild}"
 
 
 def _autobuild_state(
@@ -112,6 +149,7 @@ def _autobuild_state(
     """
     if not new_sources:
         return AutobuildState.WILL_BUILD  # unused — no file to report
+    return project_autobuild_state(root, proj_cfg)
 
     from dataclasses import replace
 
@@ -144,6 +182,64 @@ def _expand_dir_placeholder(dir_str: str, root: Path) -> str:
     except Exception:  # nosec B110 — best-effort display expansion
         pass
     return dir_str
+
+def _build_missing_advice(reason: str, root: Path, proj_cfg, bg_running: bool) -> str:
+    """Give *reason* with the command that brings the build back.
+
+    The same two cases as the refusal of ``fw-context index``: a build that
+    fw-context can run, and a build that only the IDE can run (a stub, see
+    ``build.can_run_build``).  ``--build`` and not a plain reindex: a plain
+    run builds the missing build too (``_build_if_missing`` in the CLI), but
+    ``--build`` says what happens, and it is the same command that the
+    refusal of a run names.
+
+    WHY *bg_running*: an index run with ``--build`` removes the database of
+    the build before the build writes it again.  Thus during the run of the
+    daemon after a checkout, the build is missing, and the command of this
+    reason is the command that runs.
+    """
+    system = proj_cfg.build.system or _detect_build_system(root)
+    if can_run_build(proj_cfg.build, system):
+        return _with_action(reason, "run `fw-context index --build`", bg_running)
+    return _with_action(
+        f"{reason}, and fw-context cannot run the build of this project",
+        "run the build outside of fw-context (for example in the IDE), then run `fw-context index`",
+        bg_running,
+    )
+
+
+def _compile_commands_reason(stale_reason: str | None, cfg, root: Path, proj_cfg, bg_running: bool) -> str:
+    """Give the reason of a compile_commands.json that changed after the index of the build *cfg*.
+
+    *stale_reason* is the code of ``readiness._is_stale``.  For a missing
+    file the caller gives the reason only when the build check
+    (``_build_missing_advice``) does not cover the file, for example for
+    the file of a build variant.  WHY a sentence and not the code: each
+    other reason is a sentence that names its action, and a caller cannot
+    act on a bare code.
+
+    A missing file needs the action that makes it again
+    (``autobuild.build_advice``): a plain run reads the same missing file.
+    A newer file needs only a plain run, which reads it.
+    """
+    if stale_reason == "compile_commands_missing":
+        return _with_action(
+            f"compile_commands.json {cfg['compile_commands_path']} does not exist",
+            build_advice(root, proj_cfg),
+            bg_running,
+        )
+    if stale_reason == "compile_commands_newer":
+        fact = "compile_commands.json changed after the last index run"
+    elif stale_reason:
+        # `is_compile_commands_stale` could not compare the two times, and
+        # its code holds the error.  A run repairs a time of the index that
+        # does not parse, because it writes the time again.  A run does not
+        # repair an error of the file system (a file that this process
+        # cannot read), and the error in the text names that cause.
+        fact = f"fw-context cannot compare compile_commands.json with the index ({stale_reason})"
+    else:
+        fact = "compile_commands.json changed"
+    return _with_action(fact, "run `fw-context index`", bg_running)
 
 
 def _background_build_allowed(root: Path, proj_cfg: Config) -> bool:
@@ -376,7 +472,25 @@ def get_active_build(
     Read-only, and it spawns no subprocess — the startup daemon thread and
     the file watcher own the background reindex.
 
-    Act on ``status``:
+    Act on ``reindex_state`` of the build that the task needs, in
+    ``builds`` (a project of one build has it at the top level too):
+
+    * ``null`` — the index of the build is current. Continue.
+    * ``"reindexing"`` or ``"pending"`` — the index of the build is not
+      current, and an index run is active or scheduled. Wait, and call
+      this tool again after about 30 s. Continue with the old index only
+      when the user tells you to.
+    * ``"not_scheduled"`` — the index of the build is not current, and no
+      run updates it. Tell the user the command that the reasons name.
+    * ``"failed"`` — the last index run failed. Give its text to the user:
+      it names the command that repairs it.
+
+    Each query answer carries the state of its build as ``index_state``,
+    from quick checks only. A query thus can miss a changed header, a
+    changed file that its answer does not name, or a new source file when
+    its answer is not empty. This tool does the full check.
+
+    ``status`` gives the state of the project:
 
     * ``"ready"`` — up to date. Continue.
     * ``"reindexing"`` — background reindex running; queries stay accurate.
@@ -1185,6 +1299,134 @@ def _analysis_message(analysis: dict, analyze_vendor: bool) -> str:
     )
 
 
+def _analysis_advice(
+    analysis: dict, proj_cfg: Config, bg_running: bool, *, other_run: bool, restart: bool, stored_analyze_vendor: bool,
+) -> str:
+    """Return the advice for an LLM analysis that is not complete, or "".
+
+    Decision of the user (2026-10-18): only advice.  The analysis is not a
+    reason to reindex, the status stays as it is, and the daemon starts no
+    run for it: the LLM can need hours, and that needs the approval of the
+    user, as a pull of a model does (``auto_pull`` is false).  Before, the
+    status gave ``complete: false`` and the counts, but no action, and
+    nothing analyzed the symbols until another cause started an index run.
+
+    The command is ``fw-context index``: each index run analyzes the
+    symbols that wait, when the config asks for the analysis, and the
+    analysis is content-addressed, thus an analyzed symbol does not go to
+    the model again.  No advice when the config does not ask for the
+    analysis: the user turned it off.  During an index run, the run
+    analyzes the symbols, thus the advice names no command.
+
+    *other_run*: a reason to reindex, or a degraded index, names its own
+    run, and that run also does the analysis.  A bare ``fw-context index``
+    next to it was not sufficient (the reason can need ``--build``).
+    *restart*: a newer row format needs a restart of the client, and no
+    run at all, thus no advice.
+
+    The vendor symbols count with ``[llm] analyze_vendor`` of the config,
+    as the run reads it, not with the value that the build stored.  When
+    the two differ, the text says it: the coverage part before it describes
+    the build as it was indexed ("vendor skipped").
+    """
+    waiting = _analysis_waiting(analysis, proj_cfg, restart=restart)
+    if not waiting:
+        return ""
+    vendor_note = _analysis_vendor_note(proj_cfg, stored_analyze_vendor)
+    return (
+        f" — {waiting} symbol(s){vendor_note} wait for the analysis"
+        + _analysis_action(bg_running, other_run=other_run, several=False)
+    )
+
+
+def _analysis_waiting(analysis: dict, proj_cfg: Config, *, restart: bool) -> int:
+    """Return how many symbols of one build wait for the LLM analysis, for the advice.
+
+    0 when no advice applies: the config does not ask for the analysis, or
+    a newer row format needs a restart of the client.  The rules are the
+    ones of :func:`_analysis_advice`.
+    """
+    if restart or not (proj_cfg.llm.enabled and proj_cfg.llm.analyze_symbols):
+        return 0
+    counts = [analysis["project"]]
+    if proj_cfg.llm.analyze_vendor:
+        counts.append(analysis["vendor"])
+    return sum(max(0, c["total"] - c["analyzed"] - c["skipped"]) for c in counts)
+
+
+def _analysis_vendor_note(proj_cfg: Config, stored_analyze_vendor: bool) -> str:
+    """Return the note that the vendor symbols count now, or "" (see :func:`_analysis_advice`)."""
+    if proj_cfg.llm.analyze_vendor and not stored_analyze_vendor:
+        return " (with the vendor symbols: [llm] analyze_vendor is now true)"
+    return ""
+
+
+def _analysis_action(bg_running: bool, *, other_run: bool, several: bool) -> str:
+    """Return the end of the analysis advice: the run that does the analysis.
+
+    One text for a build and for a project of several builds, thus the two
+    give the same action.  *several* selects the plural: the message of a
+    project gives one number for each build.
+    """
+    numbers = "the numbers do not go down" if several else "the number does not go down"
+    return _run_action(
+        bg_running, other_run=other_run,
+        plain=(
+            ": run `fw-context index` with the approval of the user, because the LLM can need "
+            f"hours. The analysis needs a running LLM: when {numbers} after the run, call check_ollama"
+        ),
+    )
+
+
+def _run_action(bg_running: bool, *, other_run: bool, plain: str) -> str:
+    """Return the end of an advice that an index run satisfies.
+
+    During a run, or when another action of the message names a run, the
+    text names that run: a second command next to it made the caller
+    start a second run, or a run without ``--build``.  Else *plain*.
+    """
+    if bg_running:
+        return ", and the index run in progress or scheduled does it"
+    if other_run:
+        return ", and the index run that the action above names does it"
+    return plain
+
+
+# The plain action of the embedding advice.  An index run embeds each
+# definition that has no embedding (``_build_embeddings`` skips only an
+# unchanged content hash).  When Ollama cannot serve the run, the run
+# stamps the build "partial", and that warning names the repair.
+_EMBEDDING_PLAIN_ACTION = ": run `fw-context index`"
+
+
+def _embeddings_missing(conn, cfg, proj_cfg: Config, *, restart: bool) -> int:
+    """Return how many definitions of one build have no embedding, for the advice.
+
+    0 when no advice applies:
+
+    * The config does not ask for embeddings (``[llm] enabled`` and
+      ``[index] index_embeddings``): the user turned them off.
+    * The build has no ``embedding_dim``: no embedding step wrote to it,
+      thus each definition is without one, and the next run with
+      embeddings does them all.
+    * The stamp is "partial": its own warning names the repair.
+    * A newer row format needs a restart of the client, and no run.
+
+    WHY a count from the data and not a stamp: a re-parse of one file
+    (``reindex_file`` with ``with_analysis=False``, or a failed model)
+    leaves definitions without an embedding, and the stamp of the last
+    index run still says "full".  The search by meaning then did not find
+    them, and nothing told the user.
+    """
+    if restart or not (proj_cfg.llm.enabled and proj_cfg.index.index_embeddings):
+        return 0
+    if (cfg["manifest_verification"] or "none") == "partial":
+        return 0
+    if ("embedding_dim" not in cfg.keys()) or cfg["embedding_dim"] is None:
+        return 0
+    return len(symbols_without_embedding(conn, cfg["config_hash"]))
+
+
 def _list_status(db_schema_ver: int, cc_stale: bool) -> str:
     """Map schema version and compile-commands staleness to a status label.
 
@@ -1253,6 +1495,12 @@ def list_projects(
             def _query(conn, _config_hash):
                 # Runs under the executor lock on the single shared
                 # connection; must not open its own connection.
+                # The fact only: the list does not read the state of a run,
+                # and a command during the run that adds the columns would
+                # take that run over.
+                outdated = outdated_index_fact(conn)
+                if outdated:
+                    return f"{outdated}. To see the action, call get_project_status for that project."
                 rows = get_all_projects(conn)
                 schema_ver = get_db_schema_version(conn)
                 counts = {}
@@ -1362,6 +1610,32 @@ def list_projects(
     return results
 
 
+def _shows_damage(exc: sqlite3.DatabaseError) -> bool:
+    """Tell if *exc* shows a damaged database, and not a lock or a fault of the disk.
+
+    WHY: a lock, a full disk, an I/O error or a missing permission does
+    not damage the database.  If the tool calls such a database damaged,
+    the user can delete a good index.  Each other error of SQLite shows a
+    database that the tool must let the user delete: damaged pages, and
+    also a schema that open_db cannot repair.
+
+    open_db wraps most errors of SQLite in `DatabaseCorruptionError`, and
+    keeps the error of SQLite as the cause.  The other errors of open_db
+    and of the reads come without a wrap.  A report of the integrity check
+    has no cause: that is damage.  ``locked=True`` tells that open_db could
+    not get the lock.  An error without a result code, for example a
+    `sqlite3.ProgrammingError`, is a fault of the code, not damage.
+    """
+    error: sqlite3.Error = exc
+    if isinstance(exc, DatabaseCorruptionError):
+        if exc.locked:
+            return False
+        if not isinstance(exc.__cause__, sqlite3.Error):
+            return True
+        error = exc.__cause__
+    return error_shows_damage(error)
+
+
 # ── moved from server.py ──
 def _safe_project_id(root) -> str:
     """Derive a project id without raising on an uninitialized v2-only tree.
@@ -1401,7 +1675,8 @@ def reset_index(
         message, symbol_count, indexed_at (dry-run)}.
 
         A ``warning`` key means that the database is corrupt — the
-        integrity check failed, thus the counts can be incomplete.
+        integrity check or a read of the database failed, thus the tool
+        counts nothing and the three count fields are absent.
 
         On failure the dict holds only ``error`` with the reason.
     """
@@ -1450,12 +1725,6 @@ def reset_index(
     conn = None
     try:
         conn = open_db(db_path)
-        # DatabaseCorruptionError is raised during open when the integrity
-        # check (PRAGMA integrity_check) fails.  A corrupt DB can still
-        # be deleted — we track the flag and skip symbol counting.
-    except DatabaseCorruptionError:
-        corrupt = True
-    else:
         with conn:
             cfg_data = get_active_config(conn, project_id)
             if cfg_data:
@@ -1478,7 +1747,7 @@ def reset_index(
         info["symbol_count"] = sym_count
         info["indexed_at"] = cfg_data["created_at"]
     elif corrupt:
-        info["warning"] = "Database is corrupt — integrity check failed."
+        info["warning"] = "Database is corrupt — integrity check or read failed."
     if not confirm:
         info["action"] = "dry_run"
         if corrupt:
@@ -1528,7 +1797,7 @@ def _reindex_cleanup_deleted_file(
     target: Path,
     root: Path,
     db_path: Path,
-) -> dict:
+) -> dict | None:
     """Remove index records for a file that no longer exists on disk.
 
     Called when ``reindex_file`` is invoked for a path that the user
@@ -1538,6 +1807,10 @@ def _reindex_cleanup_deleted_file(
 
     Pauses background reindex to avoid a race: the bg thread might
     also detect the deletion and attempt its own cleanup.
+
+    Returns None when this build does not know the file.  Each build of the
+    project has its own rows, and a file of one build is not a file of the
+    other builds; the caller decides from all builds together.
     """
     config_hash = cfg_data["config_hash"]
     from ...indexer.db import get_file_mtimes, purge_file_records
@@ -1548,7 +1821,7 @@ def _reindex_cleanup_deleted_file(
     known = get_file_mtimes(conn, config_hash)
     file_path_str = _normalize_file_path(str(target), root)
     if file_path_str not in known:
-        return {"error": f"File not found on disk or in index: {target}"}
+        return None
 
     file_id_old, _ = known[file_path_str]
     symbol_count = conn.execute(
@@ -2043,14 +2316,33 @@ def _reindex_embeddings(
     target: Path,
     root: Path,
     result: dict,
+    missing_before: frozenset[int],
 ) -> None:
-    """Regenerate vector embeddings for symbols in the reindexed file.
+    """Regenerate vector embeddings for the symbols that the re-parse inserted.
 
     Only runs when ``cfg.llm.enabled`` is True (the embedding model is
-    configured through the LLM subsystem).  Queries for all symbol IDs
-    belonging to the file path, then calls ``_build_embeddings`` with
-    the filtered ID set to avoid recomputing embeddings for the entire
-    index.
+    configured through the LLM subsystem).  Calls ``_build_embeddings``
+    with a set of IDs, to avoid recomputing embeddings for the entire
+    index.  The set holds two parts:
+
+    * The symbols of the file path.  An edit can change their text, and
+      ``_build_embeddings`` embeds a symbol again when its content hash
+      changed.
+    * Each definition that lost its embedding in this re-parse: it has
+      none now, and it is not in *missing_before*.  WHY: the re-parse also
+      deletes the symbols of the headers that the unit includes, for
+      example a ``static inline`` function, and inserts them again with
+      new IDs.  ``ON DELETE CASCADE`` removed their embeddings, and a set
+      of the file path alone left them without one.
+
+    WHY not each definition without an embedding: a build can have an
+    older gap of thousands of definitions, for example after a run that
+    could not reach Ollama, or with ``index_embeddings = false``.  One call
+    of this tool then embedded the whole build, which can take tens of
+    minutes.  ``fw-context index`` closes an older gap, and the status
+    tools report it.  WHY a set of gaps and not a set of IDs: SQLite can
+    give a new symbol the ID of a deleted one (no AUTOINCREMENT), thus an
+    ID that existed before can belong to a new symbol.
 
     When no symbols are found for the file path (possible for symlink
     or out-of-root files), the warning is logged but no error is raised.
@@ -2066,14 +2358,17 @@ def _reindex_embeddings(
                 (config_hash, _normalize_file_path(str(target), root)),
             ).fetchall()
         ]
-        if file_symbol_ids:
-            _reembed(conn, config_hash, cfg.llm, db_dir, symbol_ids=file_symbol_ids)
-        else:
+        if not file_symbol_ids:
             log.warning(
                 "No symbols found for path %s in DB — skipping embedding regeneration "
-                "(this may happen for files outside the project root or after a symlink change)",
+                "of its symbols (this may happen for files outside the project root "
+                "or after a symlink change)",
                 target,
             )
+        new_gaps = set(symbols_without_embedding(conn, config_hash)) - missing_before
+        symbol_ids = sorted(set(file_symbol_ids) | new_gaps)
+        if symbol_ids:
+            _reembed(conn, config_hash, cfg.llm, db_dir, symbol_ids=symbol_ids)
         conn.commit()
         reembedded = conn.execute(
             "SELECT COUNT(DISTINCT symbol_id) FROM embeddings e "
@@ -2094,16 +2389,25 @@ def _reindex_post_write_phases(
     target: Path,
     result: dict,
     root: Path,
+    *,
+    missing_before: frozenset[int],
 ) -> dict:
-    """Run post-write enrichment phases after reindex_file.
+    """Run the model phases after reindex_file, when ``with_analysis`` is True.
+
+    *missing_before* holds the definitions of the build that had no
+    embedding before the re-parse (see :func:`_reindex_embeddings`).
 
     Each phase is independent — failure in one does not prevent others
     from running.  The phases are:
 
     1. LLM symbol analysis (function descriptions)
-    2. Virtual method override relationships
-    3. PageRank scores and hotspot cache
-    4. Vector embeddings for semantic search
+    2. Vector embeddings for semantic search — after the analysis, because
+       the text of an embedding holds the summary of the analysis.
+
+    The two need a model and can take minutes, thus ``with_analysis=False``
+    skips them.  The status tools report the symbols that they left
+    without an analysis or an embedding.  The graph phases do not need a
+    model: :func:`_reindex_graph_phases` runs them in the two modes.
 
     When ``total_symbols <= 0``, all phases are skipped (nothing was
     added or updated).
@@ -2111,8 +2415,8 @@ def _reindex_post_write_phases(
     The coverage warning for a header is NOT set here.  It used to be, and
     that put it behind two gates it has nothing to do with: this function
     returns early when ``total_symbols <= 0``, and the caller skips it
-    entirely when ``with_analysis=False`` — the mode the background
-    auto-reindex uses.  A caller that re-parsed a header through one unit
+    entirely when ``with_analysis=False``, the fast symbol-only update.  A
+    caller that re-parsed a header through one unit
     has to hear about it whether or not the enrichment phases ran, thus
     _header_coverage_warning() is applied by the caller.
     """
@@ -2120,11 +2424,39 @@ def _reindex_post_write_phases(
         return result
 
     _reindex_llm_analysis(conn, config_hash, cfg, db_dir, result, project_root=root)
+    _reindex_embeddings(conn, config_hash, cfg, db_dir, target, root, result, missing_before)
+    return result
+
+
+def _reindex_graph_phases(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    cfg: Config,
+    total_symbols: int,
+    db_dir: Path,
+    result: dict,
+) -> None:
+    """Rebuild the virtual method overrides, the PageRank scores and the hotspot cache after reindex_file.
+
+    Runs also with ``with_analysis=False``.  WHY: the re-parse deletes the
+    symbols of the translation unit and its headers and inserts them again
+    with new IDs.  ``ON DELETE CASCADE`` removes their rows of the hotspot
+    cache, and the new rows start with PageRank 0.  Measured on a project
+    of 7 builds: after a fast re-parse ``memset``, with 684 references,
+    was not in ``find_hotspots``, and nothing reported it.  No status can
+    see a missing score, because many symbols have PageRank 0 in a
+    complete index.  The phases need no model, and they are fast: at most
+    2 s for PageRank and the hotspot cache and 0.1 s for the overrides on
+    an index of 60 000 symbols (``indexer/_postprocess.py``).
+
+    Each phase is independent — a failure in one adds its warning to
+    *result* and does not stop the other.  Skipped when
+    ``total_symbols <= 0`` (nothing was added or updated).
+    """
+    if total_symbols <= 0:
+        return
     _reindex_overrides(conn, config_hash, cfg, db_dir, result)
     _reindex_pagerank(conn, config_hash, cfg, result)
-
-    _reindex_embeddings(conn, config_hash, cfg, db_dir, target, root, result)
-    return result
 
 
 def _header_coverage_warning(
@@ -2333,7 +2665,7 @@ def _reindex_m6_direct(
 
 
 # ── moved from server.py ──
-def reindex_file_impl(
+def reindex_file(
     file_path: Annotated[
         str,
         Field(
@@ -2343,11 +2675,13 @@ def reindex_file_impl(
     project_root: Annotated[
         str | None, Field(description="Project root directory. Auto-detected from cwd if omitted.")
     ] = None,
+    variant: Annotated[str | None, Field(description=REINDEX_VARIANT_DESCRIPTION)] = None,
+    image: Annotated[str | None, Field(description=REINDEX_IMAGE_DESCRIPTION)] = None,
     *,
     with_analysis: Annotated[
         bool,
         Field(
-            description="When True (default), also regenerates LLM symbol analysis and method override relationships — slower but produces a fully up-to-date index. Set False for a fast symbol-only update (used by background auto-reindex)."
+            description="When True (default), also regenerates the LLM symbol analysis and the embeddings — slower, because the two need a model. Set False for a fast update: the tool skips the two, and get_project_status then reports the symbols that wait for them. The method overrides, the PageRank scores and the hotspot cache are rebuilt in the two modes when reference indexing is on (`[index] index_refs`)."
         ),
     ] = True,
 ) -> dict:
@@ -2356,33 +2690,77 @@ def reindex_file_impl(
     Not read-only — uses the exact compiler flags from ``compile_commands.json``.
     Use after editing a file to keep the index current without a full rebuild.
 
+    Without ``variant`` and ``image`` the file is re-parsed in EACH build
+    of the project that compiles it: an edit on disk changes the file for
+    every build of the tree.  A build that does not compile the file is
+    named in ``builds_without_file``.  With the two arguments of one build,
+    as ``get_project_status`` lists them, only that build is re-parsed; a
+    part of a pair gets an error that lists the builds.
+
+    The call runs in a thread of the server and sends a notice each 5 s.
+    It holds the lock of the query tools: another query waits 5 s, then
+    gets "server busy".  After 300 s the call returns an ``error``, and a
+    part of the work can continue or fail.  Call ``get_project_status``
+    for the state of each build, and repeat the call for a build that is
+    not current.  The answer holds no ``index_state``.
+
     A source file must be listed in ``compile_commands.json``.  A header is
     not listed there — compile_commands.json names translation units — so it
-    is re-parsed through one unit that includes it, taken from the manifest.
-    That answer describes a single compilation context, thus the result
-    carries a ``warning``: another unit can see the header under a different
-    set of ``#define`` values and still hold stale symbols.  Only a full
-    ``fw-context index`` covers every context.  One unit and not all of them
-    is a cost decision — an application header reaches a median of 3 units
-    but as many as 266 on a real project, at tens of seconds each.
+    is re-parsed through one unit that includes it, taken from the manifest
+    of each build.  That answer describes a single compilation context,
+    thus the result carries a ``warning``: another unit can see the header
+    under a different set of ``#define`` values and still hold stale
+    symbols.  Only a full ``fw-context index`` covers every context.  One
+    unit and not all of them is a cost decision — an application header
+    reaches a median of 3 units but as many as 266 on a real project, at
+    tens of seconds each.
 
-    Also regenerates LLM analysis and method override relationships for
-    affected symbols when ``with_analysis=True``.  The analysis is
+    Also rebuilds the method override relationships, the PageRank scores
+    and the hotspot cache when reference indexing is on
+    (``[index] index_refs``), with and without ``with_analysis``.  When
+    ``with_analysis=True`` and the LLM is on (``[llm] enabled``), it also
+    regenerates the LLM analysis and the embeddings of the affected
+    symbols.  The analysis also needs ``[llm] analyze_symbols``.  It is
     content-addressed, thus an unchanged symbol is never re-analysed.
 
     Args:
         file_path: Path to the file to re-parse.  A source file must be in
             compile_commands.json; a header goes through one including unit.
         project_root: Project root directory. Auto-detected if omitted.
-        with_analysis: When True (default), also regenerates LLM symbol analysis,
-            method override relationships, PageRank, and embeddings. Set False
-            for a fast symbol-only update (used by background auto-reindex).
+        variant: The variant of the one build to re-parse.  Omit it, and
+            ``image``, to re-parse each build that compiles the file.
+        image: The image of the one build to re-parse.
+        with_analysis: When True (default), also regenerates the LLM symbol
+            analysis and the embeddings, which need a model. Set False for a
+            fast update: the status tools then report the symbols that wait
+            for the two.
+
+    A file that is gone from disk but still in the index has its records
+    removed in each build that holds it; the result is then {file,
+    symbols_removed, action: "deleted", builds}.
 
     Returns:
-        dict: {file, translation_units, symbols_updated, elapsed_s,
-        analysis_updated (if LLM enabled with analysis), or error}.
+        dict: {file, translation_units, symbols_updated, elapsed_s, builds},
+        plus builds_without_file when a build does not compile the file.
+        ``builds`` has one entry for each build that compiles the file:
+        {variant, image, translation_units, symbols_updated, elapsed_s},
+        plus when they apply: skipped_tus and skipped_count (units that
+        failed to parse), warning (header coverage), analysis_updated and
+        embeddings_updated (counts for the whole build, not this file), and
+        analysis_warning, overrides_warning, pagerank_warning, or
+        embedding_warning when a phase failed, or ``error`` when the
+        re-parse of that build failed.
 
-        On failure the dict holds only ``error`` with the reason.
+        When one build compiles the file, the top level holds the full
+        result of that build.  When several do, the top level holds the
+        sums of the builds that did not fail, ``elapsed_s`` of the whole
+        call, the sum of ``skipped_count``, ``warning`` only when each of
+        those builds has it, and ``failed_builds`` with the label of each
+        build whose entry holds ``error``.
+
+        On failure the dict holds ``error`` with the reason: a refusal of
+        the selector, no build that compiles the file, or an update that
+        failed in each build.  It can add ``skipped_tus`` or ``action``.
     """
     db_path, cfg, project_id, root = _resolve_context(project_root, skip_ready_check=True)
 
@@ -2410,16 +2788,15 @@ def reindex_file_impl(
                     file_path, root, m6_db_path,
                 )
         return {"error": f"No index found for {root}. Run 'fw-context index' first."}
+    target, error = _reindex_resolve_target(file_path, root)
+    if error:
+        return error
 
-    # Config read via a short-lived read-only connection.
-    ro_conn = _quick_open_readonly(db_path)
-    try:
-        cfg_data = get_active_config(ro_conn, project_id)
-        if not cfg_data:
-            return {"error": "No build config indexed."}
-        config_hash = cfg_data["config_hash"]
-    finally:
-        ro_conn.close()
+    builds, refusal = _reindex_builds(db_path, project_id, cfg, variant or "", image or "", root)
+    if refusal:
+        return {"error": refusal}
+    if not builds:
+        return {"error": "No build config indexed."}
 
     executor = get_executor(db_path)
 
@@ -2482,7 +2859,14 @@ def reindex_file_impl(
         )
 
     try:
-        return executor.execute_sync(_query, config_hash)
+        # One call of the executor for each build: its lock is free between
+        # two builds, thus a query of another tool does not wait for all of
+        # them.
+        for build in builds:
+            answers.append((build, executor.execute_sync(
+                _reindex_one_build, build["config_hash"],
+                build, target, cfg, root, db_path, with_analysis,
+            )))
     finally:
         # Best-effort statistics refresh after the write.  Runs through
         # the executor so it serializes with other queries.
@@ -2490,9 +2874,194 @@ def reindex_file_impl(
             conn.execute("PRAGMA optimize")
 
         try:
-            executor.execute_sync(_optimize, config_hash)
+            executor.execute_sync(_optimize, builds[0]["config_hash"])
         except sqlite3.Error:
             pass
+    return _reindex_answer(target, answers, round(time.monotonic() - t0, 2))
+
+
+def _reindex_builds(
+    db_path: Path, project_id: str, cfg: Config, variant: str, image: str, root: Path,
+) -> tuple[list[sqlite3.Row], str | None]:
+    """Return the builds that ``reindex_file`` re-parses, or the refusal of the selector.
+
+    Without a selector: each build of the project (`latest_builds`).  An
+    edit changes the file for the whole tree, thus each build that
+    compiles it must read it again, or its answers stay old while the
+    others are new.  With a selector: the build that ``resolve_build``
+    gives, with the refusal that each query tool gives for a part of a
+    pair.  Ordered by label, as `get_project_status` lists them, and not
+    by the time of the index run: the order of ``builds`` in the answer
+    then does not change with each run.
+    """
+    from ..shared.variants import resolve_build
+
+    conn = _quick_open_readonly(db_path)
+    try:
+        outdated = outdated_index_reason(conn, read_reindex_state(root) is not None)
+        if outdated:
+            return [], outdated
+        builds = sorted(latest_builds(conn, project_id), key=build_label)
+        if not (variant or image):
+            return builds, None
+        config_hash, refusal = resolve_build(conn, project_id, cfg, variant, image)
+    finally:
+        conn.close()
+    if refusal:
+        return [], refusal
+    return [build for build in builds if build["config_hash"] == config_hash], None
+
+
+def _reindex_one_build(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    cfg_data: sqlite3.Row,
+    target: Path,
+    cfg: Config,
+    root: Path,
+    db_path: Path,
+    with_analysis: bool,
+) -> dict | None:
+    """Re-parse *target* in the build *cfg_data*, or remove it when it is gone from disk.
+
+    Returns None when this build does not compile the file (or does not
+    know a deleted file).  WRITE path: the executor is not read-only —
+    writes are serialized with reads by the same lock.  A collision with a
+    concurrently running CLI indexer is absorbed by the executor's 120 s
+    busy_timeout (the CLI indexer keeps its own 10 s fail-fast).
+    """
+    if not target.exists():
+        return _reindex_cleanup_deleted_file(conn, cfg_data, target, root, db_path)
+
+    # The manifest of THIS build carries the vendor set the index run
+    # applied.  reindex_file must write is_project with that same
+    # boundary, or one file ends up on the other side of it.
+    #
+    # Loaded before the match because it answers a second question:
+    # compile_commands.json lists no headers, so a header target finds
+    # its translation unit only through the manifest.  One load serves
+    # both — it costs 14 ms on a 9.3 MB manifest.
+    from ...indexer.manifest import load as load_manifest
+
+    build_manifest = load_manifest(db_path.parent, config_hash)
+
+    matching, via_header, error = _reindex_match_tus(
+        target, cfg_data, manifest=build_manifest, project_root=root,
+    )
+    if error:
+        return error
+    if not matching:
+        return None
+
+    vendor_patterns, project_patterns_list = _reindex_build_patterns(
+        cfg, root, build_manifest
+    )
+    # The gaps before the re-parse, thus the embedding step can tell the
+    # gaps that this re-parse makes from older ones (see
+    # `_reindex_embeddings`).
+    missing_before = (
+        frozenset(symbols_without_embedding(conn, config_hash))
+        if with_analysis and cfg.llm.enabled else frozenset()
+    )
+    total_symbols, result = _reindex_parse_and_store(
+        conn, matching, cfg_data, cfg.index.index_refs,
+        root, db_path, target, vendor_patterns, project_patterns_list,
+        cfg.index.transient_defines,
+    )
+    if "error" in result:
+        return result
+
+    # Set before the with_analysis gate: the warning describes how much
+    # of the header the re-parse covered, which does not depend on
+    # whether the enrichment phases run.
+    coverage_warning = _header_coverage_warning(target, matching, via_header)
+    if coverage_warning:
+        result["warning"] = coverage_warning
+
+    _reindex_graph_phases(conn, config_hash, cfg, total_symbols, db_path.parent, result)
+    if not with_analysis:
+        return result
+
+    return _reindex_post_write_phases(
+        conn, config_hash, cfg, total_symbols, db_path.parent,
+        target, result, root, missing_before=missing_before,
+    )
+
+
+def _reindex_answer(
+    target: Path, answers: list[tuple[sqlite3.Row, dict | None]], elapsed_s: float,
+) -> dict:
+    """Join the result of each build into the answer of ``reindex_file``.
+
+    WHY the top level of one build is its full result: the answer of a
+    project of one build keeps each field that it had before builds were
+    a part of it.  For several builds the top level holds the sums, and the
+    detail of each build is in ``builds``.
+    """
+    done = [(build, result) for build, result in answers if result is not None]
+    missing = [build_label(build) or "(no name)" for build, result in answers if result is None]
+    if not done:
+        if target.exists():
+            return _not_built_error(target)
+        return {"error": f"File not found on disk or in index: {target}"}
+
+    entries = [
+        {"variant": build["variant"] or "", "image": build["image"] or "",
+         **{key: value for key, value in result.items() if key != "file"}}
+        for build, result in done
+    ]
+    if len(done) == 1:
+        answer = dict(done[0][1])
+    else:
+        answer = _reindex_sums(target, done, elapsed_s)
+    answer["builds"] = entries
+    if missing:
+        answer["builds_without_file"] = missing
+    return answer
+
+
+def _reindex_sums(target: Path, done: list[tuple[sqlite3.Row, dict]], elapsed_s: float) -> dict:
+    """Return the top level of an answer of several builds: the sums, and what each build shares.
+
+    The sums come from the builds that did not fail.  WHY ``failed_builds``
+    and the sum of ``skipped_count`` at the top level: a caller reads the
+    top level first, and sums that left out a failed build, or the units
+    that did not parse, look like a complete update.
+    """
+    good = [result for _, result in done if "error" not in result]
+    failed = [build_label(build) or "(no name)" for build, result in done if "error" in result]
+    if not good:
+        answer: dict = {
+            "file": str(target),
+            "error": "fw-context could not update the file in each build that it tried. Each entry of builds holds its error.",
+            "failed_builds": failed,
+        }
+        actions = {result.get("action") for _, result in done}
+        if len(actions) == 1 and None not in actions:
+            answer["action"] = actions.pop()
+        return answer
+    if not target.exists():
+        answer = {
+            "file": str(target),
+            "symbols_removed": sum(result.get("symbols_removed", 0) for result in good),
+            "action": "deleted",
+        }
+    else:
+        answer = {
+            "file": str(target),
+            "translation_units": sum(result.get("translation_units", 0) for result in good),
+            "symbols_updated": sum(result.get("symbols_updated", 0) for result in good),
+            "elapsed_s": elapsed_s,
+        }
+        skipped = sum(result.get("skipped_count", 0) for result in good)
+        if skipped:
+            answer["skipped_count"] = skipped
+        warnings = {result.get("warning") for result in good}
+        if len(warnings) == 1 and None not in warnings:
+            answer["warning"] = warnings.pop()
+    if failed:
+        answer["failed_builds"] = failed
+    return answer
 
 
 def _reindex_resolve_target(
@@ -2704,39 +3273,6 @@ def _reindex_build_patterns(
     return vendor_patterns, project_patterns_list
 
 
-# ── moved from server.py ──
-def reindex_file(
-    file_path: Annotated[str, Field(description="Path to the file to re-parse. A source file must be in compile_commands.json. A header goes through one translation unit that includes it, and the result then carries a warning about the other units.")],
-    project_root: Annotated[str | None, Field(description="Project root. Auto-detected if omitted.")] = None,
-) -> dict:
-    """Re-parse a single source file with libclang and update its symbols in the index.
-
-    Not read-only — uses the exact compiler flags from ``compile_commands.json``.
-    Use after editing a file to keep the index current without a full rebuild.
-
-    A source file must be listed in ``compile_commands.json``.  A header is
-    not listed there, thus it is re-parsed through one unit that includes
-    it.  That answer covers a single compilation context, thus the result
-    carries a ``warning`` — only a full ``fw-context index`` covers every
-    unit that includes the header.
-
-    Also regenerates LLM analysis and method override relationships for
-    affected symbols when those features are enabled in config.  An
-    unchanged symbol keeps its stored analysis.
-
-    Args:
-        file_path: Path to the file to re-parse.  A source file must be in
-            compile_commands.json; a header goes through one including unit.
-        project_root: Project root directory. Auto-detected if omitted.
-
-    Returns:
-        dict: {file, translation_units, symbols_updated, elapsed_s,
-        analysis_updated (if LLM enabled), or error}.
-    """
-    return reindex_file_impl(file_path, project_root, with_analysis=True)
-
-
-# ── moved from server.py ──
 def check_ollama(
     project_root: Annotated[
         str | None, Field(description="Project root. Auto-detected if omitted. "
@@ -2766,18 +3302,34 @@ def check_ollama(
         Ollama running), suggest_cloud (bool), vec_available (bool),
         vec_error (str, optional), debug_log (str, optional — only when
         debug logging is enabled)}
+
+        The chat model is looked for on the Ollama server of the chat
+        calls: ``ollama_url``, or the Ollama server that ``chat_api_base``
+        names.  An OpenAI-compatible ``chat_api_base`` runs the model
+        itself, and no Ollama server is asked for it.  ``"model_missing"``:
+        ``message`` names a command for each missing model, which sets
+        ``OLLAMA_HOST`` to the server that must hold the model.
+        ``"error"`` also means that the Ollama server of ``chat_api_base``
+        gives no model list.  When the server of ``ollama_url`` does not
+        answer, the chat model is not looked for.
+
+        ollama_url, num_ctx, installed_models, model_details,
+        configured_embed_model, and embedding_installed are present only
+        when Ollama runs; configured_model also needs chat on Ollama.
+        ``"disabled"`` gives only status, ollama_enabled,
+        ollama_running, configured_model, num_ctx, and message;
+        embedding_backend is present on every other status.
     """
     try:
         _, cfg, _, _ = _resolve_context(project_root)
     except RuntimeError:
         # Project has no index — irrelevant for check_ollama (only needs
         # LLM config).  Fall back to loading config directly without
-        # requiring an active index.
-        from pathlib import Path
-
-        from fw_context_mcp.config.settings import load
-
-        cfg = load(Path(project_root) if project_root else None)
+        # requiring an active index.  WHY resolve_project_root: `load(None)`
+        # reads the global config only, thus the [llm] keys of local.toml
+        # of the project had no effect.  A project name went to `load` as a
+        # path relative to the current directory.
+        cfg = load_config(resolve_project_root(project_root))
     if not cfg.llm.enabled:
         # LLM is explicitly disabled in config.  Return immediately
         # with a message that explains the implications for tools that
@@ -2811,8 +3363,29 @@ def check_ollama(
     return result
 
 
-def _dep_to_schema(r) -> dict:
-    """Map one ``DepCheckResult`` to the ``{name, status, message, action}`` schema.
+def _with_project(command: str, root: Path) -> str:
+    """Add ``--project <root>`` to a ``fw-context doctor`` command; give each other command as it is.
+
+    WHY: the caller runs the command in its own shell, and its current
+    directory is not always the project of the call.  ``doctor`` then
+    checked and repaired a different project, or none.  The quotes are the
+    ones of PowerShell on Windows and of a POSIX shell on the other systems,
+    as in ``ollama_pull_command``.
+    """
+    import shlex
+    import sys
+
+    if not command.startswith("fw-context doctor"):
+        return command
+    if sys.platform == "win32":
+        quoted = "'" + str(root).replace("'", "''") + "'"
+    else:
+        quoted = shlex.quote(str(root))
+    return f"{command} --project {quoted}"
+
+
+def _dep_to_schema(r, root: Path | None = None) -> dict:
+    """Map one ``DepCheckResult`` to the ``{name, status, critical, message, action}`` schema.
 
     The optional ``action`` carries a human-readable ``message`` (what is
     wrong or what to do) and an exact shell ``command`` (``fix_cmd``).
@@ -2827,7 +3400,7 @@ def _dep_to_schema(r) -> dict:
         human = r.instructions or r.message
         if r.fix_cmd and human.strip() == r.fix_cmd.strip():
             human = r.message
-        d["action"] = {"message": human, "command": r.fix_cmd}
+        d["action"] = {"message": human, "command": _with_project(r.fix_cmd, root) if r.fix_cmd else r.fix_cmd}
     return d
 
 
@@ -2991,6 +3564,11 @@ def check_dependencies(
     ``doctor`` table.  Read ``status``/``fix_cmd``/``instructions`` per
     issue; ``status="skipped"`` means a prerequisite is missing.
 
+    The check ``config`` names a config file that cannot be used.  The
+    checks that read the config are then ``skipped``.  When a config file
+    cannot be used, the tool cannot know if the project is initialized,
+    thus it runs every check.
+
     Args:
         project_root: Project root directory. Auto-detected from CWD if omitted.
 
@@ -3001,7 +3579,18 @@ def check_dependencies(
 
     from ...deps import run_full_check
 
-    return [asdict(r) for r in run_full_check(project_root=project_root)]
+    root = resolve_project_root(project_root)
+    try:
+        initialized = bool(load_config(root).project.id)
+    except ConfigError:
+        # The full audit: its check "config" names the file, and the
+        # checks that need no config still run.
+        initialized = True
+    if initialized:
+        results = run_full_check(project_root=str(root))
+    else:
+        results = run_full_check(project_root=str(root), subset=set(_PRE_INIT_CHECKS))
+    return [_dep_to_schema(r, root) for r in results]
 
 
 def get_project_info(
@@ -3135,6 +3724,11 @@ def configure_llm(
                 f"project root first. ({e.root})"
             ),
         }
+    except ConfigError as exc:
+        # The documented answer, not the list of the error boundary of
+        # `_wrap_tool`: the caller reads `status`.  The tool cannot load the
+        # config.  The message names the file that the user must correct.
+        return {"status": "error", "message": str(exc)}
 
     # Collect only non-default/non-None values to avoid overwriting
     # existing settings with defaults.  The auto_pull comparison uses

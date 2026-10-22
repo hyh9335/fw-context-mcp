@@ -800,7 +800,7 @@ def search_bodies(
     """Find patterns in the TEXT OF A DEFINITION — the code inside its extent.
 
     Searches **ifdef-filtered** text — only the code that compiles for the
-    current build.  A line of an inactive ``#if`` branch holds nothing, thus
+    build of the query.  A line of an inactive ``#if`` branch holds nothing, thus
     a pattern that lives only in a dead branch gives no result here.  That
     empty answer is the correct one: the code does not compile.
 
@@ -1107,7 +1107,7 @@ def search_content(
     text that belongs to a definition.
 
     Searches **ifdef-filtered** file text — only code that actually compiles
-    for the current build configuration.  Inactive ``#ifdef`` branches are
+    for the build of the query.  Inactive ``#ifdef`` branches are
     replaced with blank lines (preserving original line numbers).  A pattern
     that lives only in a dead branch therefore gives no result, and that
     empty answer is the correct one: the code does not compile.

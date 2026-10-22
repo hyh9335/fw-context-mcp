@@ -122,6 +122,82 @@ def state(builder_cls, build_cfg, db_dir: Path, new_sources: list[str]) -> Autob
     return AutobuildState.WILL_BUILD
 
 
+def project_state(project_root: Path, cfg) -> AutobuildState:
+    """Say what will happen to a source file of the project that compile_commands.json misses.
+
+    *cfg* is the config of the project.  The status tools word their advice
+    with it, and the check at the start of the daemon starts an index run
+    only when the run can build.  WHY one function: the two must agree on
+    what fw-context builds.  When the detection finds no build system, the
+    answer is UNSUPPORTED: without a backend nothing builds on its own, and
+    that answer tells the caller to act and not to wait.
+    """
+    from .build import detect_build_system, user_database
+    from .builders import registry
+
+    # The index run builds nothing for a database of the user
+    # (`build.user_database`), and the advice must not promise a build.
+    if user_database(project_root, cfg) is not None:
+        return AutobuildState.USER_DATABASE
+    # A `[build] command` is a build that the user wrote, and the index run
+    # never starts it on its own (`cli._index._may_build_in_background`).
+    if cfg.build.command:
+        return AutobuildState.UNSUPPORTED
+    try:
+        system = cfg.build.system or detect_build_system(project_root)
+    except (ValueError, TypeError, RuntimeError) as exc:
+        log.debug("Build system detection failed for %s: %s", project_root, exc)
+        system = None
+    builder_cls = registry.get(system) if system else None
+    return state(builder_cls, cfg.build)
+
+
+def build_advice(project_root: Path, cfg) -> str:
+    """Return the action that makes compile_commands.json of the project again.
+
+    The status tools give it for a checkout and for a new source file, and
+    the state of a query answer gives it too.  WHY one function: each of
+    those places selected the command on its own, they did not agree, and
+    some named ``--build`` where it fails.  The cases:
+
+    * A database of the user (``build.user_database``): fw-context does not
+      build it, and the CLI refuses ``--build``.
+    * A build that fw-context cannot run (``build.can_run_build``): a stub
+      such as an IDE project, or a build system that no builder knows.
+      ``--build`` fails there.  A ``[[build.variants]]`` table can name the
+      build system or the command alone: when fw-context can run the build
+      of one variant, ``--build`` builds the variants.
+    * Each other project: ``fw-context index --build``.
+
+    The text is an instruction without a subject, thus a caller can write
+    "tell the user to <text>".
+    """
+    from .build import build_variant_config, can_run_build, detect_build_system, user_database
+
+    try:
+        system = cfg.build.system or detect_build_system(project_root)
+        # The CLI refuses a database of the user next to variants.
+        user_db = None if cfg.build.variants else user_database(project_root, cfg)
+    except (ValueError, TypeError, RuntimeError) as exc:
+        log.debug("Build system detection failed for %s: %s", project_root, exc)
+        system, user_db = None, None
+    if user_db is not None:
+        return (
+            "make the database again (the file that [index] compile_commands names, which "
+            "fw-context does not build), then run `fw-context index`"
+        )
+    variants = [build_variant_config(cfg.build, variant) for variant in cfg.build.variants]
+    if not (
+        can_run_build(cfg.build, system)
+        or any(can_run_build(variant, variant.system or system) for variant in variants)
+    ):
+        return (
+            "build the project outside of fw-context (fw-context cannot run its build, for "
+            "example the build of an IDE project), then run `fw-context index`"
+        )
+    return "run `fw-context index --build`"
+
+
 def load_excluded(db_dir: Path) -> dict[str, str]:
     """Return ``{path: source_hash}`` of files the build system does not want.
 
@@ -166,3 +242,89 @@ def clear_excluded(db_dir: Path) -> None:
         (db_dir / EXCLUDED_MARKER).unlink(missing_ok=True)
     except OSError:
         log.debug("could not remove the excluded-sources marker", exc_info=True)
+
+
+class BuildProblem:
+    """The content of the problem marker."""
+
+    text: str
+    """The sentence for the caller; it names the command that repairs it."""
+
+    build_missing: bool
+    """True when the run stopped because the build is not there.  A reader
+    that finds the build there again knows that the text is out of date;
+    the text of a failed run stays true until a run ends well."""
+
+
+def record_problem(db_dir: Path, text: str, *, build_missing: bool = False) -> None:
+    """Remember why the last index run stopped, for each MCP answer.
+
+    A marker that cannot be written costs the warning, never the run, thus
+    the error goes to the debug log only.
+    """
+    try:
+        db_dir.mkdir(parents=True, exist_ok=True)
+        (db_dir / PROBLEM_MARKER).write_text(
+            json.dumps({"text": text, "build_missing": build_missing}, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        log.debug("could not write the build problem marker", exc_info=True)
+
+
+def clear_problem(db_dir: Path) -> None:
+    """Drop the marker after an index run that ended well."""
+    try:
+        (db_dir / PROBLEM_MARKER).unlink(missing_ok=True)
+    except OSError:
+        log.debug("could not remove the build problem marker", exc_info=True)
+
+
+def read_problem(db_dir: Path) -> BuildProblem | None:
+    """Give the content of the marker, or None when there is none."""
+    try:
+        data = json.loads((db_dir / PROBLEM_MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # ValueError covers UnicodeDecodeError and json.JSONDecodeError.  A
+        # damaged marker reads as no marker; the next index run writes or
+        # removes it again.
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("text"), str) or not data["text"].strip():
+        return None
+    return BuildProblem(text=data["text"].strip(), build_missing=data.get("build_missing") is True)
+
+
+def build_missing_reason(compile_commands: Path) -> str:
+    """Say why the build of *compile_commands* is not there, or give "".
+
+    The build is not there when compile_commands.json does not exist, or
+    when a ``directory`` of its entries does not exist.  A build of
+    fw-context keeps the database in its output directory, thus a removed
+    output directory takes the database with it.  The ``directory`` check
+    covers a database that the user names, whose build directory is
+    elsewhere.  WHY it matters: the parse asks the compiler of each
+    unit in that directory, as the build runs it (``_driver_query``), and the
+    build makes its generated headers there.  Without the directory, each
+    unit gets no answer of its compiler.
+
+    A file that does not parse gives "": the run that reads it reports the
+    real error.  A ``directory`` is read as compile_commands.json gives it,
+    as ``compile_commands.parse`` reads it.
+    """
+    if not compile_commands.exists():
+        return f"compile_commands.json {compile_commands} does not exist"
+    try:
+        entries = json.loads(compile_commands.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(entries, list):
+        return ""
+    directories = {
+        str(entry["directory"]) for entry in entries
+        if isinstance(entry, dict) and entry.get("directory")
+    }
+    missing = sorted(d for d in directories if not Path(d).is_dir())
+    if not missing:
+        return ""
+    more = f" and {len(missing) - 1} more" if len(missing) > 1 else ""
+    return f"the build directory {missing[0]}{more} of {compile_commands} does not exist"

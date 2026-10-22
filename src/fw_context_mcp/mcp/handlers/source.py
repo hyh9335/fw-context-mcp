@@ -96,17 +96,10 @@ def _validate_path_in_root(resolved_path: str, root: Path) -> str | None:
 _SOURCE_TRUNCATE_CHARS = 8000   # max chars for get_source / get_symbol_context body
 _EXPLAIN_SNIPPET_CHARS = 4000   # max chars for explain_symbol source snippet
 _CONTEXT_LINES_MAX = 200        # max context_lines parameter for explain_symbol
-_MAX_SYMBOL_BODY_LINES = 1000   # fallback cap on _read_symbol_body; config overrides via IndexConfig.max_symbol_body_lines
-
-
-def _get_max_body_lines() -> int:
-    """Return the max body line cap from config, falling back to _MAX_SYMBOL_BODY_LINES."""
-    try:
-        from fw_context_mcp import config
-        cfg = config.load()
-        return cfg.index.max_symbol_body_lines
-    except (ValueError, TypeError, RuntimeError, OSError):
-        return _MAX_SYMBOL_BODY_LINES
+# The default of ``[index] max_symbol_body_lines`` (``IndexConfig``), for a
+# caller without a project config.  A handler passes the value of the
+# config of the project of the query.
+_MAX_SYMBOL_BODY_LINES = 1000
 
 # ── moved from server.py ──
 def _lookup_definition(
@@ -236,8 +229,13 @@ def _lookup_try_columns(
     return None
 
 # ── moved from server.py ──
-def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines: int = 400) -> str:
+def _read_symbol_body(
+    file_path: str, line_no: int, end_line: int = 0, max_lines: int = 400, *, body_cap: int = _MAX_SYMBOL_BODY_LINES,
+) -> str:
     """Read up to *max_lines* lines around *line_no* without loading the entire file.
+
+    *body_cap* is ``[index] max_symbol_body_lines`` of the project.  It
+    bounds the body also when *end_line* is far away.
 
     When *end_line* is provided (from libclang) it is used as the exact body
     boundary.  Otherwise brace-matching finds the closing ``}``.
@@ -256,7 +254,7 @@ def _read_symbol_body(file_path: str, line_no: int, end_line: int = 0, max_lines
         start_idx = max(0, line_no - 1)
         read_start = max(0, start_idx - 5)  # small margin for brace matching
         read_end = end_line + 5 if end_line else start_idx + max_lines + 5
-        read_end = min(read_end, start_idx + _get_max_body_lines())
+        read_end = min(read_end, start_idx + body_cap)
         from itertools import islice
 
         with p.open(errors="replace") as fh:
@@ -349,7 +347,7 @@ def _first_content_line(text: str) -> str:
     return ""
 
 
-def _number_lines(text: str, start_line: int) -> str:
+def _number_lines(text: str, start_line: int, body_cap: int) -> str:
     """Add the line-number prefix that ``_read_symbol_body`` uses.
 
     Keeps one output format for both body origins.  Without it the caller
@@ -361,23 +359,24 @@ def _number_lines(text: str, start_line: int) -> str:
     file that changed after the index run they can differ, and the warning
     that goes with that body says so.
 
-    The text is clamped to ``index.max_symbol_body_lines``, which is the cap
-    that ``_read_symbol_body`` applies to the disk.  Both origins must obey
+    The text is clamped to *body_cap* (``index.max_symbol_body_lines``),
+    which is the cap that ``_read_symbol_body`` applies to the disk.  Both origins must obey
     it: an unchanged file always takes this path, thus a cap that this
     function ignores has no effect on the common case.  The caller marks a
     clamped body with ``_source_truncated``.
     """
-    lines = text.splitlines()[: _get_max_body_lines()]
+    lines = text.splitlines()[:body_cap]
     return "\n".join(
         f"{start_line + offset:4d}  {line}"
         for offset, line in enumerate(lines)
     )
 
 
-def _store_capped_source(result: dict, source: str, stored: str) -> None:
+def _store_capped_source(result: dict, source: str, stored: str, *, body_cap: int) -> None:
     """Put *source* in *result*, and mark the body when a cap cut it.
 
-    Two caps can cut a body.  ``index.max_symbol_body_lines`` bounds the
+    Two caps can cut a body.  *body_cap* (``index.max_symbol_body_lines``
+    of the project of the query) bounds the
     number of lines, and ``_SOURCE_TRUNCATE_CHARS`` bounds what travels to
     the caller.  *stored* is the body that the index holds, and its length
     is what tells whether the line cap cut anything.
@@ -390,7 +389,7 @@ def _store_capped_source(result: dict, source: str, stored: str) -> None:
     truncated = len(source) > _SOURCE_TRUNCATE_CHARS
     if truncated:
         source = source[:_SOURCE_TRUNCATE_CHARS]
-    if stored and len(stored.splitlines()) > _get_max_body_lines():
+    if stored and len(stored.splitlines()) > body_cap:
         truncated = True
     result["source"] = source
     if truncated:
@@ -427,7 +426,7 @@ def _body_matches_symbol(file_path: str, row) -> bool:
 
 
 def _read_verified_body(
-    row, file_path: str, stored_state: tuple[float, str]
+    row, file_path: str, stored_state: tuple[float, str], *, body_cap: int,
 ) -> tuple[str, str, str | None]:
     """Return the symbol body, its origin, and a warning about its age.
 
@@ -438,6 +437,10 @@ def _read_verified_body(
         stored_state: ``(mtime, source_hash)`` that the index holds for that
             file.  The hash decides when it exists, because git rewrites the
             mtime of a file it did not change.
+        body_cap: ``[index] max_symbol_body_lines`` of the project of the
+            query.  WHY a parameter: the cap came from ``config.load()``
+            without a project, thus from the global config only, and the
+            value of a project had no effect.
 
     Returns:
         tuple: ``(text, origin, warning)``.  *origin* is ``"disk"`` when the
@@ -462,10 +465,20 @@ def _read_verified_body(
         # did not change.
         indexed_body = row["source"] or ""
         if indexed_body:
-            return _number_lines(indexed_body, line_no), "index", None
-        # No stored body — a declaration, or an extent of one line.  Only
-        # the disk can answer, and such a symbol has no branch to filter.
-        return _read_symbol_body(file_path, line_no, end_line=end_line), "disk", None
+            return _number_lines(indexed_body, line_no, body_cap), "index", None
+        # No stored body.  A declaration is the usual reason: it holds a
+        # prototype and no code.  The others are an extent that ends past
+        # the end of the file, and a row written before `symbols.source`
+        # was filled.  Only the disk can answer for those.
+        #
+        # A definition of ONE line used to land here too, and that was a
+        # defect of the indexer, not a shape of its own: two guards asked
+        # for an extent of more than one line and gave every inline
+        # accessor an empty body (1102 of them in one index).  From
+        # `fw-context-rows/3` on, such a definition carries its text and
+        # takes the branch above.  An index older than that still reaches
+        # this line, and `get_project_status` asks it for a reindex.
+        return _read_symbol_body(file_path, line_no, end_line=end_line, body_cap=body_cap), "disk", None
 
     if _body_matches_symbol(file_path, row):
         # The file changed, but the symbol did not move.  The disk gives the
@@ -473,7 +486,7 @@ def _read_verified_body(
         # Nothing can filter it: which branch compiles now is a question for
         # the preprocessor, and only an index run asks it.
         return (
-            _read_symbol_body(file_path, line_no, end_line=end_line),
+            _read_symbol_body(file_path, line_no, end_line=end_line, body_cap=body_cap),
             "disk",
             f"{file_path} changed after the last index run. The body below is "
             f"current, and it holds EVERY #ifdef branch — the index could not "
@@ -484,7 +497,7 @@ def _read_verified_body(
     indexed_body = row["source"] or ""
     if indexed_body:
         return (
-            _number_lines(indexed_body, line_no),
+            _number_lines(indexed_body, line_no, body_cap),
             "index",
             f"{file_path} changed after the last index run, and the stored line "
             f"number does not point at {row['name']} any more. The body below "
@@ -931,12 +944,12 @@ def _get_source_for_scope(db, name: str) -> dict:
         # Early-return path from the closure: macro fallback or error dict.
         return query_result
     result, file_path, row, stored_state = query_result
-    source, origin, stale_warning = _read_verified_body(row, file_path, stored_state)
+    source, origin, stale_warning = _read_verified_body(row, file_path, stored_state, body_cap=db.cfg.index.max_symbol_body_lines)
     if stale_warning:
         result["stale_warning"] = stale_warning
         result["stale"] = True
     if source:
-        _store_capped_source(result, source, row["source"] or "")
+        _store_capped_source(result, source, row["source"] or "", body_cap=db.cfg.index.max_symbol_body_lines)
         result["source_origin"] = origin
     elif not stale_warning:
         result["warning"] = f"Could not read source from {file_path}"
@@ -1411,7 +1424,7 @@ def _get_symbol_context_for_scope(db, name: str) -> dict:
         stored_state,
     ) = query_result
 
-    source, source_origin, stale_warning = _read_verified_body(row, file_path, stored_state)
+    source, source_origin, stale_warning = _read_verified_body(row, file_path, stored_state, body_cap=db.cfg.index.max_symbol_body_lines)
     result: dict = {
         "name": row["name"],
         "qualified_name": row["qualified_name"],
@@ -1444,7 +1457,7 @@ def _get_symbol_context_for_scope(db, name: str) -> dict:
         result["overrides"] = overrides_info["overrides"]
         result["overridden_by"] = overrides_info["overridden_by"]
     if source:
-        _store_capped_source(result, source, row["source"] or "")
+        _store_capped_source(result, source, row["source"] or "", body_cap=db.cfg.index.max_symbol_body_lines)
         result["source_origin"] = source_origin
     if stale_warning:
         # The callers and callees come from the index, thus a changed file
@@ -1583,8 +1596,8 @@ def read_file(
     image: Annotated[str | None, Field(description="Sysbuild image in the variant. Omit for all images of the variant.")] = None,
     mode: Annotated[str, Field(description="Content view: 'active' (default) = ifdef-filtered text that compiles for the active build, with the conditional skeleton as 'skeleton' annotations; 'raw' = the file exactly as on disk, every branch included; 'directives' = the preprocessor directive lines as a structured list.")] = "active",
 ) -> dict:
-    """Read a complete C/C++ source file with **ifdef-filtered** content —
-    only code that actually compiles for the current build configuration.
+    """Read a C/C++ source file, one page at a time, with **ifdef-filtered** content —
+    only code that actually compiles for the build of the query.
     Inactive ``#ifdef`` branches are replaced with blank lines (preserving
     original line numbers).
 
