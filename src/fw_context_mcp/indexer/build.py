@@ -124,6 +124,8 @@ class BuildConfig:
     make_target: str = "all"  # build target
     make_vars: dict[str, str] = field(default_factory=dict)  # extra vars for make
     make_dry_run: bool = True  # use compiledb -n (dry-run, no real build)
+    out_dir_var: str | None = None  # Makefile variable of the output dir; a real build needs it
+    environment: str | None = None  # PlatformIO environment of the build (pio run -e)
 
     # ── Isolated build directory ──
     # Set only for a build that fw-context starts on its own, after it finds

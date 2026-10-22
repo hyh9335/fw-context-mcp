@@ -846,6 +846,7 @@ _BUILD_FIELDS: list[tuple[str, str, str]] = [
     ("make_target", "make_target", "str"),
     ("make_vars", "make_vars", "dict"),
     ("make_dry_run", "make_dry_run", "bool"),
+    ("out_dir_var", "out_dir_var", "str"),
     ("toolchain_path", "toolchain_path", "str"),
     ("toolchain_prefix", "toolchain_prefix", "str"),
     ("include_dirs", "include_dirs", "list"),
@@ -859,8 +860,9 @@ _BUILD_FIELDS: list[tuple[str, str, str]] = [
     ("timeout", "timeout", "float"),
     ("source_dir", "source_dir", "str"),
     ("sysbuild", "sysbuild", "bool"),
+    ("environment", "environment", "str"),
     ("build_dir", "build_dir", "str"),
-    ("env", "env", "dict"),
+    ("env", "env", "str_table"),
 ]
 
 _INDEX_FIELDS: list[tuple[str, str, str]] = [
@@ -871,10 +873,10 @@ _INDEX_FIELDS: list[tuple[str, str, str]] = [
     ("project_paths", "project_paths", "list"),
     ("index_refs", "index_refs", "bool"),
     ("index_embeddings", "index_embeddings", "bool"),
-    ("rerank_top_k", "rerank_top_k", "int(50)"),
-    ("min_dense_count", "min_dense_count", "int(3)"),
-    ("max_symbol_body_lines", "max_symbol_body_lines", "int(1000)"),
-    ("purge_max_missing_percent", "purge_max_missing_percent", "int(20)"),
+    ("rerank_top_k", "rerank_top_k", "int"),
+    ("min_dense_count", "min_dense_count", "int"),
+    ("max_symbol_body_lines", "max_symbol_body_lines", "int"),
+    ("purge_max_missing_percent", "purge_max_missing_percent", "int"),
     ("shadow_v2_enabled", "shadow_v2_enabled", "bool"),
     ("shadow_v2_db", "shadow_v2_db", "path"),
     ("v2_write_authority", "v2_write_authority", "bool"),
@@ -905,7 +907,7 @@ _LLM_FIELDS: list[tuple[str, str, str]] = [
     ("stream", "stream", "bool"),
 ]
 
-_KNOWN_SECTIONS: set[str] = {"project", "build", "index", "llm", "cache_server", "call_graph"}
+_KNOWN_SECTIONS: set[str] = {"project", "build", "index", "llm", "cache_server", "call_graph", "updates"}
 
 # BuildConfig attribute name → merge semantics classification lives in
 # indexer/build.py; this module maps TOML keys → attribute names for the
@@ -1342,10 +1344,20 @@ def _expected_type(value: object, conv: str, *, strict: bool = False) -> str | N
         if not isinstance(value, str):
             return "a string"
         try:
-            Path(value).expanduser()
+            expanded = Path(value).expanduser()
         except RuntimeError:
             # "~name/x" for a user that does not exist on this machine.
             return "a path whose home directory (~) is known"
+        # POSIX expands "~name" too and raises for an unknown user; Windows
+        # leaves "~name/x" as it is, or resolves it to C:\Users\name without
+        # a check that the user exists.  Enforce the same contract here: the
+        # home of a "~name" path must exist, or the path names nowhere.
+        if value.startswith("~") and len(value) > 1 and not value.startswith("~/") and not value.startswith("~\\"):
+            if str(expanded).startswith("~"):
+                return "a path whose home directory (~) is known"
+            home = Path(*expanded.parts[:3])
+            if not home.exists():
+                return "a path whose home directory (~) is known"
         return None
     if conv == "bool":
         if isinstance(value, bool) or (
