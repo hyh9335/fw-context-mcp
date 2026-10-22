@@ -176,9 +176,7 @@ def _new_source_advice(auto_state: AutobuildState, bg_running: bool, rebuild: st
     return f"fw-context does not build them on its own; {rebuild}"
 
 
-def _autobuild_state(
-    root: Path, proj_cfg, db_path: Path, new_sources: list[str]
-) -> AutobuildState:
+def _autobuild_state(root: Path, proj_cfg, new_sources: list[str]) -> AutobuildState:
     """Say what will happen to *new_sources*, for the message and the status.
 
     Answers UNSUPPORTED when the build system cannot be determined: without
@@ -188,16 +186,6 @@ def _autobuild_state(
     if not new_sources:
         return AutobuildState.WILL_BUILD  # unused — no file to report
     return project_autobuild_state(root, proj_cfg)
-
-    from dataclasses import replace
-
-    from ...indexer.builders import registry
-    from ...utils import autobuild_dir
-
-    system = proj_cfg.build.system or _detect_build_system(root)
-    builder_cls = registry.get(system) if system else None
-    candidate = replace(proj_cfg.build, isolated_build_dir=autobuild_dir())
-    return autobuild_state(builder_cls, candidate, db_path.parent, new_sources)
 
 
 def _expand_dir_placeholder(dir_str: str, root: Path) -> str:
@@ -1445,47 +1433,66 @@ def _embeddings_missing(conn, cfg, proj_cfg: Config, *, restart: bool) -> int:
     return len(symbols_without_embedding(conn, cfg["config_hash"]))
 
 
-def _list_status(db_schema_ver: int, cc_stale: bool) -> str:
-    """Map schema version and compile-commands staleness to a status label.
+def _list_status(db_schema_ver: int, cc_stale: bool, row_format_old: bool) -> str:
+    """Map schema version, compile-commands staleness and row format to a status label.
 
-    Returns ``"reindex_needed"`` when either the DB schema is outdated
-    or compile_commands.json has changed.  Returns ``"ready"`` otherwise.
-    Used by ``list_projects`` to summarize each indexed project.
+    Returns ``"reindex_needed"`` when the DB schema is outdated, when the
+    compile_commands.json of a build changed or is missing, or when a build
+    holds text of an older row format.  Returns ``"ready"`` otherwise.  Used
+    by ``list_projects`` to summarize each indexed project.
+
+    WHY the row format is here: the schema version hashes the column set
+    alone, thus it does not move when the meaning of the text in a column
+    changes.  Without this check ``list_projects`` reported "ready" over an
+    index for which ``get_project_status`` and the daemon ask for a reindex.
     """
-    needs = (db_schema_ver < CURRENT_SCHEMA_VERSION) or cc_stale
+    needs = (db_schema_ver < CURRENT_SCHEMA_VERSION) or cc_stale or row_format_old
     return "reindex_needed" if needs else "ready"
 
 
 def list_projects(
     project_root: Annotated[
         str | None,
-        Field(description="Project root. Auto-detected if omitted. Pass to distinguish multiple indexed projects."),
+        Field(
+            description="Project root whose config names the index directory; pass it to distinguish multiple "
+            "indexed projects that keep separate index directories. Omitted = the global config. Every "
+            "project in that directory is listed."
+        ),
     ] = None,
 ) -> list[dict]:
     """List all indexed firmware projects with their statistics.
 
-    Read-only. No side effects. Use at session start to discover available
-    projects; use ``get_active_build`` for details on the currently active project.
+    Read-only. No side effects. Use it to find another project; call
+    ``get_project_status`` for the builds and the health of one project.
 
     ``indexed_at`` and ``first_indexed_at`` are UTC, in ``"YYYY-MM-DD
-    HH:MM:SS"`` format — the same format that ``get_active_build`` returns.
+    HH:MM:SS"`` format — the same format that ``get_project_status`` returns.
+    ``indexed_at`` is the time of the newest build.
+
+    A project of several builds gets no counts here (``symbol_count``,
+    ``file_count``, ``description`` and ``analysis`` are None): a file that
+    two images compile is in the index of each, thus a sum counts shared
+    code once for each build.  ``get_project_status`` gives the counts of
+    each build.
 
     ``analysis`` holds the ``project`` and ``vendor`` counts only.  For the
     ``model``, ``analyze_vendor``, and ``complete`` fields, call
-    ``get_active_build`` for that project.
+    ``get_build_info`` for that build.
 
     Args:
-        project_root: Project root. Auto-detected if omitted. Pass to
-            distinguish multiple indexed projects.
+        project_root: Project root whose config names the index
+            directory (``index.db_dir``).  Omitted, the global config does.
 
     Returns:
         list of dicts, each with: project_id, name, root_path, build_system,
         symbol_count, file_count, indexed_at (str — UTC), description (str),
         first_indexed_at (str — UTC), schema_version, current_schema,
-        reindex_needed (bool), status (str — "ready" or "reindex_needed"),
+        reindex_needed (bool — the schema is outdated, the
+        compile_commands.json of a build changed or is missing, or a build
+        holds rows of an older row format; each (variant, image) build
+        counts), status (str — "ready" or "reindex_needed"),
         db (path to SQLite database file),
-        variant_count (int — number of build variants),
-        image_count (int — number of sysbuild images),
+        build_count (int — number of builds, each a (variant, image) pair),
         analysis (dict — LLM-analysis coverage
         {project: {analyzed, skipped, total},
         vendor: {analyzed, skipped, total}}, or None when no build is
@@ -1521,33 +1528,41 @@ def list_projects(
                     return f"{outdated}. To see the action, call get_project_status for that project."
                 rows = get_all_projects(conn)
                 schema_ver = get_db_schema_version(conn)
-                counts = {}
-                for row in conn.execute(
-                    "SELECT project_id, "
-                    "COUNT(DISTINCT CASE WHEN variant != '' THEN variant END) AS vc, "
-                    "COUNT(DISTINCT CASE WHEN image != '' THEN image END) AS ic "
-                    "FROM build_configs GROUP BY project_id"
-                ).fetchall():
-                    counts[row["project_id"]] = (row["vc"] or 0, row["ic"] or 0)
                 coverage_map = {
                     row["config_hash"]: compute_analysis_coverage(conn, row["config_hash"])
                     for row in rows
                     if row["config_hash"]
                 }
-                return rows, schema_ver, counts, coverage_map
+                # The newest build of each (variant, image), the builds that
+                # get_project_status and the daemon check.  The newest build
+                # of the project alone is not enough: the builds of one
+                # project are not always indexed together, thus another build
+                # can be stale while the newest is current.
+                builds = {row["project_id"]: latest_builds(conn, row["project_id"]) for row in rows}
+                return rows, schema_ver, coverage_map, builds
 
-            rows, db_schema_ver, variant_counts, coverage_map = executor.execute_sync(_query, "")
+            answer = executor.execute_sync(_query, "")
+            if isinstance(answer, str):
+                # The rows of an older version lack the columns that the
+                # list reads; the other projects stay in the list.
+                results.append({"db": str(db_path), "error": answer})
+                continue
+            rows, db_schema_ver, coverage_map, builds = answer
             for r in rows:
-                # Staleness check: compare stored creation time with
-                # compile_commands.json mtime.  Does not require
-                # _wrap_tool — list_projects is informational only.
-                cc_stale = (
-                    _is_stale(
-                        {"created_at": r["created_at"]},
-                        r["compile_commands_path"],
-                    )[0]
-                    if r["compile_commands_path"]
-                    else False
+                project_builds = builds[r["project_id"]]
+                # A changed or missing compile_commands.json of a build: the
+                # check that get_project_status makes, by mtime against the
+                # time of the index.  Does not require _wrap_tool —
+                # list_projects is informational only.
+                cc_stale = any(
+                    _is_stale(build, build["compile_commands_path"])[0]
+                    for build in project_builds
+                    if build["compile_commands_path"]
+                )
+                # A project with no build has no row here, and an absent
+                # build is not an OLD format.
+                row_format_old = any(
+                    row_format_is_older(stored_row_format(build)) for build in project_builds
                 )
                 root = Path(r["root_path"]) if r["root_path"] else None
                 # Report the CONFIGURED build system first — projects without
@@ -1559,72 +1574,36 @@ def list_projects(
                     _bs = (_pc.build.system if _pc else None) or (_detect_build_system(root) if root else "unknown")
                 except Exception:
                     _bs = _detect_build_system(root) if root else "unknown"
-                cov = coverage_map.get(r["config_hash"]) if r["config_hash"] else None
+                status = _list_status(db_schema_ver, cc_stale, row_format_old)
+                # The counts of the newest build describe the project only
+                # when it is the one build.  See the docstring.
+                single = len(project_builds) <= 1
+                cov = coverage_map.get(r["config_hash"]) if single and r["config_hash"] else None
                 results.append(
                     {
                         "project_id": r["project_id"],
                         "name": r["name"],
                         "root_path": r["root_path"],
                         "build_system": _bs,
-                        "symbol_count": r["symbol_count"],
-                        "file_count": r["file_count"],
+                        "symbol_count": r["symbol_count"] if single else None,
+                        "file_count": r["file_count"] if single else None,
                         "indexed_at": r["created_at"],
-                        "description": r["description"] if "description" in r.keys() else "",
+                        "description": (r["description"] if "description" in r.keys() else "") if single else None,
                         "first_indexed_at": r["first_indexed_at"] if "first_indexed_at" in r.keys() else "",
-                         "schema_version": db_schema_ver,
-                         "current_schema": CURRENT_SCHEMA_VERSION,
-                         "reindex_needed": cc_stale or db_schema_ver < CURRENT_SCHEMA_VERSION,
-                         "status": _list_status(db_schema_ver, cc_stale),
-                         "db": str(db_path),
-                         "variant_count": variant_counts.get(r["project_id"], (0, 0))[0],
-                         "image_count": variant_counts.get(r["project_id"], (0, 0))[1],
-                         "analysis": (
-                             {"project": cov["project"], "vendor": cov["vendor"]}
-                             if cov else None
-                         ),
+                        "schema_version": db_schema_ver,
+                        "current_schema": CURRENT_SCHEMA_VERSION,
+                        "reindex_needed": status == "reindex_needed",
+                        "status": status,
+                        "db": str(db_path),
+                        "build_count": len(project_builds),
+                        "analysis": (
+                            {"project": cov["project"], "vendor": cov["vendor"]}
+                            if cov else None
+                        ),
                     }
                 )
         except (sqlite3.Error, OSError) as e:
             results.append({"db": str(db_path), "error": str(e)})
-
-    # ── M6-only projects (v2 direct-materialization indexing, no legacy
-    # index.db / no global registry) ──────────────────────────────────────
-    # The M6 query layer keeps the stores it opened this session in
-    # m6_query._m6_stores.  Such a project is indexed and queryable but
-    # never appears in the registry-driven list above, so supplement it.
-    existing_roots = {
-        str(Path(r["root_path"]).resolve())
-        for r in results if r.get("root_path")
-    }
-    try:
-        from ...store_v2.m6_query import _m6_stores
-        for m6_root, _store in list((_m6_stores or {}).items()):
-            m6_root = str(m6_root)
-            if m6_root in existing_roots:
-                continue
-            if not Path(m6_root).exists():
-                continue
-            try:
-                from ...store_v2.m6_query import list_builds
-                builds = list_builds(_store)
-                results.append({
-                    "project_id": _safe_project_id(Path(m6_root)),
-                    "name": Path(m6_root).name,
-                    "root_path": str(Path(m6_root)),
-                    "build_system": _detect_build_system(Path(m6_root)),
-                    "symbol_count": 0, "file_count": 0,
-                    "indexed_at": "", "description": "M6-only index (no legacy DB)",
-                    "first_indexed_at": "",
-                    "schema_version": 0, "current_schema": CURRENT_SCHEMA_VERSION,
-                    "reindex_needed": False, "status": "ready",
-                    "db": str(Path(m6_root) / ".fw-context" / "index-m6.db"),
-                    "variant_count": len(builds), "image_count": 0,
-                    "analysis": None, "indexed_as": "m6",
-                })
-            except Exception:
-                pass
-    except Exception:
-        pass
     return results
 
 
@@ -1690,7 +1669,14 @@ def reset_index(
 
     Returns:
         dict: {project_root, db, project_id, action: "dry_run"|"deleted",
-        message, symbol_count, indexed_at (dry-run)}.
+        message, build_count, symbol_count, indexed_at}.  ``build_count``
+        counts the completed builds of the project, as
+        ``get_project_status`` lists them.  ``symbol_count`` counts every
+        symbol row in the database, the rows that the reset deletes: also
+        the rows of a build that an index run writes now, and of an older
+        build of a pair that an interrupted run left behind.
+        ``indexed_at`` is the time of the newest build.  The three are
+        present only when a build config is readable.
 
         A ``warning`` key means that the database is corrupt — the
         integrity check or a read of the database failed, thus the tool
@@ -1699,57 +1685,33 @@ def reset_index(
         On failure the dict holds only ``error`` with the reason.
     """
     root = resolve_project_root(project_root)
-    # v2-only index: detect the M6 store WITHOUT calling _db_path, which
-    # raises ProjectNotInitializedError on a tree that has no legacy
-    # init/config.  The M6 store is a project-owned file, no config needed.
-    m6_db_path = root / ".fw-context" / "index-m6.db"
-    if m6_db_path.exists():
-        targets = [m6_db_path]
-        for suffix in ("-wal", "-shm"):
-            p = root / ".fw-context" / (m6_db_path.stem + suffix)
-            if p.exists():
-                targets.append(p)
-        if not confirm:
-            return {
-                "project_root": str(root),
-                "db": str(m6_db_path),
-                "project_id": _safe_project_id(root),
-                "action": "dry_run",
-                "message": "M6 store would be deleted (dry-run; pass confirm=True to execute).",
-                "m6": True,
-                "targets": [str(t) for t in targets],
-            }
-        for t in targets:
-            try:
-                t.unlink(missing_ok=True)
-            except Exception as e:
-                return {"error": f"Could not delete {t}: {e}", "m6": True}
-        return {
-            "project_root": str(root),
-            "db": str(m6_db_path),
-            "project_id": _safe_project_id(root),
-            "action": "deleted",
-            "message": f"M6 store deleted ({len(targets)} file(s)). Re-run `fw-context index`.",
-            "m6": True,
-            "deleted": [str(t) for t in targets],
-        }
     db_path = _db_path(root)
     if not db_path.exists():
         return {"error": f"No index found for {root}. Nothing to reset."}
     project_id = derive_project_id(root)
     cfg_data = None
     sym_count = 0
+    build_count = 0
     corrupt = False
     conn = None
     try:
         conn = open_db(db_path)
         with conn:
+            # The newest build gives the time of the last run.  The counts
+            # are of the whole database, because the reset deletes all of
+            # it: the count of the newest build alone was the size of the
+            # one program that the last run did.
             cfg_data = get_active_config(conn, project_id)
             if cfg_data:
-                sym_count = conn.execute(
-                    "SELECT COUNT(*) FROM symbols WHERE config_hash=?",
-                    (cfg_data["config_hash"],),
-                ).fetchone()[0]
+                sym_count = conn.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
+                build_count = len(latest_builds(conn, project_id))
+    except sqlite3.DatabaseError as exc:
+        if not _shows_damage(exc):
+            raise
+        # The reset can still delete a damaged database, thus the tool
+        # records the flag and gives no counts.
+        corrupt = True
+        cfg_data = None
     finally:
         if conn is not None:
             try:
@@ -1762,6 +1724,7 @@ def reset_index(
         "project_id": project_id,
     }
     if cfg_data:
+        info["build_count"] = build_count
         info["symbol_count"] = sym_count
         info["indexed_at"] = cfg_data["created_at"]
     elif corrupt:
@@ -1794,12 +1757,12 @@ def reset_index(
         for suffix in ("-wal", "-shm", "-journal"):
             p = db_path.with_name(db_path.name + suffix)
             p.unlink(missing_ok=True)
-        # Both autobuild markers describe the index that just went away: a
-        # build that failed for a file list, and the files a build ran for
-        # and did not cover.  Left behind they would suppress or delay work
-        # on a fresh index that knows nothing about either.
-        from ...indexer.autobuild import clear_excluded, clear_failure
-        clear_failure(db_path.parent)
+        # Both autobuild markers describe the index that just went away: why
+        # its last run stopped, and the files a build ran for and did not
+        # cover.  Left behind they would warn about, or hide, work on a
+        # fresh index that knows nothing about either.
+        from ...indexer.autobuild import clear_excluded, clear_problem
+        clear_problem(db_path.parent)
         clear_excluded(db_path.parent)
         from ...mcp.shared.stale import _invalidate_modified_cache
         _invalidate_modified_cache()  # clear all entries — DB is gone
@@ -2478,74 +2441,22 @@ def _reindex_graph_phases(
 
 
 def _header_coverage_warning(
-    target: Path,
-    matching: list,
-    via_header: bool,
-    manifest: dict | None = None,
-    project_root: Path | None = None,
-    config_hash: str = "",
+    target: Path, matching: list, via_header: bool
 ) -> str | None:
-    """Say how much of a header the re-index really covered.
+    """Say that a header was re-parsed through one compilation context.
 
     Another unit can include the same header under a different set of
-    ``#define`` values and still hold symbols from before the edit.  With a
-    per-context manifest the coverage is countable: the manifest's entries
-    that include *target* are the contexts that need refreshing, and the
-    re-parsed units — identified by the same ADR-001 identity the index
-    used — are what actually got refreshed.  A partial result warns with
-    the real numbers; a full result stays silent, because a warning on a
-    complete re-index is noise that trains callers to ignore the field.
+    ``#define`` values and still hold symbols from before the edit.  Only a
+    full index covers every context, and the caller has to know that the
+    answer is partial.
 
-    Without a manifest the fallback stays one-unit conservative, and the
-    suffix test covers a header that compile_commands.json does list, which
-    some build systems emit.  The suffix test alone is not enough: it names
-    ``.h`` and ``.hpp``, while an ``#include`` reaches ``.hh``, ``.hxx``,
-    ``.inc`` and extension-less headers just as well, and the fallback
-    resolves those too.
+    *via_header* covers the manifest fallback.  The suffix test covers a
+    header that compile_commands.json does list, which some build systems
+    emit.  The suffix test alone is not enough: it names ``.h`` and
+    ``.hpp``, while an ``#include`` reaches ``.hh``, ``.hxx``, ``.inc`` and
+    extension-less headers just as well, and the fallback resolves those
+    too.
     """
-    if manifest is not None and project_root is not None and config_hash:
-        from ...indexer.context_identity import unit_identity_fields
-
-        root = project_root.resolve()
-        target_str = str(target)
-        reprinted: set[tuple[str, str]] = set()
-        for unit in matching:
-            try:
-                tu_rel = Path(unit.file).resolve().relative_to(root).as_posix()
-            except ValueError:
-                tu_rel = Path(unit.file).resolve().as_posix()
-            ctx = unit_identity_fields(unit, config_hash, root, entry_index=0)[
-                "context_id"
-            ]
-            reprinted.add((tu_rel, ctx))
-        # Count coverage at (file, context) granularity; legacy entries
-        # without a context id fall back to file-level matching.
-        total = 0
-        refreshed = 0
-        for entry in manifest.get("entries") or ():
-            if not entry.get("file"):
-                continue
-            includes_target = any(
-                (header if Path(header).is_absolute() else str(root / header)) == target_str
-                for header in entry.get("headers") or ()
-            )
-            if not includes_target:
-                continue
-            total += 1
-            entry_ctx = entry.get("context_id")
-            if entry_ctx is not None and (entry.get("file"), entry_ctx) in reprinted:
-                refreshed += 1
-            elif entry_ctx is None and entry.get("file") in {
-                rel for rel, _ in reprinted
-            }:
-                refreshed += 1
-        if total and refreshed < total:
-            return (
-                f"Header re-indexed: refreshed {refreshed} of {total} includer "
-                "contexts — run 'fw-context index' for full accuracy."
-            )
-        if total:
-            return None
     if not (via_header or (len(matching) == 1 and target.suffix in HEADER_EXTENSIONS)):
         return None
     return (
@@ -3324,10 +3235,16 @@ def check_ollama(
         ollama_running (bool), ollama_url (str), configured_model (str),
         num_ctx (int), installed_models (list[str]),
         chat_api (dict — ``{configured (bool), model (str)}``: whether an
-        external chat API replaces Ollama, and the model it names),
+        external chat API replaces Ollama, and the model it names; a
+        configured one adds endpoint, format, and compliance_warning for an
+        external host),
         configured_embed_model (str), embedding_installed (bool),
-        message (str, on error/disabled), model_details (list[dict], when
-        Ollama running), suggest_cloud (bool), vec_available (bool),
+        embedding_backend (str — "ollama", or "local" for a
+        sentence-transformers or ``ft://`` model, which needs no Ollama:
+        it counts as installed, and with chat on an external API a
+        stopped Ollama still gives "ok"),
+        message (str, when status is not "ok"), model_details (list[dict]),
+        suggest_cloud (bool), vec_available (bool),
         vec_error (str, optional), debug_log (str, optional — only when
         debug logging is enabled)}
 
@@ -3412,7 +3329,7 @@ def _with_project(command: str, root: Path) -> str:
     return f"{command} --project {quoted}"
 
 
-def _dep_to_schema(r, root: Path | None = None) -> dict:
+def _dep_to_schema(r, root: Path) -> dict:
     """Map one ``DepCheckResult`` to the ``{name, status, critical, message, action}`` schema.
 
     The optional ``action`` carries a human-readable ``message`` (what is
@@ -3423,7 +3340,7 @@ def _dep_to_schema(r, root: Path | None = None) -> dict:
     ``status="skipped"`` passes through unchanged — it signals a missing
     prerequisite, not a failure.
     """
-    d: dict = {"name": r.name, "status": r.status, "message": r.message}
+    d: dict = {"name": r.name, "status": r.status, "critical": r.critical, "message": r.message}
     if r.fix_cmd or r.instructions:
         human = r.instructions or r.message
         if r.fix_cmd and human.strip() == r.fix_cmd.strip():
@@ -3585,12 +3502,20 @@ def check_dependencies(
         Field(description="Project root. Auto-detected if omitted. Pass explicitly when the project is not the server cwd."),
     ] = None,
 ) -> list[dict]:
-    """Run the full dependency audit. Read-only. Returns structured results.
+    """Run the dependency audit of the installation. Read-only, and it creates no file.
 
-    Returns the raw per-check dicts (``name``, ``status``, ``message``,
-    ``fix_cmd``, ``instructions``, ``critical``) — NOT the formatted
-    ``doctor`` table.  Read ``status``/``fix_cmd``/``instructions`` per
-    issue; ``status="skipped"`` means a prerequisite is missing.
+    Call it when get_project_status or another tool reports a problem of
+    the installation, or before the first ``fw-context init``.  It is not a
+    call for each session: it runs every check of the installation.
+
+    Each entry gives what to do in ``action``: a ``message`` for a human,
+    and the shell ``command`` that repairs it.  ``status="skipped"`` means a
+    prerequisite is missing (e.g. ``libclang-so`` skipped because
+    ``libclang-python`` is absent) — not a failure.
+
+    In a project that is not initialized, only the checks that need no
+    project config run: the Python packages and libclang.  The Ollama,
+    model, database and build checks need the config.
 
     The check ``config`` names a config file that cannot be used.  The
     checks that read the config are then ``skipped``.  When a config file
@@ -3601,10 +3526,10 @@ def check_dependencies(
         project_root: Project root directory. Auto-detected from CWD if omitted.
 
     Returns:
-        list[dict]: one dict per check, ``DepCheckResult`` fields via ``asdict``.
+        list[dict]: one dict per check, each with ``name``, ``status``,
+        ``critical`` (bool), ``message``, and an optional ``action``
+        ({message, command}).
     """
-    from dataclasses import asdict
-
     from ...deps import run_full_check
 
     root = resolve_project_root(project_root)
@@ -3652,7 +3577,7 @@ def get_project_info(
         # run to answer a question about a project that is already indexed.
         return {
             "error": "project_id is necessary. Call list_projects for the id of every "
-            "indexed project, or get_active_build for the id of this one."
+            "indexed project, or get_project_status for the id of this one."
         }
     result = get_project_by_id(project_id)
     if result is None:
@@ -5277,7 +5202,7 @@ def _project_facts(conn, target: _IndexTarget) -> _ProjectFacts:
     new_sources = find_unindexed_sources(conn, checked["config_hash"], target.root, cc_path)
     return _ProjectFacts(
         new_sources=new_sources,
-        auto_state=_autobuild_state(target.root, target.cfg, target.db_path, new_sources),
+        auto_state=_autobuild_state(target.root, target.cfg, new_sources),
         build_problem=problem.text if problem is not None else "",
         marker_build_missing=problem is not None and problem.build_missing,
         live_head=read_head(target.root),

@@ -18,6 +18,7 @@ from fw_context_mcp.utils import (
     resolve_real_binary,
     run_build_command,
 )
+from ..build_layout import COMPILE_COMMANDS_NAME, BuildLayout
 
 from . import _linker, registry
 from .protocol import BuildIssue

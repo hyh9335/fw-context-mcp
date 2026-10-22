@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fw_context_mcp.utils import cc_output_path, run_build_command
+from ..build_layout import COMPILE_COMMANDS_NAME, BuildLayout
 
 from . import registry
 from .protocol import BuildIssue

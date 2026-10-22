@@ -1698,18 +1698,23 @@ def resource_stats() -> str:
     projects = maintenance.list_projects()
     if not projects:
         return "No indexed projects found."
-    lines = [f"# fw-context 鈥?{len(projects)} project(s)", ""]
+    lines = [f"# fw-context — {len(projects)} project(s)", ""]
     for p in projects:
         if "info" in p:
             lines.append(p["info"])
             continue
         if "error" in p:
-            lines.append(f"- **{p.get('db', '?')}**: ERROR 鈥?{p['error']}")
+            lines.append(f"- **{p.get('db', '?')}**: ERROR — {p['error']}")
             continue
-        stale = "鈿?reindex_needed" if p.get("reindex_needed") else "鉁?ready"
+        stale = "⚠ reindex_needed" if p.get("reindex_needed") else "✓ ready"
+        # A project of several builds has no counts (see list_projects): a
+        # sum counts shared code once for each build.
+        size = (
+            f"{p['symbol_count']} symbols, {p['file_count']} files"
+            if p["symbol_count"] is not None else f"{p['build_count']} builds"
+        )
         lines.append(
-            f"- **{p['name']}** ({p['project_id']}) 鈥?"
-            f"{p['symbol_count']} symbols, {p['file_count']} files, "
+            f"- **{p['name']}** ({p['project_id']}) — {size}, "
             f"indexed {p['indexed_at']}, {stale}"
         )
     return "\n".join(lines)

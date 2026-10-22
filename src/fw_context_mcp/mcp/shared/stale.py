@@ -1,4 +1,4 @@
-"""Stale detection and recovery — file mtime checks, auto-reindex, query staleness wrapping.
+"""Stale detection and recovery — file content checks, auto-reindex, query staleness wrapping.
 
 WHY stale detection cannot be a simple "compare index timestamp to latest file
 mtime": compile_commands.json changes may require a full reindex even if no source
@@ -10,15 +10,16 @@ WHY there are two staleness helpers (``_stale_files`` vs ``_count_modified_files
 - ``_stale_files`` operates on a small set of result files — it checks "are THESE
   specific files stale?"  Used after every search/lookup to warn the assistant.
 - ``_count_modified_files`` scans ALL files in the database — it answers "how many
-  files are stale overall?"  Used by ``get_active_build`` for the dashboard count
+  files are stale overall?"  Used by ``get_project_status`` for the dashboard count
   and by the daemon's startup check.
 
-WHY mtime checks are cached: on NFS/CIFS mounts, each ``os.path.getmtime()`` may
-take 50-200 ms.  With 10K indexed files, a full scan would take seconds.  The
-``_modified_cache`` with 30-second TTL bounds this to one scan per evaluation
-interval.  The ``MAX(mtime)`` verification before serving cached values catches
-external modifications by the daemon's background reindex (which is a separate
-OS process and cannot call ``_invalidate_modified_cache``).
+WHY the project-wide count can be cached: it hashes every indexed file (0.02 to
+0.12 s on the largest test projects, and more on a network mount).  The daemon's
+check takes the ``_modified_cache`` with a 30-second TTL.  The ``MAX(mtime)``
+verification before serving cached values catches external modifications by the
+daemon's background reindex (which is a separate OS process and cannot call
+``_invalidate_modified_cache``).  get_project_status does not take the cache: an
+edit on disk leaves it valid.
 """
 
 from __future__ import annotations
@@ -29,10 +30,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from ...config import derive_project_id
-from ...indexer.db import get_active_config
 from ...indexer.manifest import _hash_with_cache, load_tu_extensions
-from ...platform import process as _process
 from ...utils import (
     MTIME_TOLERANCE_S,
     TU_EXTENSIONS,
@@ -40,19 +38,10 @@ from ...utils import (
     build_dir_patterns_with_fw_context,
     compute_source_hash,
 )
-from .context import _quick_open_readonly, get_executor
+from .context import get_executor
+from .paging import holds_past_end_info
 
 log = logging.getLogger(__name__)
-
-# How close two timestamps must be to count as the same one.  NOT a
-# tolerance for clock skew — that is MTIME_TOLERANCE_S, and it is a whole
-# second.  This is only wide enough to absorb the float round trip through
-# SQLite REAL and a filesystem that does not return a stat bit-exactly.
-#
-# It must stay small.  The rule it serves reads "an exact match is the file
-# the index hashed"; widen it and every file inside the band reads as
-# unchanged again, which is the behaviour this replaced.
-_MTIME_MATCH_EPS_S: float = 0.001
 
 # ── Mtime cache ──
 # Cache for _count_modified_files results with a 30-second TTL.
@@ -170,9 +159,10 @@ def quick_structural_reasons(conn, cfg) -> list[str]:
     # of files.content and symbols.source became ifdef-filtered, and the
     # schema version above could not see it, thus an index went on answering
     # with dead code.  One column read, no recomputation.
-    # .get() and not [...]: a caller builds *cfg* with SELECT *, thus the
-    # key is there for any database that open_db() migrated.  An absent key
-    # reads as "no format", which asks for the reindex — the safe direction.
+    # stored_row_format and not cfg["row_format"]: a caller builds *cfg*
+    # with SELECT *, thus the key is there for any database that open_db()
+    # migrated.  An absent key reads as "no format", which asks for the
+    # reindex — the safe direction.
     #
     # Only an OLDER format belongs here, and the test is therefore an
     # ordinal one and not a plain inequality.  A NEWER format means that the
@@ -180,10 +170,10 @@ def quick_structural_reasons(conn, cfg) -> list[str]:
     # writes the same new format again and the reason comes back.  This
     # function feeds the daemon (`daemon.py:_staleness_check`), which acts on
     # what it returns, and a plain `!=` put that daemon into a loop over an
-    # index nothing was wrong with.  `get_active_build` reports that
+    # index nothing was wrong with.  `get_project_status` reports that
     # direction as a warning instead, because the repair is a restart of the
     # LLM client and not a command against the index.
-    stored_format = str(cfg.get("row_format") or "")
+    stored_format = stored_row_format(cfg)
     if row_format_is_older(stored_format):
         reasons.append(
             f"row format {stored_format or '(none)'} != {CURRENT_ROW_FORMAT}"
@@ -206,7 +196,7 @@ def checkout_reason(cfg, live_head: str, root: Path) -> str:
 
 
 def _stale_files(conn, config_hash: str, file_paths: list[str], root: Path) -> list[str]:
-    """Return the subset of *file_paths* whose on-disk mtime is newer than the index."""
+    """Return the subset of *file_paths* whose content no longer matches the index."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from ...indexer.manifest import load_build_dir_patterns
@@ -258,8 +248,7 @@ def _stale_files(conn, config_hash: str, file_paths: list[str], root: Path) -> l
     # most `limit` of them — 50 by default, 200 at the ceiling.  Hashing all
     # of them costs 0.67 ms at 50 files, thus the timestamp is not consulted
     # at all: it is wrong after a git checkout, and it misses a write that
-    # kept the old stamp.  The project-wide counter cannot afford the same
-    # and filters by mtime first.
+    # kept the old stamp.  The project-wide counter hashes every file too.
     stale: list[str] = []
     with ThreadPoolExecutor(max_workers=min(8, len(work_items))) as ex:
         futures = {
@@ -287,11 +276,13 @@ def _file_differs(path: str, stored_mtime: float, stored_hash: str = "") -> bool
     Without a stored hash the timestamp is all there is, and only one
     direction is readable from it: newer than the index means changed.  A
     stamp that moved backwards cannot be told from one the index never saw,
-    and a write that kept the old stamp leaves nothing to see.  The caller
-    that scans every indexed file handles both by comparing the stamps for
-    equality first — see ``_count_modified_files``.
+    and a write that kept the old stamp leaves nothing to see.  Each writer
+    of a row stores a hash now, thus only a row of an older index has none
+    (see ``_count_modified_files``).
 
-    A missing file is a change: it was deleted since indexing.
+    A missing file is a change: it was deleted since indexing.  A row with
+    neither a hash nor a time says nothing, as in ``_count_modified_files``:
+    the two helpers must give one answer for one file.
 
     This used to be three functions in a row.  ``_check_file_stale`` gated
     on the timestamp and read the content only for a file the stamp called
@@ -304,6 +295,8 @@ def _file_differs(path: str, stored_mtime: float, stored_hash: str = "") -> bool
     if differs is not None:
         return differs
     try:
+        if not stored_hash and not stored_mtime:
+            return not os.path.exists(path)
         return os.path.getmtime(path) > stored_mtime + MTIME_TOLERANCE_S
     except FileNotFoundError:
         return True
@@ -311,18 +304,16 @@ def _file_differs(path: str, stored_mtime: float, stored_hash: str = "") -> bool
         return False
 
 
-def _content_differs(
-    path: str, stored_hash: str, hash_cache: dict[str, str] | None = None
-) -> bool | None:
+def _content_differs(path: str, stored_hash: str, hash_cache: dict[str, str] | None = None) -> bool | None:
     """Compare the file at *path* against *stored_hash*.
 
     Returns True when the bytes differ, False when they match, and None when
     the question cannot be answered — no stored hash, or the file cannot be
     read.  The caller then falls back to the timestamp.
 
-    *hash_cache* is the ``{resolved path: sha256}`` memo shared with the
-    header check and the other builds of one status answer; the builds of a
-    project share most files, and one cache hashes each of them once.
+    *hash_cache* is the ``{resolved path: sha256}`` memo of the header check
+    (``_check_header_staleness``): the builds of one project share most
+    files, and one cache hashes each of them once.
 
     This is the only signal that survives git.  ``checkout``, ``pull`` and
     ``stash pop`` rewrite the mtime of every file they touch, without regard
@@ -364,6 +355,11 @@ def _count_modified_files(
     file that is gone is a change, for every row: ``_file_differs`` gives the
     same answers.
 
+    *hash_cache* is shared with the header check and the other builds of
+    the project (``_build_health`` in ``mcp/handlers/maintenance.py``):
+    measured on a project of 7 builds, 5821 rows were 1483 files, and each
+    build hashed them again.
+
     Deduplicates by resolved absolute path, keeping the row with a hash,
     then the one with the newest stored mtime.  This prevents false positives from duplicate ``files`` rows
     (e.g. one with an absolute path whose mtime was updated and one with
@@ -374,7 +370,9 @@ def _count_modified_files(
     externally (verified via ``MAX(mtime)`` from the files table),
     the cached value is returned.
     Call ``_invalidate_modified_cache(config_hash)`` after any write
-    operation that changes file mtimes.
+    operation that changes file mtimes.  The cache holds a count for
+    ``_CACHE_TTL_S`` seconds: a file saved in that time shows at the next
+    count after it.
     """
     if use_cache:
         cached = _modified_cache.get(config_hash)
@@ -396,7 +394,7 @@ def _count_modified_files(
             # Cache stale — remove and recompute
             _modified_cache.pop(config_hash, None)
 
-    # Deduplicate by resolved absolute path, keeping the newest stored mtime.
+    # Deduplicate by resolved absolute path: the row with a hash, then the newest stored mtime.
     # Duplicate rows arise when the same file was indexed under different
     # path formats (absolute vs relative) — e.g. after a reindex with a
     # different working directory or compile_commands.json format.
@@ -406,15 +404,15 @@ def _count_modified_files(
     ).fetchall()
     for r in rows:
         path = r["path"]
-        stored = r["mtime"]
-        if not stored:
-            continue
+        stored = r["mtime"] or 0.0
         p = Path(path)
         if not p.is_absolute():
             p = (root / path).resolve()
         key = str(p)
-        if key not in best_mtime or stored > best_mtime[key][0]:
-            best_mtime[key] = (stored, r["source_hash"] or "")
+        candidate = (stored, r["source_hash"] or "")
+        current = best_mtime.get(key)
+        if current is None or (bool(candidate[1]), candidate[0]) > (bool(current[1]), current[0]):
+            best_mtime[key] = candidate
 
     # Load build_dir_patterns from manifest to skip build-generated files
     from ...indexer.manifest import load_build_dir_patterns
@@ -429,37 +427,18 @@ def _count_modified_files(
         if build_patterns and _path_matches_patterns(key, build_patterns):
             continue  # build-generated file — skip
         try:
-            # NOTE: individual stat() calls — O(n) for n files. On modern NVMe
-            # filesystems this is <10ms for 10K files. If slow, consider
-            # os.scandir() batch processing or caching more aggressively.
-            #
-            # The index stores the mtime it read together with the hash it
-            # computed, thus an exact match means "this is the file we
-            # hashed" and nothing needs reading.  Anything else is suspect
-            # in BOTH directions: newer is the ordinary edit, older means
-            # the file was replaced by an older copy — a restore from a
-            # backup, or a tar that kept its times.
-            #
-            # The previous rule was "newer, or inside the racy window", and
-            # that window is symmetric around the stored stamp.  An
-            # unchanged file carries exactly that stamp, so it fell inside
-            # and reached the hash: measured on the Mbed project, 1910 of 1911
-            # rows did.  The gate filtered nothing while get_active_build —
-            # the mandatory first call — hashed the whole project every
-            # time.  The one set it did exclude was the backwards stamp,
-            # which is the one case that needed reading.
-            #
-            # What this cannot see: a write that restores the stamp to the
-            # exact float the index holds.  _stale_files has no gate at
-            # all, so a query about that file still reports it.
-            file_mtime = os.path.getmtime(key)
-            if abs(file_mtime - stored_mtime) <= _MTIME_MATCH_EPS_S:
+            if not os.path.exists(key):
+                modified += 1
                 continue
             differs = _content_differs(key, stored_hash, hash_cache)
             if differs is None:
-                # No stored hash: the timestamp is all there is, and only
-                # one direction is readable from it.
-                if file_mtime > stored_mtime + MTIME_TOLERANCE_S:
+                # No stored hash (or no readable file): the time is all
+                # there is, and only one direction is readable from it.
+                if (
+                    not stored_hash
+                    and stored_mtime
+                    and os.path.getmtime(key) > stored_mtime + MTIME_TOLERANCE_S
+                ):
                     modified += 1
             elif differs:
                 modified += 1
@@ -699,6 +678,19 @@ def find_unindexed_sources(
     older than the regenerated compile_commands.json, thus a file that the
     build system never accepts is reported once, not forever.
 
+    Each build of the project counts, each ``(variant, image)``: a file that
+    one of them indexes is covered, and the reference time is the OLDEST of
+    their compile_commands.json — a build whose database is older than the
+    file never saw it.  The newest would miss a file after a run that
+    ``--variant`` narrowed: that run writes only the database of its variant.
+    A build of each variant makes every database newer than the file, thus
+    the loop still stops.  A file that only the bootloader compiles
+    is not in the index of the application, and an edit to it made it a
+    "source missing from compile_commands.json" — a build of each variant
+    for a file that every build already had.  A file that no build indexes
+    is new, and the build of each variant gives it to the builds that
+    compile it.
+
     Args:
         conn: Open connection to the index database.
         config_hash: Active build configuration.
@@ -732,6 +724,14 @@ def find_unindexed_sources(
         return []
 
     known, scan_roots = _indexed_paths(conn, config_hash)
+    for other_hash, other_cc in _other_builds(conn, config_hash):
+        other_known, other_roots = _indexed_paths(conn, other_hash)
+        known |= other_known
+        scan_roots |= other_roots
+        try:
+            cc_mtime = min(cc_mtime, os.path.getmtime(other_cc))
+        except OSError:
+            continue  # a build without its database is the missing-build check
     tu_exts = load_tu_extensions(db_dir_of(conn), config_hash) or TU_EXTENSIONS
     db_path = Path(conn.execute("PRAGMA database_list").fetchone()["file"])
     # The directory fw-context writes into is not a place to look for the
@@ -766,7 +766,7 @@ def find_unindexed_sources(
         # A build already ran for this file and the build system still
         # did not take it.  Reporting it again only tells the caller to
         # run a command that changes nothing, and it would hold
-        # get_active_build on "reindex_needed" for ever.  The hash is
+        # get_project_status on "reindex_needed" for ever.  The hash is
         # what expires the record: an edit means the user may have just
         # added the file to the build, thus it earns one more report.
         recorded = excluded.get(key)
@@ -809,6 +809,25 @@ def _tu_candidates(
     for scan_root in sorted(_project_scan_roots(scan_roots, build_patterns)):
         start = root if scan_root == "." else root / scan_root
         yield from _walk_tu_candidates(start, scan_root == ".", build_patterns, tu_exts)
+
+
+def _other_builds(conn, config_hash: str) -> list[tuple[str, Path]]:
+    """Return ``(config_hash, compile_commands.json)`` of the other current builds of the project.
+
+    The project is the one of *config_hash*; the builds are the newest
+    completed build of each other ``(variant, image)``, see
+    :func:`latest_builds`.
+    """
+    row = conn.execute(
+        "SELECT project_id FROM build_configs WHERE config_hash = ?", (config_hash,),
+    ).fetchone()
+    if row is None:
+        return []
+    return [
+        (build["config_hash"], Path(build["compile_commands_path"]))
+        for build in latest_builds(conn, row["project_id"])
+        if build["config_hash"] != config_hash and build["compile_commands_path"]
+    ]
 
 
 def _indexed_paths(conn, config_hash: str) -> tuple[set[str], set[str]]:
@@ -882,16 +901,23 @@ def _check_header_staleness(
 ) -> tuple[int, list[str]]:
     """Count TUs whose header dependencies have changed since indexing.
 
+    *hash_cache* holds the hashes of the files that a caller already read:
+    the builds of one project share most headers (the SDK of all images of
+    a board), and one cache for all of them hashes each header once.
+
     Loads ``manifest.json`` from the index directory, compares stored
     header hashes against current on-disk content for project headers.
 
-    Returns ``(count, affected_files)`` where *count* is the number of
-    TUs with stale headers and *affected_files* is the list of source
-    file paths.
+    Returns ``(count, affected_files)`` where *affected_files* is the list
+    of source file paths with stale headers, each path once, and *count* is
+    its length.  A file that compile_commands.json lists more than once has
+    one manifest entry for each listing, and the user asks about files: a
+    file with three stale listings counted three, and stood three times in
+    the list.
 
     Performance is bounded by *max_files* (default 200).  When
     *use_cache* is True (default), results are cached for 30 seconds.
-    Callers that need fresh results (e.g. ``get_active_build``) should
+    Callers that need fresh results (e.g. ``get_project_status``) should
     pass ``use_cache=False``.
     """
     if use_cache:
@@ -919,15 +945,15 @@ def _check_header_staleness(
         return 0, []
 
     project_root = Path(manifest.get("project_root", str(root)))
-    # No vendor set is needed here any more: header_is_trusted() is the one
-    # rule, and it reads `generated` alone.  This layer used to derive its
-    # own set, which differed from the indexer's — it has no compiler flags —
-    # and the narrower answer made this check re-hash headers the indexer had
-    # trusted.  maintenance.py turned that into "stale": true and asked for a
+    # No vendor set is needed here: every header is re-hashed, as the indexer
+    # re-hashes it (check_tu_staleness).  This layer used to derive its own
+    # set, which differed from the indexer's — it has no compiler flags — and
+    # the different answer made this check re-hash headers the indexer had
+    # not.  maintenance.py turned that into "stale": true and asked for a
     # reindex that could not clear it.
 
-    stale_count = 0
-    affected: list[str] = []
+    # A dict keeps the order of the entries and holds each file once.
+    affected_files: dict[str, None] = {}
 
     # Resolved per entry rather than for the whole manifest: only the first
     # *max_files* entries are examined, and on a large project that is a small
@@ -940,9 +966,10 @@ def _check_header_staleness(
             headers=resolve_headers(entry, header_table),
         )
         if stale:
-            stale_count += 1
-            affected.append(entry["file"])
+            affected_files[entry["file"]] = None
 
+    affected = list(affected_files)
+    stale_count = len(affected)
     if use_cache:
         _header_staleness_cache[cache_key] = (time.monotonic(), stale_count)
     return stale_count, affected
@@ -1050,8 +1077,8 @@ def _with_stale_recovery(
     db_path: Path,
     query_fn,
     *,
+    config_hash: str,
     stale_msg: str = "",
-    config_hash: str | None = None,
 ) -> list[dict]:
     """Execute *query_fn(conn, config_hash)* on the executor with stale-recovery.
 
@@ -1060,38 +1087,20 @@ def _with_stale_recovery(
     stale) results are always returned — the background reindex handles
     the actual fix asynchronously.
 
-    The ENTIRE body (config read + ``query_fn`` + ``_stale_files``) runs
-    inside ``executor.execute_sync``: the connection is needed for the
-    whole search query, not just the staleness check.  A shorter variant
-    that closed or released the connection after the config read would
-    break every search tool — do NOT "optimise" this by splitting the
-    connection usage.
+    The ENTIRE body (``query_fn`` + ``_stale_files``) runs inside
+    ``executor.execute_sync``: the connection is needed for the whole
+    search query, not just the staleness check.  A shorter variant that
+    released the connection between the two would break every search
+    tool — do NOT "optimise" this by splitting the connection usage.
 
-    ``config_hash`` is read fresh per request via a short-lived
-    read-only connection (no write transaction), then passed per call
-    to the executor — a reindex with a changed build config can never
-    leave queries filtering by a stale hash.
+    *config_hash* is the build that the caller resolved from its selector
+    (``resolve_build``), fresh for each request: a reindex with a changed
+    build config can never leave queries filtering by a stale hash.  WHY it
+    is required: without it this function read the newest build of the
+    project, and on a project of several builds that is the build that the
+    last index run did, not the build that the caller named.
     """
     from ..background import _ensure_daemon_running  # lazy — avoids circular import
-
-    # ── Read config_hash via a separate short-lived read-only connection ──
-    # WHY: config_hash must be read BEFORE entering the executor lock.
-    # The executor's single shared connection is a scarce resource —
-    # using it for a 2-line config lookup would block all concurrent
-    # search queries.  _quick_open_readonly opens a separate WAL reader
-    # that coexists with the executor's connection.
-    # Fresh config_hash per request: a reindex with a changed build
-    # config can never leave queries filtering by a stale hash.
-    if config_hash is None:
-        conn = _quick_open_readonly(db_path)
-        try:
-            project_id = derive_project_id(root)
-            cfg = get_active_config(conn, project_id)
-            if not cfg:
-                return [{"error": "No build config indexed."}]
-            config_hash = cfg["config_hash"]
-        finally:
-            conn.close()
 
     executor = get_executor(db_path)
 
@@ -1105,6 +1114,10 @@ def _with_stale_recovery(
         paths = collect_result_paths(safe_rows, root)
         if paths:
             return safe_rows, _stale_files(db_conn, cfg_hash, paths, root), 0, []
+        if holds_past_end_info(safe_rows):
+            # A page after the last row: the answer exists, see
+            # holds_past_end_info.
+            return safe_rows, [], 0, []
         # An empty search result is the case the caller most easily reads as
         # "does not exist".
         dirty, new_sources = diagnose_empty_result(db_conn, cfg_hash, root)
@@ -1355,7 +1368,9 @@ def with_stale_annotation(
         paths = collect_result_paths(result, root)
         if paths:
             return result, _stale_files(conn, cfg_hash, paths, root), 0, []
-        if not diagnose_empty:
+        # A page after the last row names no file, and it is no empty
+        # answer either: see holds_past_end_info.
+        if not diagnose_empty or holds_past_end_info(result):
             return result, [], 0, []
         dirty, new_sources = diagnose_empty_result(conn, cfg_hash, root)
         return result, [], dirty, new_sources
