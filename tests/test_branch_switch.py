@@ -343,6 +343,14 @@ class TestTheToolAsksForABuild:
         ], state.get("reindex_reasons")
 
     def test_a_switch_asks_for_index_build(self, indexed_repo):
+        # `--build` needs a build that fw-context can run: the fixture names
+        # no build system, and for an unknown one the advice names the build
+        # of the user (`autobuild.build_advice`).
+        (indexed_repo / ".fw-context" / "config.toml").write_text(
+            '[project]\nid = "0123456789abcdef0123456789abcdef"\n'
+            '[build]\nsystem = "cmake"\n',
+            encoding="utf-8",
+        )
         _switch_to(indexed_repo, "release/4.15.1")
         state = self._state(indexed_repo)
 
@@ -393,11 +401,11 @@ class TestTheToolAsksForABuild:
     def test_a_backend_that_cannot_build_gets_the_command_alone(
         self, indexed_repo
     ):
-        # Keil detects and builds nothing, thus nothing will happen on its
-        # own and the command is the whole answer.
+        # A `[build] command` builds, but never in the background, thus
+        # nothing will happen on its own and the command is the whole answer.
         (indexed_repo / ".fw-context" / "config.toml").write_text(
             '[project]\nid = "0123456789abcdef0123456789abcdef"\n'
-            '[build]\nsystem = "keil"\n',
+            '[build]\ncommand = "make compiledb"\n',
             encoding="utf-8",
         )
         _switch_to(indexed_repo, "release/4.15.1")
@@ -497,9 +505,9 @@ class TestThePlanTakesTheBranch:
         assert (keys, config, reason) == ([], None, "")
 
     def test_a_backend_that_cannot_isolate_plans_nothing(self, repo, tmp_path):
-        # Keil detects and builds nothing, thus it must not be asked to build
-        # in the background — that refusal outranks the branch.
-        db_path = self._project(repo, tmp_path, "branch: main", system="keil")
+        # No builder knows the system, thus nothing may build in the
+        # background — that refusal outranks the branch.
+        db_path = self._project(repo, tmp_path, "branch: main", system="no-such-system")
         _switch_to(repo, "release/4.15.1")
         keys, config, reason = self._plan(repo, db_path)
         assert (keys, config, reason) == ([], None, "")
@@ -586,3 +594,536 @@ class TestTheDaemonPassesNoBuildFlag:
         from fw_context_mcp.mcp import daemon
 
         assert not hasattr(daemon, "_branch_needs_build")
+
+
+# ── The recorded checkout, and the builds that the checks reach ───────────
+
+
+class TestTheRecordedHead:
+    def _db(self, tmp_path: Path):
+        conn = open_db(tmp_path / "index.db")
+        with transaction(conn):
+            upsert_project(conn, "pid", "p", str(tmp_path))
+        return conn
+
+    def test_the_column_is_outside_the_fingerprint_of_the_schema(self, tmp_path):
+        """An index of an older version must not read as an older schema."""
+        from fw_context_mcp.indexer.db._schema import CURRENT_SCHEMA_VERSION
+
+        conn = self._db(tmp_path)
+        try:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(build_configs)")}
+            assert "git_head" not in columns
+            with transaction(conn):
+                upsert_build_config(conn, "ch", "pid", "cc.json", git_head="ref: refs/heads/main")
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == CURRENT_SCHEMA_VERSION
+        finally:
+            conn.close()
+        conn = open_db(tmp_path / "index.db")
+        try:
+            row = conn.execute("SELECT git_head FROM build_configs WHERE config_hash='ch'").fetchone()
+            assert row["git_head"] == "ref: refs/heads/main"
+        finally:
+            conn.close()
+
+    def test_none_keeps_the_stored_value(self, tmp_path):
+        conn = self._db(tmp_path)
+        try:
+            with transaction(conn):
+                upsert_build_config(conn, "ch", "pid", "cc.json", git_head="ref: refs/heads/main")
+            with transaction(conn):
+                upsert_build_config(conn, "ch", "pid", "cc.json")
+            row = conn.execute("SELECT git_head FROM build_configs WHERE config_hash='ch'").fetchone()
+            assert row["git_head"] == "ref: refs/heads/main"
+        finally:
+            conn.close()
+
+    def test_an_index_run_records_the_head(self, indexed_repo):
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
+
+        state = get_project_status(project_root=str(indexed_repo))
+        assert "branch: main" in state["description"]
+        assert not [r for r in state.get("reindex_reasons", []) if "checkout changed" in r]
+
+    def test_a_checkout_of_a_tag_asks_for_a_build(self, indexed_repo):
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
+
+        # `--build` needs a build that fw-context can run: the fixture names
+        # no build system, and for an unknown one the advice names the build
+        # of the user (`autobuild.build_advice`).
+        (indexed_repo / ".fw-context" / "config.toml").write_text(
+            '[project]\nid = "0123456789abcdef0123456789abcdef"\n'
+            '[build]\nsystem = "cmake"\n',
+            encoding="utf-8",
+        )
+        _git(indexed_repo, "tag", "v1.0.0")
+        _git(indexed_repo, "checkout", "-q", "v1.0.0")
+        state = get_project_status(project_root=str(indexed_repo))
+        moved = [r for r in state["reindex_reasons"] if "checkout changed" in r]
+        assert moved and "commit " in moved[0] and "--build" in moved[0], state["reindex_reasons"]
+        assert state["status"] == "reindex_needed"
+
+    def test_a_run_that_does_not_build_keeps_the_old_checkout(self, indexed_repo):
+        """`record_git=False`: the reason stays until a build.
+
+        Before, a plain run recorded the new branch, and the reason went away
+        while the index still read the database of the old branch.
+        """
+        from fw_context_mcp.indexer.runner import run
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
+
+        _switch_to(indexed_repo, "release/4.15.1")
+        index_dir = Path(
+            (indexed_repo / ".fw-context" / "local.toml").read_text(encoding="utf-8").split('"')[1]
+        )
+        run(
+            compile_commands=indexed_repo / "compile_commands.json",
+            db_path=index_dir / "0123456789abcdef0123456789abcdef" / "index.db",
+            project_root=indexed_repo,
+            project_id="0123456789abcdef0123456789abcdef",
+            index_refs=False, index_embeddings=False, analyze_symbols=False,
+            analyze_overrides=False, record_git=False,
+        )
+        state = get_project_status(project_root=str(indexed_repo))
+        assert "branch: main" in state["description"]
+        assert [r for r in state["reindex_reasons"] if "checkout changed" in r]
+
+
+class TestTheRunDecidesWhatItRecords:
+    """`cli._index._records_checkout`."""
+
+    def _decide(self, repo: Path, db_path: Path, *, build: bool = False, explicit: bool = False,
+                system: str = "cmake", variants: bool = False, configured: str = "", **narrow) -> bool:
+        import argparse
+
+        from fw_context_mcp.cli._index import _records_checkout
+        from fw_context_mcp.config.settings import BuildVariant, Config
+
+        cfg = Config()
+        cfg.build.system = system
+        if variants:
+            cfg.build.variants = [BuildVariant(name="one")]
+        if configured:
+            cfg.index.compile_commands = configured
+        args = argparse.Namespace(build=build, **narrow)
+        return _records_checkout(args, cfg, None, repo, "0123456789abcdef0123456789abcdef", db_path, explicit)
+
+    def _db(self, repo: Path, tmp_path: Path, head: str) -> Path:
+        db_path = tmp_path / "index" / "index.db"
+        db_path.parent.mkdir(parents=True)
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                upsert_project(conn, "0123456789abcdef0123456789abcdef", "p", str(repo))
+                upsert_build_config(conn, "ch", "0123456789abcdef0123456789abcdef", "cc.json",
+                                    manifest_verification="full", git_head=head)
+        finally:
+            conn.close()
+        return db_path
+
+    def test_the_same_checkout_records(self, repo, tmp_path):
+        assert self._decide(repo, self._db(repo, tmp_path, read_head(repo)))
+
+    def test_another_checkout_without_a_build_keeps_the_old_one(self, repo, tmp_path):
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        assert not self._decide(repo, db_path)
+
+    def test_a_build_records(self, repo, tmp_path):
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        assert self._decide(repo, db_path, build=True)
+
+    @staticmethod
+    def _database(path: Path, repo: Path, *, after_checkout: bool) -> Path:
+        """Write a database that is newer or older than the last checkout of *repo*."""
+        import os
+
+        from fw_context_mcp.indexer.git_context import head_path
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("[]", encoding="utf-8")
+        head = head_path(repo)
+        assert head is not None
+        when = head.stat().st_mtime + (100 if after_checkout else -100)
+        os.utime(path, (when, when))
+        return path
+
+    def test_a_run_of_the_user_with_a_database_of_the_user_records(self, repo, tmp_path):
+        """fw-context builds nothing then: the user made the database for this tree.
+
+        Also an older one: a database from CI or from git keeps the time of
+        its build, thus the time of the file cannot decide for the user.
+        """
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        cc = self._database(tmp_path / "ci" / "cc.json", repo, after_checkout=False)
+        assert self._decide(repo, db_path, explicit=True, compile_commands=str(cc), background=False)
+
+    @pytest.mark.parametrize("after_checkout", [True, False])
+    def test_a_run_in_the_background_records_a_newer_database(self, repo, tmp_path, after_checkout):
+        """The daemon runs after each change, also before the user makes the database again."""
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        cc = self._database(tmp_path / "ci" / "cc.json", repo, after_checkout=after_checkout)
+        decided = self._decide(repo, db_path, explicit=True, compile_commands=str(cc), background=True)
+        assert decided is after_checkout
+
+    def test_a_relative_database_is_read_from_the_project(self, repo, tmp_path):
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        self._database(repo / "ci" / "cc.json", repo, after_checkout=True)
+        assert self._decide(repo, db_path, explicit=True, compile_commands="ci/cc.json", background=True)
+
+    @pytest.mark.parametrize("after_checkout", [True, False])
+    def test_the_database_that_the_config_names(self, repo, tmp_path, after_checkout):
+        """`[index] compile_commands`: no file on the command line, and the run reads that file."""
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        self._database(repo / "ci" / "cc.json", repo, after_checkout=after_checkout)
+        decided = self._decide(
+            repo, db_path, explicit=True, configured="ci/cc.json", compile_commands=None, background=True,
+        )
+        assert decided is after_checkout
+
+    @pytest.mark.parametrize("background", [False, True])
+    def test_a_project_of_variants_records_only_its_builds(self, repo, tmp_path, background):
+        """Each variant reads its own database, and a file of the user is not one of them."""
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        self._database(repo / "compile_commands.json", repo, after_checkout=True)
+        assert not self._decide(repo, db_path, system="stm32cubeide", variants=True, background=background)
+
+    def test_a_database_of_the_same_time_as_the_checkout_is_old(self, repo, tmp_path):
+        """A file system with a coarse time gives the two the same time: the database can be older."""
+        import os
+
+        from fw_context_mcp.indexer.git_context import head_path
+
+        db_path = self._db(repo, tmp_path, read_head(repo))
+        _switch_to(repo, "release/4.15.1")
+        cc = self._database(tmp_path / "ci" / "cc.json", repo, after_checkout=True)
+        head = head_path(repo)
+        assert head is not None
+        same = head.stat().st_mtime
+        os.utime(cc, (same, same))
+        assert not self._decide(repo, db_path, explicit=True, compile_commands=str(cc), background=True)
+
+    def test_the_time_of_a_linked_head_is_the_time_of_the_link(self, repo, tmp_path):
+        """With `core.preferSymlinkRefs` HEAD links to the ref, and each commit changes the time of the ref."""
+        import os
+
+        from fw_context_mcp.cli._index import _database_after_checkout
+        from fw_context_mcp.indexer.git_context import head_path
+
+        head = head_path(repo)
+        assert head is not None
+        target = tmp_path / "ref"
+        target.write_text("0" * 40 + "\n", encoding="utf-8")
+        head.unlink()
+        head.symlink_to(target)
+        cc = tmp_path / "cc.json"
+        cc.write_text("[]", encoding="utf-8")
+        link_time = head.lstat().st_mtime
+        os.utime(cc, (link_time + 100, link_time + 100))
+        # A commit after the build of the user: the ref is newer than the database.
+        os.utime(target, (link_time + 200, link_time + 200))
+        assert _database_after_checkout(cc, repo)
+
+    def test_no_index_records(self, repo, tmp_path):
+        assert self._decide(repo, tmp_path / "absent" / "index.db")
+
+
+class TestEachBuildIsChecked:
+    """A project of several builds: the build that moved can be any one."""
+
+    def test_the_plan_sees_a_build_that_is_not_the_newest(self, repo, tmp_path):
+        import json
+
+        from fw_context_mcp.cli._index import _plan_auto_build
+        from fw_context_mcp.config import load as load_config
+
+        pid = "0123456789abcdef0123456789abcdef"
+        cc = repo / ".fw-context" / "build" / "default" / "out" / "compile_commands.json"
+        cc.parent.mkdir(parents=True, exist_ok=True)
+        cc.write_text(json.dumps([{"directory": str(repo), "file": "main.c",
+                                   "arguments": ["cc", "-c", "main.c"]}]), encoding="utf-8")
+        db_dir = tmp_path / "index" / pid
+        db_dir.mkdir(parents=True)
+        conn = open_db(db_dir / "index.db")
+        try:
+            with transaction(conn):
+                upsert_project(conn, pid, "p", str(repo))
+                # The bootloader recorded another commit; the application, the
+                # newest build, is on the tree of now.
+                upsert_build_config(conn, "boot", pid, str(cc), manifest_verification="full",
+                                    image="bootloader", git_head="a" * 40)
+                upsert_build_config(conn, "app", pid, str(cc), manifest_verification="full",
+                                    git_head=read_head(repo))
+        finally:
+            conn.close()
+        config_dir = repo / ".fw-context"
+        (config_dir / "config.toml").write_text(
+            f'[project]\nid = "{pid}"\n[build]\nsystem = "cmake"\n', encoding="utf-8")
+        (config_dir / "local.toml").write_text(
+            f'[index]\ndb_dir = "{tmp_path / "index"}"\n', encoding="utf-8")
+
+        keys, config, reason = _plan_auto_build(
+            repo, db_dir / "index.db", load_config(project_root=repo), None, background=True)
+
+        assert keys == ["checkout:main"], (keys, reason)
+        assert config is not None and "commit aaaaaaaaaaaa" in reason
+
+    def test_the_daemon_start_sees_a_checkout(self, indexed_repo):
+        from fw_context_mcp.mcp.daemon import _staleness_check
+
+        _switch_to(indexed_repo, "release/4.15.1")
+        needs, reasons = _staleness_check(indexed_repo)
+        assert needs and any("checkout changed from main to release/4.15.1" in r for r in reasons), reasons
+
+
+# ── The fixes of the review: stubs, narrowed runs, rebases, detached commits ──
+
+
+class TestABuildOutsideOfFwContext:
+    """A stub such as STM32CubeIDE: the user builds in the IDE, and `--build` fails."""
+
+    def _db(self, repo: Path, tmp_path: Path) -> Path:
+        return TestTheRunDecidesWhatItRecords()._db(repo, tmp_path, read_head(repo))
+
+    @staticmethod
+    def _default_database(repo: Path, system: str, *, after_checkout: bool) -> None:
+        """Write the database that a plain run of a project of *system* reads."""
+        from fw_context_mcp.config.settings import Config
+        from fw_context_mcp.indexer.build import default_compile_commands
+
+        cfg = Config()
+        cfg.build.system = system
+        TestTheRunDecidesWhatItRecords._database(
+            default_compile_commands(repo, cfg), repo, after_checkout=after_checkout,
+        )
+
+    @pytest.mark.parametrize("system", ["stm32cubeide", "no-such-system"])
+    def test_a_run_of_the_user_records_the_checkout(self, repo, tmp_path, system):
+        """After the build of the user.  For an unknown system no run recorded it, and the reason stayed."""
+        db_path = self._db(repo, tmp_path)
+        _switch_to(repo, "release/4.15.1")
+        self._default_database(repo, system, after_checkout=False)
+        decide = TestTheRunDecidesWhatItRecords()._decide
+        assert decide(repo, db_path, system=system, background=False)
+        assert not decide(repo, db_path, system="cmake", background=False), (
+            "only a build of fw-context writes that database"
+        )
+
+    @pytest.mark.parametrize("system", ["stm32cubeide", "no-such-system"])
+    @pytest.mark.parametrize("after_checkout", [True, False])
+    def test_a_run_in_the_background_records_after_the_build_of_the_user(
+        self, repo, tmp_path, system, after_checkout,
+    ):
+        """The run of the daemon after a checkout recorded it, and the index read the old database."""
+        db_path = self._db(repo, tmp_path)
+        _switch_to(repo, "release/4.15.1")
+        self._default_database(repo, system, after_checkout=after_checkout)
+        decided = TestTheRunDecidesWhatItRecords()._decide(repo, db_path, system=system, background=True)
+        assert decided is after_checkout
+
+    def test_the_advice_names_the_ide_and_not_build(self, indexed_repo):
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
+
+        (indexed_repo / ".fw-context" / "config.toml").write_text(
+            '[project]\nid = "0123456789abcdef0123456789abcdef"\n[build]\nsystem = "stm32cubeide"\n',
+            encoding="utf-8",
+        )
+        _switch_to(indexed_repo, "release/4.15.1")
+        reason = next(r for r in get_project_status(project_root=str(indexed_repo))["reindex_reasons"]
+                      if "checkout changed" in r)
+        assert "outside of fw-context" in reason and "--build" not in reason, reason
+
+
+class TestANarrowedRun:
+    """`--image app` builds and records the application alone."""
+
+    def _two_images(self, repo: Path, tmp_path: Path) -> Path:
+        db_path = tmp_path / "index" / "index.db"
+        db_path.parent.mkdir(parents=True)
+        pid = "0123456789abcdef0123456789abcdef"
+        conn = open_db(db_path)
+        try:
+            with transaction(conn):
+                upsert_project(conn, pid, "p", str(repo))
+                upsert_build_config(conn, "boot", pid, "b.json", manifest_verification="full",
+                                    image="mcuboot", git_head="a" * 40)
+                upsert_build_config(conn, "app", pid, "a.json", manifest_verification="full",
+                                    image="app", git_head=read_head(repo))
+        finally:
+            conn.close()
+        return db_path
+
+    def test_a_build_that_the_run_leaves_out_does_not_count(self, repo, tmp_path):
+        import argparse
+
+        from fw_context_mcp.cli._index import _checkout_moves
+
+        db_path = self._two_images(repo, tmp_path)
+        conn = open_db(db_path)
+        try:
+            pid = "0123456789abcdef0123456789abcdef"
+            narrowed = argparse.Namespace(variant=None, variants=None, image="app", exclude_image=[])
+            excluded = argparse.Namespace(variant=None, variants=None, image=None, exclude_image=["mcuboot"])
+            assert _checkout_moves(conn, pid, repo, narrowed) == []
+            assert _checkout_moves(conn, pid, repo, excluded) == []
+            assert [m[0] for m in _checkout_moves(conn, pid, repo)] == ["mcuboot"]
+        finally:
+            conn.close()
+
+    def test_the_variant_filters_follow_the_run(self, repo, tmp_path):
+        """`--variant` wins over `--variants`, and a project without variants ignores both."""
+        import argparse
+
+        from fw_context_mcp.cli._index import _checkout_moves
+
+        db_path = self._two_images(repo, tmp_path)
+        conn = open_db(db_path)
+        pid = "0123456789abcdef0123456789abcdef"
+        try:
+            # No build has a variant name: `--variant foo` indexes the build of "".
+            ignored = argparse.Namespace(variant="foo", variants=None, image=None, exclude_image=[])
+            assert [m[0] for m in _checkout_moves(conn, pid, repo, ignored)] == ["mcuboot"]
+            with transaction(conn):
+                conn.execute("UPDATE build_configs SET variant = 'A'")
+            both = argparse.Namespace(variant="A", variants="B", image=None, exclude_image=[])
+            assert [m[0] for m in _checkout_moves(conn, pid, repo, both)] == ["A/mcuboot"]
+        finally:
+            conn.close()
+
+    def test_the_narrowed_run_records(self, repo, tmp_path):
+        db_path = self._two_images(repo, tmp_path)
+        decide = TestTheRunDecidesWhatItRecords()._decide
+        assert decide(repo, db_path, variant=None, variants=None, image="app", exclude_image=[])
+        assert not decide(repo, db_path, variant=None, variants=None, image=None, exclude_image=[])
+
+
+class TestHeadMovesWithoutACheckout:
+    def test_a_rebase_reads_as_the_branch_that_it_updates(self, repo):
+        # While a rebase runs, HEAD is detached and moves with each commit.
+        before = read_head(repo)
+        _git(repo, "checkout", "-q", "--detach")
+        state = repo / ".git" / "rebase-merge"
+        state.mkdir()
+        (state / "head-name").write_text("refs/heads/main\n", encoding="utf-8")
+        assert read_head(repo) == before
+        assert head_moved(before, "", read_head(repo), repo) == ("", "")
+
+    def test_a_rebase_of_a_detached_head_names_no_branch(self, repo):
+        _git(repo, "checkout", "-q", "--detach")
+        sha = _git(repo, "rev-parse", "HEAD")
+        state = repo / ".git" / "rebase-apply"
+        state.mkdir()
+        (state / "head-name").write_text("detached HEAD\n", encoding="utf-8")
+        assert read_head(repo) == sha
+
+    def test_a_commit_on_a_detached_head_is_no_checkout(self, repo):
+        _git(repo, "checkout", "-q", "--detach")
+        indexed = read_head(repo)
+        _git(repo, "commit", "-q", "--allow-empty", "-m", "second")
+        _git(repo, "commit", "-q", "--allow-empty", "-m", "third")
+        live = read_head(repo)
+        assert live != indexed
+        assert head_moved(indexed, "", live, repo) == ("", "")
+        # Without the tree the reflog cannot be read, thus it is a move.
+        assert head_moved(indexed, "", live) != ("", "")
+
+    def test_a_checkout_of_another_commit_is_a_checkout(self, repo):
+        first = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "commit", "-q", "--allow-empty", "-m", "second")
+        _git(repo, "checkout", "-q", "--detach")
+        indexed = read_head(repo)
+        _git(repo, "checkout", "-q", first)
+        assert head_moved(indexed, "", read_head(repo), repo) == (
+            f"commit {indexed[:12]}", f"commit {first[:12]}")
+
+
+class TestTheCacheOfTheHeadPath:
+    def test_a_later_git_init_is_seen(self, tmp_path, monkeypatch):
+        from fw_context_mcp.indexer import git_context
+
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        assert head_path(tree) is None
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tree, check=True, capture_output=True)
+        assert head_path(tree) is None, "inside the recheck time the answer is the cached one"
+        monkeypatch.setattr(git_context, "_NO_GIT_RECHECK_S", 0.0)
+        assert read_head(tree) == "ref: refs/heads/main"
+
+    def test_a_relative_root_gives_an_absolute_path(self, repo, monkeypatch):
+        monkeypatch.chdir(repo.parent)
+        found = head_path(Path(repo.name))
+        assert found is not None and found.is_absolute()
+        monkeypatch.chdir("/")
+        assert read_head(Path(repo)) == "ref: refs/heads/main"
+
+    def test_a_git_directory_that_went_away_is_asked_again(self, repo):
+        import shutil
+
+        assert head_path(repo) is not None
+        shutil.rmtree(repo / ".git")
+        assert head_path(repo) is None, "the cache kept the path of a removed git directory"
+
+
+class TestARunThatBuiltOnAnotherPath:
+    """A database that the run built belongs to the tree of now, also without `--build`."""
+
+    def test_the_single_build(self, tmp_path, monkeypatch):
+        import argparse
+
+        from fw_context_mcp.cli import _index
+        from fw_context_mcp.config.settings import Config
+        from fw_context_mcp.indexer import runner
+
+        cc = tmp_path / "compile_commands.json"
+        cc.write_text("[]", encoding="utf-8")
+        seen: list[bool] = []
+        monkeypatch.setattr(_index, "_resolve_compile_commands", lambda *a, **k: (cc, False))
+        monkeypatch.setattr(_index, "_validate_and_fix_artifacts", lambda *a, **k: (cc, [], True))
+        monkeypatch.setattr(_index, "_post_index_optimize", lambda *a, **k: None)
+        monkeypatch.setattr(runner, "run", lambda **k: seen.append(k["record_git"]) or "h" * 16)
+        cfg = Config()
+        cfg.build.system = "cmake"
+        db_path = tmp_path / "db" / "index.db"
+        db_path.parent.mkdir()
+
+        for built in (False, True):
+            args = argparse.Namespace(image=None, exclude_image=[], variant=None, variants=None)
+            if built:
+                _index._note_build(args)
+            _index._run_single(args, cfg, tmp_path, "proj", db_path, "cmake", False, {"record_git": False})
+
+        assert seen == [False, True]
+
+    def test_a_variant_that_the_run_built(self, tmp_path, monkeypatch):
+        import argparse
+
+        from fw_context_mcp.cli import _index
+        from fw_context_mcp.config.settings import Config
+        from fw_context_mcp.indexer import runner
+        from fw_context_mcp.indexer.build import BuildVariant
+
+        found = [("a", "", tmp_path / "a.json", "")]
+        built = [("b", "", tmp_path / "b.json", "")]
+        monkeypatch.setattr(_index, "_discover_existing_cc", lambda *a, **k: list(found))
+        monkeypatch.setattr(_index, "_build_variants", lambda *a, **k: list(built))
+        monkeypatch.setattr(_index, "_post_index_optimize", lambda *a, **k: None)
+        seen: dict[str, bool] = {}
+        monkeypatch.setattr(runner, "run", lambda *, variant="", **k: seen.__setitem__(variant, k["record_git"]) or "h" * 16)
+        cfg = Config()
+        cfg.build.system = "cmake"
+        cfg.build.variants = [BuildVariant(name="a"), BuildVariant(name="b")]
+        args = argparse.Namespace(build=False, background=False, image=None, exclude_image=[],
+                                  variant=None, variants=None)
+        db_path = tmp_path / "db" / "index.db"
+        db_path.parent.mkdir()
+
+        _index._run_multi(args, cfg, tmp_path, "proj", db_path, "cmake",
+                          {"vendor_paths": [], "project_paths": [], "record_git": False})
+
+        assert seen == {"a": False, "b": True}

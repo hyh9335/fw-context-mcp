@@ -202,7 +202,7 @@ TOOL_IDS = [t.name for t in TOOLS]
 
 
 def test_the_server_registers_tools():
-    assert len(TOOLS) >= 38, TOOL_IDS
+    assert len(TOOLS) >= 37, TOOL_IDS
 
 
 @pytest.mark.parametrize("tool", TOOLS, ids=TOOL_IDS)
@@ -416,6 +416,119 @@ def test_every_copy_of_the_instructions_teaches_the_selector():
     for label, text in _instruction_copies():
         assert "list_projects" in text, label
         assert "DIFFERENT project" in text, label
+
+
+def test_every_copy_of_the_instructions_says_one_query_one_build():
+    """A reader that misses this asks about a bootloader and an application.
+
+    The server selects no build, thus a reader who does not know the rule
+    meets an error and has to guess what to do.  The text must name the
+    two axes, say that the answer covers one build, and give the way
+    forward: ask twice.
+    """
+    for label, text in _instruction_copies():
+        # One copy shouts the rule and the other writes it in prose, thus
+        # the check reads the meaning and not the casing.
+        assert "one build" in text.lower(), label
+        assert "image" in text, label
+        assert "variant" in text, label
+        assert "get_project_status" in text, label
+        assert "twice" in text, f"{label}: no way given to compare two builds"
+
+
+def test_every_copy_of_the_instructions_names_each_tool():
+    """The tool categories of the two copies lost tools that the server registers.
+
+    Before 0.35.0, BASE_INSTRUCTIONS lacked get_vector_table, configure_llm
+    and reindex_file_impl, and the server copy lacked find_variables.
+    """
+    for label, text in _instruction_copies():
+        missing = [name for name in TOOL_IDS if not re.search(rf"\b{re.escape(name)}\b", text)]
+        assert not missing, f"{label} names no {missing}"
+
+
+def test_every_copy_of_the_instructions_names_the_missing_embeddings():
+    """The status names definitions without an embedding, and the reader must tell the operator.
+
+    The search by meaning does not find such a definition, thus a reader
+    that does not know the text takes an empty answer of semantic_search
+    as "no such code".
+    """
+    for label, text in _instruction_copies():
+        assert "definitions have no embedding" in text, label
+        assert "Tell the operator the command that the message names" in text, label
+
+
+def test_every_copy_of_the_instructions_teaches_paging():
+    """A reader that misses this stops at the first page and calls it all.
+
+    A full page is indistinguishable from a complete answer without the
+    count, thus the notice is always present and the text must say so.
+    """
+    for label, text in _instruction_copies():
+        assert "offset" in text, label
+        assert "total" in text, label
+        assert "more" in text, label
+        # The hint repeats the project: a reader that drops it reads the
+        # next page of the project of the current directory.
+        flat = " ".join(text.split())
+        assert "the filters, and the project and the build" in flat, label
+
+
+def test_every_copy_of_the_instructions_states_the_corrected_tool_rules():
+    """A correction in one copy must also go into the other copy.
+
+    A docs commit corrected these rules in the FastMCP string only, and
+    ``BASE_INSTRUCTIONS`` kept the old text.  A reader of ``CLAUDE.md``
+    then looked for a ``status="error"`` that the tool never gives, and
+    did not know that ``get_symbol_context`` can also answer from the disk.
+    """
+    rules = (
+        "get_source and get_symbol_context set a stale_warning",
+        "There is no status",
+        'wins over "reindexing"',
+        "fw-context selects none for you",
+        "If the task does not identify one build, ask the user",
+        "smart_search and semantic_search included",
+        "when more is true",
+        "search_content, find_dead_code",
+        "Repeat the call with that project_id",
+        "find_call_path (from_name, to_name)",
+        "trace_data_flow (type_name, to_symbol)",
+        "get_vector_table",
+        "accepts only project, project_root and fast",
+    )
+    for label, text in _instruction_copies():
+        # One copy is Markdown and the other a wrapped string literal, thus
+        # the check removes the backticks and the line breaks.
+        flat = " ".join(text.replace("`", "").split())
+        for rule in rules:
+            assert rule in flat, f"{label}: {rule!r}"
+
+
+def test_every_copy_of_the_instructions_names_each_paged_tool():
+    """A tool that pages and is not named reads as one that gives everything.
+
+    The list grew from eight tools to every tool with a long list.  A
+    reader that knows only the old list takes a full page of
+    find_all_callers_recursive for the whole call tree.
+    """
+    paged = (
+        "lookup_symbol", "search_code", "search_bodies", "search_content",
+        "smart_search", "semantic_search", "find_callers", "find_references",
+        "find_all_callers_recursive", "find_callees_recursive",
+        "find_indirect_call_sites", "find_indirect_targets", "find_variables",
+        "find_dead_code", "find_hotspots", "find_wrapper_callers",
+        "trace_data_flow", "get_template_instances", "get_vector_table",
+        "get_class_members", "get_file_map", "read_file",
+        "get_inheritance_chain", "all_bases_page", "total_capped", "_total",
+    )
+    for label, text in _instruction_copies():
+        start = text.lower().index("reading past the first page")
+        section = text[start:start + 3000]
+        for name in paged:
+            assert name in section, f"{label}: {name} is not in the paging section"
+        assert "Eight tools" not in text and "eight tools" not in text, label
 
 
 def test_no_copy_of_the_instructions_holds_a_dead_file():

@@ -202,6 +202,148 @@ model = "my-local-model"
         assert cfg.llm.model == "my-local-model"
 
 
+class TestRetiredQueryDriverKeys:
+    """``[index] query_driver``, ``query_driver_extra`` and ``query_driver_auto`` are retired.
+
+    They were an allowlist of the compilers that the index run could ask
+    for their system headers.  fw-context now asks the compiler of the build
+    in all cases, thus an old config must load without an error, and a
+    warning names each file that still has a retired key.
+    """
+
+    def _project(self, tmpdir, monkeypatch, committed: str = "", local: str = "", global_text: str = "") -> Path:
+        import fw_context_mcp.config.settings as settings
+
+        fake_home = tmpdir / "fake-home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        # The module computes _GLOBAL_CONFIG_PATH at import, thus the fake
+        # home does not move it.  Without this line, load() reads the global
+        # config of the operator.
+        global_cfg = Path(fake_home) / "global.toml"
+        global_cfg.write_text(global_text)
+        monkeypatch.setattr(settings, "_GLOBAL_CONFIG_PATH", global_cfg)
+        # The warning is given once per file and process; each test starts clean.
+        monkeypatch.setattr(settings, "_retired_warned", set())
+        proj_dir = Path(tmpdir / "project")
+        (proj_dir / ".fw-context").mkdir(parents=True)
+        (proj_dir / ".fw-context" / "config.toml").write_text(committed)
+        if local:
+            (proj_dir / ".fw-context" / "local.toml").write_text(local)
+        return proj_dir
+
+    def test_the_config_has_no_query_driver_field(self):
+        assert not hasattr(Config().index, "query_driver")
+
+    @pytest.mark.parametrize("layer", ["committed", "local", "global_text"])
+    def test_a_retired_key_is_ignored_with_a_warning(self, tmpdir, monkeypatch, caplog, layer):
+        files = {layer: '[index]\nquery_driver = ["**"]\nquery_driver_auto = false\nvendor_paths = ["x"]\n'}
+        cfg = load(self._project(tmpdir, monkeypatch, **files))
+        assert cfg.index.vendor_paths == ["x"], "the other [index] keys of the file stay"
+        err = caplog.text
+        assert "query_driver, query_driver_auto" in err
+        assert "has no effect" in err
+
+    def test_the_warning_is_given_once_per_file(self, tmpdir, monkeypatch, caplog):
+        import fw_context_mcp.config.settings as settings
+
+        proj = self._project(tmpdir, monkeypatch, local='[index]\nquery_driver_extra = ["~/x/**"]\n')
+        load(proj)
+        settings._config_cache.clear()  # force a second parse of the same file
+        load(proj)
+        assert caplog.text.count("query_driver_extra") == 1
+
+    def test_a_retired_key_in_a_variant_is_not_an_unknown_build_key(self, tmpdir, monkeypatch, caplog):
+        """A variant copies a non-[index] key into its [build] overrides.
+
+        Without the removal, ``build_variant_config`` said "unknown [build]
+        key", which is the wrong message for a retired key.
+        """
+        committed = '[[build.variants]]\nname = "a"\nquery_driver = ["**"]\n'
+        cfg = load(self._project(tmpdir, monkeypatch, committed))
+        variant = cfg.build.variants[0]
+        assert "query_driver" not in variant.overrides
+        assert "has no effect" in caplog.text
+
+    def test_a_malformed_build_table_does_not_crash_the_removal(self, tmp_path, monkeypatch):
+        """``build = "x"`` is a typo; the removal must leave it to the rest of the loader."""
+        import fw_context_mcp.config.settings as settings
+
+        monkeypatch.setattr(settings, "_retired_warned", set())
+        data = {"build": "x", "index": {"query_driver": ["**"]}}
+        settings._drop_retired_keys(data, tmp_path / "local.toml")
+        assert data == {"build": "x", "index": {}}
+
+    def test_an_old_toolchains_file_gets_a_warning_and_stays(self, tmpdir, monkeypatch, caplog):
+        proj = self._project(tmpdir, monkeypatch)
+        toolchains = proj / ".fw-context" / "toolchains.toml"
+        toolchains.write_text('[index]\nquery_driver_extra = ["~/x/bin/gcc"]\n')
+        load(proj)
+        assert "toolchains.toml" in caplog.text
+        assert toolchains.is_file(), "a load of the config removes nothing; the cleanup does"
+
+    def test_a_committed_pre_build_gives_no_warning(self, tmpdir, monkeypatch, caplog):
+        """The build runs the code of the repository in all cases.
+
+        Thus a warning on a committed ``pre_build`` or ``command`` protected
+        nothing, and it is gone.  A non-local ``ollama_url`` still warns.
+        """
+        committed = '[build]\npre_build = "make gen"\ncommand = "make"\n'
+        load(self._project(tmpdir, monkeypatch, committed))
+        assert "SECURITY" not in caplog.text
+
+    def test_a_committed_remote_ollama_url_still_warns(self, tmpdir, monkeypatch, caplog):
+        committed = '[llm]\nollama_url = "http://198.51.100.7:11434"\n'
+        load(self._project(tmpdir, monkeypatch, committed))
+        assert "SECURITY: ollama_url" in caplog.text
+
+
+class TestMalformedSection:
+    """A section that is not a table gives a ConfigError that names the file.
+
+    ``build = "x"`` made ``_build_variants`` raise AttributeError out of
+    ``load()``, which took down every MCP tool.  After that, the loader
+    removed the section with a warning: each setting of the section was
+    lost, and only a log said so.
+    """
+
+    def _load(self, tmpdir, monkeypatch, *, committed: str = "", local: str = "", global_text: str = ""):
+        import fw_context_mcp.config.settings as settings
+
+        fake_home = tmpdir / "fake-home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        global_cfg = Path(tmpdir) / "global.toml"
+        global_cfg.write_text(global_text)
+        monkeypatch.setattr(settings, "_GLOBAL_CONFIG_PATH", global_cfg)
+        proj_dir = Path(tmpdir / "project")
+        (proj_dir / ".fw-context").mkdir(parents=True)
+        (proj_dir / ".fw-context" / "config.toml").write_text(committed)
+        (proj_dir / ".fw-context" / "local.toml").write_text(local)
+        return load(proj_dir)
+
+    @pytest.mark.parametrize("layer", ["committed", "local", "global_text"])
+    @pytest.mark.parametrize("bad", ['build = "x"', "build = []", "index = 3", 'llm = "x"', 'cache_server = "x"'])
+    def test_a_section_that_is_not_a_table_names_the_file(self, tmpdir, monkeypatch, layer, bad):
+        from fw_context_mcp.config import ConfigError
+
+        good = '[project]\nname = "kept"\n'
+        files = {"committed": "", "local": "", "global_text": ""}
+        files[layer] = bad + "\n" + good
+        with pytest.raises(ConfigError, match="must be a table") as caught:
+            self._load(tmpdir, monkeypatch, **files)
+        name = {"committed": "config.toml", "local": "local.toml", "global_text": "global.toml"}[layer]
+        assert caught.value.path.name == name
+        assert caught.value.removable
+
+    def test_a_string_section_is_not_read_as_a_substring(self, tmpdir, monkeypatch):
+        """``_apply_section`` tested ``key in section``; on a string that is a substring test."""
+        from fw_context_mcp.config import ConfigError
+
+        with pytest.raises(ConfigError, match="'index' must be a table"):
+            self._load(tmpdir, monkeypatch, local='index = "vendor_paths"\n')
+
+
 class TestVendorProjectPaths:
     def test_vendor_paths_parsing(self):
         cfg = _from_dict({"index": {"vendor_paths": ["third_party", "generated"]}})
@@ -220,3 +362,149 @@ class TestVendorProjectPaths:
         })
         assert cfg.index.vendor_paths == ["lib"]
         assert cfg.index.project_paths == ["lib/muj_modul"]
+
+
+class TestTransientDefines:
+    """``[index] transient_defines``: one list for config_hash and flags_hash."""
+
+    _load = TestMalformedSection._load
+
+    def test_the_default_is_the_list_of_six_names(self):
+        assert _from_dict({}).index.transient_defines == list(DEFAULT_TRANSIENT_DEFINES)
+        assert len(DEFAULT_TRANSIENT_DEFINES) == 6
+
+    def test_the_global_template_holds_the_default(self):
+        """``init`` writes the active keys of the template into the global config."""
+        import tomllib
+
+        from fw_context_mcp.config.settings import _GLOBAL_DEFAULTS
+
+        template = tomllib.loads(_GLOBAL_DEFAULTS)
+        assert template["index"]["transient_defines"] == list(DEFAULT_TRANSIENT_DEFINES)
+
+    def test_a_project_list_replaces_the_global_list(self, tmpdir, monkeypatch):
+        cfg = self._load(
+            tmpdir, monkeypatch,
+            global_text='[index]\ntransient_defines = ["MBED_BUILD_TIMESTAMP", "BUILD_NUMBER"]\n',
+            committed='[index]\ntransient_defines = ["MY_BUILD_STAMP"]\n',
+        )
+        assert cfg.index.transient_defines == ["MY_BUILD_STAMP"]
+
+    def test_an_empty_project_list_makes_every_macro_count(self, tmpdir, monkeypatch):
+        cfg = self._load(
+            tmpdir, monkeypatch,
+            global_text='[index]\ntransient_defines = ["MBED_BUILD_TIMESTAMP"]\n',
+            committed="[index]\ntransient_defines = []\n",
+        )
+        assert cfg.index.transient_defines == []
+
+    def test_a_correct_config_has_no_problem(self):
+        cfg = _from_dict({"index": {"transient_defines": ["MBED_BUILD_TIMESTAMP", "_X1"]}})
+        assert transient_defines_problems(cfg) == []
+
+    @pytest.mark.parametrize("entry", ["-DMBED_BUILD_TIMESTAMP", "BUILD_NUMBER=1", "1ABC", "", 5])
+    def test_an_entry_that_is_not_a_macro_name_is_a_problem(self, entry):
+        """Such an entry matches no -D, and each build would parse every unit again."""
+        cfg = _from_dict({"index": {"transient_defines": ["BUILD_ID", entry]}})
+        problems = transient_defines_problems(cfg)
+        assert len(problems) == 1
+        assert repr(entry) in problems[0]
+
+    def test_the_key_in_a_variant_is_a_problem(self):
+        """The variant table would drop the key without a word."""
+        cfg = _from_dict({
+            "build": {"variants": [
+                {"name": "dev", "transient_defines": ["X"]},
+                {"name": "rel"},
+            ]},
+        })
+        problems = transient_defines_problems(cfg)
+        assert len(problems) == 1
+        assert "'dev'" in problems[0]
+
+    def test_the_index_run_gets_the_list_of_the_config(self, tmp_path):
+        """runner.run has a default for callers without a config; the CLI must override it."""
+        from types import SimpleNamespace
+
+        from fw_context_mcp.cli._index import _build_run_kwargs
+
+        cfg = _from_dict({"build": {"system": "makefile"}, "index": {"transient_defines": ["MY_STAMP"]}})
+        args = SimpleNamespace(name=None, no_refs=False, force=False)
+        kwargs = _build_run_kwargs(args, cfg, tmp_path, "pid", [], [], None)
+        assert kwargs["transient_defines"] == ["MY_STAMP"]
+
+    @pytest.mark.parametrize("value", ["{ X = 1 }", "5", "true"])
+    def test_a_value_that_is_not_a_list_names_the_file(self, tmpdir, monkeypatch, value):
+        """``list(value)`` made ``["X"]`` of a table, and a number stopped the load."""
+        from fw_context_mcp.config import ConfigError
+
+        with pytest.raises(ConfigError, match=r"\[index\] transient_defines must be an array of strings, or a string"):
+            self._load(tmpdir, monkeypatch, committed=f"[index]\ntransient_defines = {value}\n")
+
+    def test_a_string_is_a_list_of_one_name(self):
+        cfg = _from_dict({"index": {"transient_defines": "MY_STAMP"}})
+        assert cfg.index.transient_defines == ["MY_STAMP"]
+
+
+class TestLoadCreatesNoProjectFile:
+    """load() reads a missing project file as empty, and never creates one."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated_global(self, tmp_path, monkeypatch):
+        import fw_context_mcp.config.settings as settings
+
+        monkeypatch.setattr(settings, "_GLOBAL_CONFIG_PATH", tmp_path / "home" / "config.toml")
+
+    def test_an_uninitialized_project_stays_untouched(self, tmp_path):
+        project = tmp_path / "proj"
+        project.mkdir()
+
+        cfg = load(project)
+
+        assert not (project / ".fw-context").exists()
+        assert not cfg.project.id
+
+    def test_a_project_file_that_appears_or_goes_reloads_the_config(self, tmp_path):
+        project = tmp_path / "proj"
+        (project / ".fw-context").mkdir(parents=True)
+        local = project / ".fw-context" / "local.toml"
+
+        assert load(project).llm.num_ctx != 1234
+        local.write_text("[llm]\nnum_ctx = 1234\n", encoding="utf-8")
+        assert load(project).llm.num_ctx == 1234
+        local.unlink()
+        assert load(project).llm.num_ctx != 1234
+
+    def test_get_project_status_creates_nothing_before_init(self, tmp_path):
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
+
+        project = tmp_path / "proj"
+        project.mkdir()
+
+        result = get_project_status(project_root=str(project))
+
+        assert result["status"] == "not_initialized"
+        assert not (project / ".fw-context").exists()
+
+
+class TestRetiredSelectionKeys:
+    """``[build] default_variant`` and ``default_image`` load without an effect, and with a warning.
+
+    A query names its build since 2026-10.  The test reuses the isolated
+    project of the class above, and not its tests.
+    """
+
+    _project = TestRetiredQueryDriverKeys._project
+
+    @pytest.mark.parametrize("layer", ["committed", "local", "global_text"])
+    def test_each_layer_drops_the_keys(self, tmpdir, monkeypatch, caplog, layer):
+        import fw_context_mcp.config.settings as settings
+
+        monkeypatch.setattr(settings, "_selection_keys_warned", set())
+        files = {layer: '[build]\ndefault_variant = "a"\nsystem = "zephyr"\n'}
+
+        cfg = load(self._project(tmpdir, monkeypatch, **files))
+
+        assert cfg.build.system == "zephyr", "the other [build] keys of the file stay"
+        assert not hasattr(cfg.build, "default_variant")
+        assert "default_variant has no effect" in caplog.text, caplog.text

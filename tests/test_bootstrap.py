@@ -68,21 +68,11 @@ def _create_index_db(db_path: Path, project_id: str, root: Path) -> None:
         with transaction(conn):
             upsert_project(conn, project_id, "test-proj", str(root))
             upsert_build_config(
-                conn, "hash-test", project_id, str(cc_path),
+                conn, "hash-test", project_id, str(cc_path), manifest_verification="full",
                 row_format=CURRENT_ROW_FORMAT,
             )
     finally:
         conn.close()
-
-
-@pytest.fixture(autouse=True)
-def _reset_sentinel():
-    """Ensure no leftover sentinel from other tests."""
-    from fw_context_mcp.mcp.shared import context as ctx
-
-    ctx._server_init_error = None
-    yield
-    ctx._server_init_error = None
 
 
 # ── not_initialized ──────────────────────────────────────────────────────────
@@ -447,7 +437,9 @@ class TestModifiedCountInFastMode:
         """A file fw-context will build on its own is work under way.
 
         "reindex_needed" would ask the caller for a command that only
-        duplicates the build the daemon is about to run.
+        duplicates the build the daemon is about to run.  "No command is
+        needed" holds only while a run comes: without one, nothing builds
+        the file, and the state of the build says "not_scheduled".
         """
         from fw_context_mcp.indexer.autobuild import AutobuildState
         from fw_context_mcp.mcp.handlers import maintenance
@@ -463,8 +455,16 @@ class TestModifiedCountInFastMode:
         result = get_active_build(project_root=str(root))
 
         assert result["status"] == "reindexing"
+        assert result["reindex_state"] == "pending"
         assert "src/added.c" in result["index_message"]
         assert "no command is needed" in result["index_message"]
+
+        monkeypatch.setattr(maintenance, "read_reindex_state", lambda _root: None)
+        result = get_project_status(project_root=str(root))
+        assert result["status"] == "reindexing"
+        assert result["reindex_state"] == "not_scheduled"
+        assert "no command is needed" not in result["index_message"]
+        assert "no index run is in progress or scheduled; run `fw-context index`" in result["index_message"]
 
     def test_an_uncovered_source_reads_as_reindex_needed_when_it_cannot(
         self, tmp_path: Path, monkeypatch
@@ -483,7 +483,10 @@ class TestModifiedCountInFastMode:
         result = get_active_build(project_root=str(root))
 
         assert result["status"] == "reindex_needed"
-        assert "fw-context index --build" in result["index_message"]
+        # The project names no build system, thus the build of the user
+        # makes the file list (`autobuild.build_advice`): `--build` fails.
+        assert "fw-context does not build them on its own" in result["index_message"]
+        assert "build the project outside of fw-context" in result["index_message"]
 
     def test_a_failed_automatic_build_says_to_read_the_error(
         self, tmp_path: Path, monkeypatch

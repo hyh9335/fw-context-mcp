@@ -282,7 +282,7 @@ class TestExecuteScopedMultiScope:
 
         result = ctx.execute_scoped(lambda c, h: [{"file": str(file_path)}])
 
-        warnings = [r for r in result if set(r) == {"warning"}]
+        warnings = [r for r in result if set(r) == {"warning", "stale"}]
         assert len(warnings) == 1, f"expected one notice, got {len(warnings)}"
         payload = [r for r in result if "warning" not in r]
         assert len(payload) == 3, "one record per scope survives"
