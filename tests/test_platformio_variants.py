@@ -43,8 +43,11 @@ def _run(tmp_path: Path, monkeypatch, environments: list[str] | None, build_tabl
     (root / "platformio.ini").write_text("", encoding="utf-8")
     (root / ".fw-context" / "config.toml").write_text(
         f'[project]\nid = "{PROJECT_ID}"\n[build]\nsystem = "platformio"\n{build_table}', encoding="utf-8")
+    # Windows adjudication: a raw Windows path inside a TOML string is an
+    # escape sequence error (tomllib refuses the backslash); forward
+    # slashes mean the same directory everywhere Python opens a file.
     (root / ".fw-context" / "local.toml").write_text(
-        f'[index]\ndb_dir = "{tmp_path / "index"}"\n', encoding="utf-8")
+        f'[index]\ndb_dir = "{(tmp_path / "index").as_posix()}"\n', encoding="utf-8")
 
     seen: dict = {}
     if environments is not None:

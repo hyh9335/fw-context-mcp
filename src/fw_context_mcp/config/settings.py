@@ -1878,7 +1878,8 @@ def load(project_root: Path | None = None) -> Config:
                 file=sys.stderr,
             )
 
-    _warn_retired_toolchains_file(project_root)
+    if project_root is not None:
+        _warn_retired_toolchains_file(project_root)
 
     cfg = _from_dict(data)
     cfg.config_warnings = warnings

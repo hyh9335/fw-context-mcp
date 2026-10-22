@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 
 from ...indexer.manifest import _hash_with_cache, load_tu_extensions
+from ...platform import process as _process
 from ...utils import (
     MTIME_TOLERANCE_S,
     TU_EXTENSIONS,

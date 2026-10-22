@@ -1845,6 +1845,21 @@ def main() -> None:
     _prewarm_sqlite_vec()
     log.info("fw-context MCP server starting")
 
+    # Phase 0: ask PyPI for a newer release in a daemon thread (wave).
+    # The thread writes a state file that get_project_status reads, so
+    # no tool waits for the network.  It starts before the earliest
+    # exit: the check concerns the machine, not the project.
+    try:
+        from ..config.settings import load_update_settings
+        from ..version_check import start_update_check
+        start_update_check(load_update_settings().check)
+    except RuntimeError:
+        # Thread.start() raises RuntimeError when the interpreter cannot
+        # start a thread.  The server must start regardless.
+        log.debug("Update check thread not started", exc_info=True)
+    except Exception:
+        log.debug("Update check skipped", exc_info=True)
+
     # Phase 1: pre-populate the project-ready cache with a one-shot check.
     # _check_server_ready() raises RuntimeError when the project isn't
     # ready 鈥?we catch it here so the server can still start (tools will

@@ -123,7 +123,10 @@ print("IDENTITY:" + libclang_identity())
 def _identity_in_fresh_process(cwd: Path) -> str:
     code = _CHILD.format(src=str(REPO / "src"), cwd=str(cwd))
     p = subprocess.run([sys.executable, "-c", code],
-                       capture_output=True, text=True, timeout=180, cwd=cwd)
+                       capture_output=True, text=True, timeout=180, cwd=cwd,
+        encoding="utf-8",
+        errors="replace",
+    )
     assert p.returncode == 0, \
         f"fresh process crashed (exit {p.returncode}): {p.stderr[-400:]}"
     ident = None

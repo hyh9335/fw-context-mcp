@@ -48,7 +48,8 @@ from ...indexer.db import _expand_query
 from ...indexer.db._symbols import _RE_COL_FILTER, _sanitize_body_query
 from ...llm._diag import check_setup
 from ...llm.embedder_factory import uses_ollama
-from ...utils import abs_path, resolve_project_root
+from ...indexer import db as index_db
+from ...utils import abs_path, read_file_lines, resolve_project_root
 from ..shared.context import _db_path, _quick_open_readonly
 from ..shared.fallback import _fallback_to_search_code
 from ..shared.paging import clamp_offset, page_hint, page_notice, past_end_info, selector_args
@@ -1424,6 +1425,7 @@ def search_content(
     project_only: Annotated[bool, Field(description="Exclude vendor SDK code. When True, only application code. Default False.")] = False,
     variant: Annotated[str | None, Field(description=VARIANT_DESCRIPTION)] = None,
     image: Annotated[str | None, Field(description=IMAGE_DESCRIPTION)] = None,
+    mode: Annotated[str, Field(description="Which text the query searches: 'active' (default) = ifdef-filtered stored content (only code that compiles); 'directives' = the preprocessor directive lines only (#if/#define/#include/#pragma/...), taken and untaken alike; 'raw' = the files as on disk, best-effort disk scan over indexed paths.")] = "active",
 ) -> list[dict]:
     """Find patterns in FULL file content — the whole file, not only the
     text that belongs to a definition.
@@ -1517,6 +1519,10 @@ def search_content(
     # retries, and one row at least, so that a page never hints at the offset
     # it already stands at.
     limit = max(1, min(limit, 100))
+    if mode not in ("active", "raw", "directives"):
+        return [{
+            "error": f"Unknown mode {mode!r} — use 'active', 'raw' or 'directives'."
+        }]
     expanded = _expand_query(query)
     # Computed once, outside the query closure: stale recovery can call the
     # closure again, and the terms depend only on the query of the caller.
@@ -1698,4 +1704,124 @@ def search_content(
         results += page
         return results
 
+    def _do_search_directives(c: sqlite3.Connection, config_hash: str) -> list[dict]:
+        """Search ONLY the preprocessor directive lines (T12-C6, ADR-012).
+
+        The ``file_directives`` table holds one row per directive line —
+        ``#if``/``#define``/``#include``/``#pragma``/... — of a project
+        file, taken and untaken alike, with an eager FTS5 mirror.  This
+        view reaches the directive text the active view blanks out: the
+        ``#if CMD_FLAG`` line of an untaken branch is real, searchable
+        text here.
+
+        Same two paths as the active view: FTS5 first (rank order), LIKE
+        over the directive text when the table is missing or FTS5 refuses
+        the query.  ``match_lines`` are absolute file lines — the same
+        line numbers ``read_file`` uses in every mode.
+        """
+        try:
+            rows = index_db.search_directives_fts(
+                c, config_hash, expanded, limit * 3, project_only=project_only,
+            )
+        except sqlite3.OperationalError:
+            # FTS5 refused the query (or the table is missing) — same LIKE
+            # fallback contract as the active view, over the directive text.
+            rows = index_db.search_directives_like(
+                c, config_hash, terms, limit * 3, project_only=project_only,
+            )
+            if not rows:
+                return [
+                    {
+                        "error": "The FTS5 index rejected the query, and no "
+                        "directive line matches the LIKE fallback either. "
+                        "Try fewer or simpler terms.",
+                    }
+                ]
+            rows = [dict(r) | {"_fallback": "like"} for r in rows]
+
+        # Group the rows per file: one result per file, the matched
+        # directives inside it, `match_lines` absolute (C10 parity with the
+        # other modes).
+        per_file: dict[str, dict] = {}
+        for r in rows:
+            d = per_file.get(r["path"])
+            if d is None:
+                d = {
+                    "file": abs_path(root, r["path"]),
+                    "language": r["language"],
+                    "mtime": r["mtime"],
+                    "directives": [],
+                }
+                if isinstance(r, dict) and r.get("_fallback") == "like":
+                    d["_fallback"] = "like"
+                per_file[r["path"]] = d
+            row_entry = {
+                "line": r["line"],
+                "kind": r["kind"],
+                "text": r["text"],
+            }
+            snippet = r["_match_snippet"] or ""
+            if "<b>" in snippet:
+                row_entry["_match_snippet"] = snippet
+            d["directives"].append(row_entry)
+            # match_lines holds every matched directive line of the file —
+            # extended per row, capped like the other modes.
+            ml = d.setdefault("match_lines", [])
+            if len(ml) < 20:
+                ml.append(r["line"])
+        results = list(per_file.values())
+        for d in results:
+            if not d["match_lines"]:
+                del d["match_lines"]
+            d["match_lines"] = d.get("match_lines", [])[:20]
+        return results[:limit]
+
+    def _do_search_raw(c: sqlite3.Connection, config_hash: str) -> list[dict]:
+        """Search the files as they are on disk (T12-C5, ADR-012).
+
+        A best-effort disk scan over the indexed paths — no FTS, because
+        the disk text of an unstale file IS the indexed text minus the
+        filter, and a second stored copy of raw text is exactly what
+        ADR-012 refuses.  Project code is scanned first, vendor code
+        after; the loop walks the indexed paths until ``limit`` results
+        (no scanned-file cap — verified W0 R10), so a hit in a file the
+        scan never reached is missed, and an empty result says "not found
+        within the scan", never "no such code".
+
+        The line of a match is computed by the same helper as the active
+        view, over the disk text — the numbers are directly comparable
+        because both are absolute file lines.
+        """
+        paths = index_db.list_config_file_paths(
+            c, config_hash, project_only=project_only
+        )
+        results: list[dict] = []
+        for r in paths:
+            if len(results) >= limit:
+                break
+            file_abs = abs_path(root, r["path"])
+            lines = read_file_lines(file_abs)
+            if lines is None:
+                continue
+            text = "".join(lines)
+            match_lines = _body_match_lines(text, 1, terms)
+            if not match_lines:
+                continue
+            results.append({
+                "file": file_abs,
+                "language": r["language"],
+                "mtime": r["mtime"],
+                "match_lines": match_lines,
+                "_source": "raw-disk",
+            })
+        return results
+
+    if mode != "active":
+        impl = {
+            "directives": _do_search_directives,
+            "raw": _do_search_raw,
+        }[mode]
+        return _with_search_context(
+            root, "search_content", impl, variant or "", image or ""
+        )
     return _with_search_context(root, "search_content", _do_search, variant or "", image or "")

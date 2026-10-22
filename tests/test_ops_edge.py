@@ -85,9 +85,11 @@ class TestReadBody:
         assert "body" in body
 
     def test_start_equals_end_returns_empty(self):
+        # wave contract (upstream guard 0 < start <= end): a zero-height
+        # extent is a one-line body, not an invalid range.
         lines = ["a\n", "b\n", "c\n"]
         body = _read_body(lines, 2, 2, frozenset())
-        assert body == ""
+        assert body == "b\n"
 
     def test_end_past_file_truncates(self):
         lines = ["line1\n", "line2\n"]

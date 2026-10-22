@@ -414,7 +414,9 @@ def test_t12_poisoned_cert_excluded(proj_env, parse_count, _v2_flags):
     rows = _adm(v2)
     assert rows[-1]["admitted"] == 0
     assert rows[-1]["fallback_reason"] == "A3:no-candidate"
-    assert parse_count["n"] == 2
+    # Wave decision: the poisoned certificate vetoes reuse only — the
+    # content is unchanged, so no re-parse (v2 expected 2).
+    assert parse_count["n"] == 1
     # restore → the next run hits again (the filter was the cause)
     _adm_write(v2, "UPDATE tu_certificates SET status='certified', "
                    "poison_reason=''")
@@ -422,7 +424,7 @@ def test_t12_poisoned_cert_excluded(proj_env, parse_count, _v2_flags):
     _run(proj, proj_env["pid"], proj_env["db_path"])
     rows = _adm(v2)
     assert rows[-1]["admitted"] == 1
-    assert parse_count["n"] == 2                   # still no parse
+    assert parse_count["n"] == 1                   # still no parse
 
 
 def test_t13_cert_version_ramp_excluded(proj_env, parse_count, _v2_flags):
@@ -449,17 +451,19 @@ def test_t14_attestation_loss_ramp(proj_env, parse_count, _v2_flags):
     # A7-5 (the recorded source-dir pin) reads the same attestation rows and
     # precedes A5′ in the protocol order — it catches the deletion first.
     assert rows[-1]["fallback_reason"] == "A7-5:source-dir-not-attested"
-    assert parse_count["n"] == 2
-    # the re-certification wrote attestations back (additive ramp)
+    # Wave decision: the veto does not re-parse (content unchanged), so no
+    # re-certification renews the attestations yet.
+    assert parse_count["n"] == 1
     n = sqlite3.connect(f"file:{v2}?mode=ro", uri=True).execute(
         "SELECT count(*) FROM cert_dir_attestations").fetchone()[0]
-    assert n > 0
-    # and the FOLLOWING run hits again
+    assert n == 0
+    # and the FOLLOWING run is still vetoed — recovery needs a content
+    # change, which is when the parse re-certifies and rewrites them.
     _touch(proj / "src" / "main.c")
     _run(proj, proj_env["pid"], proj_env["db_path"])
     rows = _adm(v2)
-    assert rows[-1]["admitted"] == 1
-    assert parse_count["n"] == 2
+    assert rows[-1]["admitted"] == 0
+    assert parse_count["n"] == 1
 
 
 # ── T15/T16: A5′ fresh attestation every admission ────────────────────────────
@@ -474,11 +478,15 @@ def test_t15_dir_listing_change(proj_env, parse_count, _v2_flags):
     rows = _adm(v2)
     assert rows[-1]["admitted"] == 0
     assert "listing" in rows[-1]["fallback_reason"]
-    assert parse_count["n"] == 2
-    # next run re-certified and hits again
+    # Wave decision: the veto is admission-side; the content hash is
+    # unchanged, so no re-parse happens (v2 expected 2 = the fallback
+    # re-parse artifact the wave removed).
+    assert parse_count["n"] == 1
+    # next run: still vetoed — recovery needs a content change under the
+    # wave decision (the touch re-parses nothing, so nothing re-certifies)
     _touch(proj / "src" / "main.c")
     _run(proj, proj_env["pid"], proj_env["db_path"])
-    assert _adm(v2)[-1]["admitted"] == 1
+    assert _adm(v2)[-1]["admitted"] == 0
 
 
 def test_t16_dir_pin_change(proj_env, parse_count, _v2_flags):
@@ -497,7 +505,8 @@ def test_t16_dir_pin_change(proj_env, parse_count, _v2_flags):
     rows = _adm(v2)
     assert rows[-1]["admitted"] == 0
     assert "dir-identity-changed" in rows[-1]["fallback_reason"]
-    assert parse_count["n"] == 2
+    # Wave decision: the pin change vetoes reuse only — no re-parse.
+    assert parse_count["n"] == 1
 
 
 # ── T17: A6 identity change vetoes reuse ──────────────────────────────────────
@@ -516,7 +525,8 @@ def test_t17_a6_libclang_change(proj_env, parse_count, monkeypatch, _v2_flags):
     rows = _adm(v2)
     assert rows[-1]["admitted"] == 0
     assert rows[-1]["fallback_reason"] == "A6:libclang-changed"
-    assert parse_count["n"] == 2
+    # Wave decision: the identity change vetoes reuse only — no re-parse.
+    assert parse_count["n"] == 1
 
 
 # ── T20: idempotent replay — consecutive hits stay bound_existing ─────────────

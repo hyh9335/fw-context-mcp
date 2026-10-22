@@ -531,6 +531,9 @@ def test_t09_regression_db_layer_synthetic_tests():
         capture_output=True,
         text=True,
         timeout=600,
+    
+        encoding="utf-8",
+        errors="replace",
     )
     assert proc.returncode == 0, (
         f"synthetic DB template tests regressed:\n{proc.stdout[-2000:]}\n{proc.stderr[-1000:]}"

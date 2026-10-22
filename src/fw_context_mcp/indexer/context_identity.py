@@ -275,6 +275,15 @@ def unit_identity_fields(
     # line contributed.  The conditionals slice (SLICE-F) parses these.
     define_tokens = sorted(tok for tok in canonical_argv(argv) if tok.startswith("-D"))
 
+    # Wave fusion: the identity drops the transient defines from the
+    # argv it hashes.  A new MBED_BUILD_TIMESTAMP is the same context —
+    # only its stamp differs — and the decision-by-hash contract parses
+    # nothing when a build writes a new stamp.  The provenance fields
+    # below still record the argv as spelled.
+    from .config_hash import drop_transient_defines
+
+    identity_argv = drop_transient_defines(list(argv), transient_defines)
+
     return {
         "config_hash": config_hash,
         "context_id": compute_context_id(
@@ -282,7 +291,7 @@ def unit_identity_fields(
             main_file=main_file,
             project_root=project_root,
             compile_dir=compile_dir,
-            argv=argv,
+            argv=identity_argv,
             response_hashes=resp_hashes,
             output_name=output_name,
         ),

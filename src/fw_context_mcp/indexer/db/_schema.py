@@ -100,7 +100,7 @@ CURRENT_ROW_FORMAT = "fw-context-rows/3"
 # the build, thus a plain `fw-context index` writes every file and every
 # body again.  The two must therefore move together, and
 # `test_row_format_invalidation.py` fails when only one of them does.
-ROW_FORMAT_PAIRED_WITH = "fw-context-cc/5"
+ROW_FORMAT_PAIRED_WITH = "fw-context-cc/7"
 
 
 def _row_format_number(value: str) -> int | None:

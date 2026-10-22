@@ -133,12 +133,17 @@ class TestRawScanBudgetTruth:
     def test_search_bodies_overfetch_claim_still_matches_the_sql(self):
         """Claim 964 is TRUE — lock it to the SQL so the pair cannot drift (O10)."""
         src = _read(SEARCH_PY)
-        assert "row_limit = limit if project_only else limit * 3" in src, (
-            "search_bodies' FTS5 path must keep the documented over-fetch shape"
+        # r10 paging contract: the 3x Python over-fetch budget is gone —
+        # the SQL pages directly (LIMIT ? OFFSET ?) and a COUNT(*) gives
+        # the page notice its total.  project_only narrows the WHERE, and
+        # the SQL still answers within one page, so the budget the old
+        # claim documented no longer exists to drift.
+        assert "LIMIT ? OFFSET ?" in src, (
+            "search_bodies' FTS5 path must page in SQL (LIMIT ? OFFSET ?)"
         )
-        assert "just\n        ``limit`` for project_only" in src, (
-            "the search_bodies docstring must keep stating the project_only "
-            "single-fetch special case while the SQL implements it"
+        assert "COUNT(*) FROM symbols_fts" in src, (
+            "search_bodies must keep the COUNT(*) total that the page "
+            "notice reports"
         )
 
 

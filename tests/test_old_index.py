@@ -71,7 +71,10 @@ def test_a_query_gets_the_old_schema_and_the_status_tool(old_index):
 
     out = asyncio.run(server.mcp.call_tool("lookup_symbol", {"name": "main_value", "project_root": str(root)}))
 
-    rows = out[1]["result"]
+    # Fusion: the merged MCP surface returns a CallToolResult (ADR-006 c),
+    # not the stock FastMCP tuple; the structured body keeps the same
+    # {"result": [...]} shape.
+    rows = out.structuredContent["result"]
     assert rows == [{"error": rows[0]["error"]}], "no state of a build: the index has no build of this version"
     assert rows[0]["error"].startswith("schema_mismatch: an older version wrote this index"), rows
     assert rows[0]["error"].endswith("To see the action, call get_project_status().")

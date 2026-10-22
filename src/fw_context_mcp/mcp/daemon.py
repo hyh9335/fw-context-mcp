@@ -246,7 +246,7 @@ async def daemon_main(project_root: Path) -> None:
         # Start the watcher BEFORE the initial index.  The initial index runs
         # as long as any other index run, thus a watcher that starts after it
         # loses each edit that a user makes while it runs.
-        pending: asyncio.Event = asyncio.Event()
+        pending: _PendingWork = _PendingWork(db_dir)
         watch_task = asyncio.create_task(
             _watch_changes(project_root, build_patterns, pending, shutdown, dlog)
         )
@@ -646,6 +646,14 @@ async def _reindex_loop(
         # Collect the rest of the burst.  A git checkout and a build both
         # touch many files, and one index run covers all of them.
         await asyncio.sleep(_DEBOUNCE_S)
+
+        # A manual operation can hold the index (v2 pause marker).  Keep
+        # the pending flag while it does — a single-file reindex does not
+        # cover the other changes.
+        if _bg_paused_safe(project_root):
+            dlog.info("Manual index in progress — the background reindex waits")
+            if not await _wait_for_pause_to_clear(project_root, shutdown):
+                continue
 
         # The flag stays while another process holds the index: a
         # single-file reindex does not cover the other changes.
@@ -1074,7 +1082,7 @@ async def _run_index_async(
             getattr(os, "O_NOFOLLOW", 0) | os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
             0o644,
         )
-        log_target = os.fdopen(fd, "w", closefd=True)
+        log_target = os.fdopen(fd, "w", encoding="utf-8", errors="replace", closefd=True)
     except OSError as exc:
         # The run does its work also without a log.
         log.warning("Cannot open %s: %s — the background index runs without a log", log_file, exc)

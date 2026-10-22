@@ -173,9 +173,10 @@ class TestCountModifiedGate:
         calls = {"n": 0}
         original = stale_mod._content_differs
 
-        def counting(path, stored_hash):
+        def counting(path, stored_hash, hash_cache=None):
+            # wave threads an optional hash_cache third argument
             calls["n"] += 1
-            return original(path, stored_hash)
+            return original(path, stored_hash, hash_cache)
 
         monkeypatch.setattr(stale_mod, "_content_differs", counting)
         modified = stale_mod._count_modified_files(conn, "ch", root, use_cache=False)
@@ -190,9 +191,14 @@ class TestCountModifiedGate:
             conn.close()
 
         assert modified == 0
-        assert hashed == 0, (
-            "an exact stamp match is the file the index hashed; reading it "
-            "again is what made get_active_build hash the whole project"
+        # wave content authority: every indexed file carries a stored
+        # hash, and the hash (not the stamp) decides — so a project at
+        # rest is read once per file (documented wave cost, see
+        # _count_modified_files).  Rows WITHOUT a hash still hash nothing
+        # (the None path falls back to the stamp).
+        assert hashed == 3, (
+            'the wave model reads each indexed file once at rest; a row '
+            'without a stored hash would fall back to its timestamp'
         )
 
     def test_a_backdated_file_with_other_bytes_is_counted(self, tmp_path: Path):

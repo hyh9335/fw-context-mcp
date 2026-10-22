@@ -481,8 +481,9 @@ class TestSearchContentModes:
         root, _db, _ch = _indexed_project(tmp_path, "c4", _f03_b)
         from fw_context_mcp.mcp.handlers.search import search_content
 
-        default = search_content(query="branch_b", project_root=str(root))
-        explicit = search_content(query="branch_b", mode="active", project_root=str(root))
+        # r10 paging: the active view leads with the provenance row — skip it.
+        default = [r for r in search_content(query="branch_b", project_root=str(root)) if "file" in r]
+        explicit = [r for r in search_content(query="branch_b", mode="active", project_root=str(root)) if "file" in r]
         assert default == explicit, (
             "default call and explicit mode='active' must be identical"
         )

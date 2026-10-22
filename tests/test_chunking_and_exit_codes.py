@@ -65,7 +65,10 @@ class TestExitCodesModule:
         result = subprocess.run(  # noqa: S603 — fixed argv, no shell
             [sys.executable, "-c", script],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
 
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip() == "", (

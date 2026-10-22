@@ -68,7 +68,10 @@ class TestIndexRunLock:
             result = subprocess.run(  # noqa: S603 — fixed argv, no shell
                 [sys.executable, "-c", script],
                 capture_output=True, text=True, timeout=60,
-            )
+            
+        encoding="utf-8",
+        errors="replace",
+    )
         assert "REFUSED" in result.stdout, result.stdout + result.stderr
         assert str(os.getpid()) in result.stdout, (
             "the refusal should name the holder so the user can find it"
@@ -90,7 +93,10 @@ class TestIndexRunLock:
         result = subprocess.run(  # noqa: S603 — fixed argv, no shell
             [sys.executable, "-c", script],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
         assert "ACQUIRED" in result.stdout, result.stdout + result.stderr
 
     def test_a_crashed_holder_does_not_wedge_the_index(self, tmp_path: Path):
@@ -113,7 +119,10 @@ class TestIndexRunLock:
         result = subprocess.run(  # noqa: S603 — fixed argv, no shell
             [sys.executable, "-c", script],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
         assert "ACQUIRED" in result.stdout
         assert result.returncode == 9
 
@@ -138,7 +147,10 @@ class TestIndexRunLock:
             result = subprocess.run(  # noqa: S603 — fixed argv, no shell
                 [sys.executable, "-c", script],
                 capture_output=True, text=True, timeout=60,
-            )
+            
+        encoding="utf-8",
+        errors="replace",
+    )
         assert str(tmp_path) in result.stdout, result.stdout + result.stderr
 
 
@@ -295,7 +307,10 @@ class TestARefusedRunLeavesNothingBehind:
             result = subprocess.run(  # noqa: S603 — fixed argv, no shell
                 [sys.executable, "-c", script],
                 capture_output=True, text=True, timeout=60,
-            )
+            
+        encoding="utf-8",
+        errors="replace",
+    )
             assert "REFUSED" in result.stdout, result.stdout + result.stderr
             # The marker must still name THIS process, not the refused one.
             assert pause.read_text().strip() == str(os.getpid()), (

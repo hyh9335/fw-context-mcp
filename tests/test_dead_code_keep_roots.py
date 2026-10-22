@@ -433,20 +433,20 @@ def test_w4_o8_linker_gc_binary_oracle(tmp_path):
         [cc_bin, *target_flags, "-std=c11", "-ffreestanding", *nostdinc_flags,
          "-O0", "-ffunction-sections", "-fdata-sections",
          "-c", "main.c", "-o", "main.o"],
-        cwd=str(fix), capture_output=True, text=True, errors="replace",
+        cwd=str(fix), capture_output=True, text=True,         encoding="utf-8", errors="replace",
     )
     assert comp.returncode == 0, f"compile failed ({kind}): {comp.stderr[-800:]}"
     link = subprocess.run(
         [ld_bin, "main.o", "-o", "main.elf", "--gc-sections",
          "--print-gc-sections", "-Map=main.map", "-T", "linker.ld",
          "-nostdlib", "--noinhibit-exec"],
-        cwd=str(fix), capture_output=True, text=True, errors="replace",
+        cwd=str(fix), capture_output=True, text=True,         encoding="utf-8", errors="replace",
     )
     assert link.returncode == 0 and (fix / "main.elf").exists(), (
         f"gc link failed ({kind}): {link.stderr[-800:]}")
     nm = subprocess.run(
         [nm_bin, "main.elf"], cwd=str(fix), capture_output=True,
-        text=True, errors="replace",
+        text=True,         encoding="utf-8", errors="replace",
     )
     symbols = set(nm.stdout.split())
 

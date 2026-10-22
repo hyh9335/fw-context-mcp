@@ -6,53 +6,18 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
+from fw_context_mcp.indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
 from fw_context_mcp.indexer.manifest import MANIFEST_FORMAT
+from fw_context_mcp.utils import compute_source_hash
 
 
-class TestManifestEntryHash:
-    def test_empty_entry(self):
-        from fw_context_mcp.indexer.manifest import get_manifest_entry_hash
-
-        h = get_manifest_entry_hash({"source_hash": "", "headers": []})
-        assert len(h) == 64  # SHA-256 hex
-        assert h != ""
-
-    def test_with_source_only(self):
-        from fw_context_mcp.indexer.manifest import get_manifest_entry_hash
-
-        entry = {"source_hash": "abc123", "headers": []}
-        h1 = get_manifest_entry_hash(entry)
-        h2 = get_manifest_entry_hash(entry)
-        assert h1 == h2  # deterministic
-
-    def test_different_headers_produce_different_hash(self):
-        from fw_context_mcp.indexer.manifest import get_manifest_entry_hash
-
-        entry = {"source_hash": "abc", "headers": ["a.h"]}
-        h1 = get_manifest_entry_hash(entry, [{"path": "a.h", "hash": "111"}])
-        h2 = get_manifest_entry_hash(entry, [{"path": "a.h", "hash": "222"}])
-        assert h1 != h2
-
-    def test_resolved_headers_are_what_the_hash_sees(self):
-        """The entry alone cannot distinguish two header states.
-
-        Entries store paths; the hashes live in the manifest's shared table.
-        Hashing the entry without its resolved records would make every header
-        change invisible, so this asserts the resolved form is what counts.
-        """
-        from fw_context_mcp.indexer.manifest import (
-            get_manifest_entry_hash,
-            tu_headers,
-        )
-
-        entry = {"source_hash": "abc", "headers": ["a.h"]}
-        before = {"headers": {"a.h": {"hash": "111", "generated": False}}}
-        after = {"headers": {"a.h": {"hash": "222", "generated": False}}}
-        assert get_manifest_entry_hash(entry, tu_headers(before, entry)) != (
-            get_manifest_entry_hash(entry, tu_headers(after, entry))
-        )
-        # Without the records the two states collapse into one hash.
-        assert get_manifest_entry_hash(entry) == get_manifest_entry_hash(entry)
+def _parsed(root: Path, tus: set[str] | None) -> dict[str, str] | None:
+    """``reparsed_tus`` as the runner gives it: each re-parsed TU with its source hash."""
+    if tus is None:
+        return None
+    return {tu: compute_source_hash(root / tu) for tu in tus}
 
 
 class TestComputeConfigHash:
@@ -74,8 +39,8 @@ class TestComputeConfigHash:
         from fw_context_mcp.indexer.manifest import compute_config_hash
 
         units = []
-        h1 = compute_config_hash(units, tmp_path, "test-project")
-        h2 = compute_config_hash(units, tmp_path, "test-project")
+        h1 = compute_config_hash(units, tmp_path, "test-project", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(units, tmp_path, "test-project", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2
         assert len(h1) == 64
 
@@ -91,8 +56,8 @@ class TestComputeConfigHash:
 
         u1 = [self._make_unit(str(tmp_path / "a.cpp"))]
         u2 = [self._make_unit(str(tmp_path / "b.cpp"))]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2
 
     def test_different_flags_produce_different_hash(self, tmp_path: Path):
@@ -100,8 +65,8 @@ class TestComputeConfigHash:
 
         u1 = [self._make_unit(str(tmp_path / "a.cpp"), ["gcc", "-O2", "-c", "a.cpp"])]
         u2 = [self._make_unit(str(tmp_path / "a.cpp"), ["gcc", "-Os", "-c", "a.cpp"])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 != h2
 
     def test_flag_order_independent(self, tmp_path: Path):
@@ -109,14 +74,14 @@ class TestComputeConfigHash:
 
         u1 = [self._make_unit(str(tmp_path / "a.cpp"), ["gcc", "-O2", "-DFOO=1", "-c", "a.cpp"])]
         u2 = [self._make_unit(str(tmp_path / "a.cpp"), ["gcc", "-DFOO=1", "-O2", "-c", "a.cpp"])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2  # arguments are sorted alphabetically
 
     def test_hash_is_hex_string(self, tmp_path: Path):
         from fw_context_mcp.indexer.manifest import compute_config_hash
 
-        h = compute_config_hash([], tmp_path, "test")
+        h = compute_config_hash([], tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert len(h) == 64
         assert all(c in "0123456789abcdef" for c in h)
 
@@ -130,8 +95,8 @@ class TestComputeConfigHash:
         u2 = [self._make_unit(str(tmp_path / "a.cpp"),
               ["gcc", "-c", str(tmp_path / "a.cpp"),
                "-DMBED_BUILD_TIMESTAMP=1784145526.0657399"])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2  # timestamp value differs but macro should be stripped
 
     def test_transient_mbed_build_timestamp_space_form(self, tmp_path: Path):
@@ -144,8 +109,8 @@ class TestComputeConfigHash:
         u2 = [self._make_unit(str(tmp_path / "a.cpp"),
               ["gcc", "-c", str(tmp_path / "a.cpp"),
                "-D", "MBED_BUILD_TIMESTAMP=9999999999.0"])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2  # space-separated form is also stripped
 
     def test_transient_mbed_build_timestamp_value_only(self, tmp_path: Path):
@@ -157,8 +122,8 @@ class TestComputeConfigHash:
                "-DMBED_BUILD_TIMESTAMP"])]
         u2 = [self._make_unit(str(tmp_path / "a.cpp"),
               ["gcc", "-c", str(tmp_path / "a.cpp")])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2  # with and without the transient define must match
 
     def test_other_defines_preserved(self, tmp_path: Path):
@@ -170,8 +135,8 @@ class TestComputeConfigHash:
         u2 = [self._make_unit(str(tmp_path / "a.cpp"),
               ["gcc", "-c", str(tmp_path / "a.cpp"),
                "-DNDEBUG"])]
-        h1 = compute_config_hash(u1, tmp_path, "test")
-        h2 = compute_config_hash(u2, tmp_path, "test")
+        h1 = compute_config_hash(u1, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_config_hash(u2, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 != h2  # different non-transient defines → different hash
 
     def test_generic_transient_defines_stripped(self, tmp_path: Path):
@@ -189,10 +154,10 @@ class TestComputeConfigHash:
             "-DBUILD_NUMBER=42",
         ]:
             u = [self._make_unit(str(tmp_path / "a.cpp"), base_args + [dflag])]
-            hashes.add(compute_config_hash(u, tmp_path, "test"))
+            hashes.add(compute_config_hash(u, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES))
         # Without any transient macros
         u_base = [self._make_unit(str(tmp_path / "a.cpp"), base_args)]
-        hashes.add(compute_config_hash(u_base, tmp_path, "test"))
+        hashes.add(compute_config_hash(u_base, tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES))
         assert len(hashes) == 1  # all produce the same hash
 
 
@@ -225,7 +190,7 @@ class TestSaveAndLoad:
         mock_unit = MagicMock()
         mock_unit.file.resolve.return_value = Path(str(tmp_path / "src/main.cpp"))
         mock_unit.clang_args = ["gcc", "-c", "src/main.cpp"]
-        config_hash = compute_config_hash([mock_unit], tmp_path, "test")
+        config_hash = compute_config_hash([mock_unit], tmp_path, "test", transient_defines=DEFAULT_TRANSIENT_DEFINES)
         config_hash = save(manifest, tmp_path, config_hash)
         assert len(config_hash) == 64
 
@@ -350,7 +315,13 @@ class TestCheckTuStaleness:
         )
         assert stale is True  # header hash differs
 
-    def test_generated_header_skipped(self, tmp_path: Path):
+    def test_a_changed_generated_header_makes_the_unit_stale(self, tmp_path: Path):
+        """mbed_config.h carries mbed_app.json, and the #ifdefs of the unit follow it.
+
+        The rule that trusted a generated header said that its content
+        changes with each build.  Measured on 2026-10-07 it does not: a
+        header of the build changes only with the configuration.
+        """
         import hashlib
 
         from fw_context_mcp.indexer.manifest import check_tu_staleness
@@ -372,7 +343,7 @@ class TestCheckTuStaleness:
             entry, tmp_path,
             headers=[{"path": "BUILD/mbed_config.h", "hash": "nonexistent_hash", "generated": True}],
         )
-        assert stale is False  # generated header is trusted
+        assert stale is True
 
     def test_an_in_tree_vendor_header_is_not_trusted(self, tmp_path: Path):
         """A changed vendor header makes its dependent TU stale.
@@ -563,16 +534,26 @@ class TestUpdateEntry:
             ]
         }
         new_headers = [{"path": "new.h", "hash": "111", "generated": False}]
-        update_entry(manifest, 0, "new_hash", new_headers)
+        update_entry(manifest, 0, "new_hash", new_headers, flags_hash="new_flags", arguments=["-DNEW"])
         assert manifest["entries"][0]["source_hash"] == "new_hash"
         assert manifest["entries"][0]["headers"] == new_headers
+        assert manifest["entries"][0]["flags_hash"] == "new_flags"
+        assert manifest["arg_sets"][manifest["entries"][0]["arg_set"]] == ["-DNEW"]
         assert manifest["entries"][1]["source_hash"] == "old"  # unchanged
+
+    def test_the_reparse_removes_the_needs_reparse_mark(self):
+        """check_tu_staleness reads a marked entry as stale whatever its hashes say."""
+        from fw_context_mcp.indexer.manifest import update_entry
+
+        manifest = {"entries": [{"file": "a.c", "source_hash": "old", "headers": [], "needs_reparse": True}]}
+        update_entry(manifest, 0, "new", [], flags_hash="f", arguments=[])
+        assert "needs_reparse" not in manifest["entries"][0]
 
     def test_update_out_of_range(self):
         from fw_context_mcp.indexer.manifest import update_entry
 
         manifest = {"entries": []}
-        update_entry(manifest, 5, "hash", [])
+        update_entry(manifest, 5, "hash", [], flags_hash="f", arguments=[])
         # Should not raise — silently no-op
         assert len(manifest["entries"]) == 0
 
@@ -638,12 +619,12 @@ class TestCollectStaleHeaders:
         )
         assert collect_stale_headers(manifest, tmp_path) == set()
 
-    def test_a_generated_header_is_still_trusted(self, tmp_path: Path):
-        """The one rule that survives: build output changes every build.
+    def test_a_changed_generated_header_is_stale(self, tmp_path: Path):
+        """No header is trusted.  A pristine build gives the same generated headers.
 
-        This is the half of the old test that keeps its sign.  Without it the
-        end of vendor trust would overshoot into trusting nothing, and every
-        build would then force a full reparse.
+        Measured on 2026-10-07: 0 of 325 headers of a real sysbuild project
+        changed between two pristine builds, thus to re-hash them costs no
+        reparse when nothing changed.
         """
         from fw_context_mcp.indexer.manifest import collect_stale_headers
 
@@ -654,7 +635,7 @@ class TestCollectStaleHeaders:
             tmp_path,
             [{"path": "BUILD/mbed_config.h", "hash": "stale", "generated": True}],
         )
-        assert collect_stale_headers(manifest, tmp_path) == set()
+        assert collect_stale_headers(manifest, tmp_path) == {"BUILD/mbed_config.h"}
 
     def test_an_in_tree_vendor_header_change_is_detected(self, tmp_path: Path):
         """The other half of the old test, with its sign inverted.
@@ -767,12 +748,8 @@ class TestVendorPatternCarrier:
         unit = MagicMock()
         unit.file = src
         unit.directory = tmp_path
-        # Single-input contract: libclang's parse() takes the TU file as its
-        # own argument, so the fabricated args must NOT repeat it —
-        # "-c <file>" names a SECOND input and the parse fails with
-        # TranslationUnitLoadError (which escapes the tolerated except set).
-        unit.clang_args = ["gcc"]
-        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": ["gcc"]}
+        unit.clang_args = ["gcc", "-c", rel]
+        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": ["gcc", "-c", rel]}
         return unit
 
     def _run(self, tmp_path: Path, *, manifest, vendor_patterns):
@@ -792,7 +769,8 @@ class TestVendorPatternCarrier:
             ]},
             vendor_patterns=vendor_patterns,
             config_hash="deadbeef",
-            reparsed_tus={"src/main.cpp"},
+            reparsed_tus=_parsed(tmp_path, {"src/main.cpp"}),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
         )
 
     @staticmethod
@@ -901,20 +879,14 @@ class TestManifestEntryRefreshGuard:
         unit = MagicMock()
         unit.file = src
         unit.directory = tmp_path
-        # Single-input contract (see TestVendorPatternCarrier._unit): the TU
-        # file is parse()'s own input, never repeated as "-c <file>".
-        unit.clang_args = ["gcc"]
-        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": ["gcc"]}
+        unit.clang_args = ["gcc", "-c", rel]
+        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": ["gcc", "-c", rel]}
         return unit
 
     def _run(self, tmp_path: Path, *, updated_count: int, reparsed: set[str] | None):
         from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
 
         unit = self._unit(tmp_path, "src/main.cpp")
-        # The product keys manifest entries, tu_headers and reparsed_tus in
-        # POSIX spelling on every platform (the one-spelling-per-file
-        # contract, D-N5-1c); POSIX literals keep every lookup on that key.
-        rel = (tmp_path / "src/main.cpp").relative_to(tmp_path).as_posix()
         manifest = {
             "_format": MANIFEST_FORMAT,
             "project_root": str(tmp_path),
@@ -922,7 +894,7 @@ class TestManifestEntryRefreshGuard:
             "headers": {"src/config.h": {"hash": "STORED", "generated": False}},
             "entries": [
                 {
-                    "file": rel,
+                    "file": "src/main.cpp",
                     "directory": str(tmp_path),
                     "arg_set": 0,
                     "source_hash": "stored-source",
@@ -938,9 +910,10 @@ class TestManifestEntryRefreshGuard:
             db_dir=tmp_path / "index",
             compile_commands=tmp_path / "compile_commands.json",
             updated_count=updated_count,
-            tu_headers={rel: [{"path": "src/config.h", "hash": "FRESH", "generated": False}]},
+            tu_headers={"src/main.cpp": [{"path": "src/config.h", "hash": "FRESH", "generated": False}]},
             config_hash="deadbeef",
-            reparsed_tus={rel} if reparsed else reparsed,
+            reparsed_tus=_parsed(tmp_path, reparsed),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
         )
 
     @staticmethod
@@ -989,10 +962,298 @@ class TestManifestEntryRefreshGuard:
         result = self._run(tmp_path, updated_count=1, reparsed=set())
         assert result is not None
         entry = result["entries"][0]
-        # The fabricated args are ["gcc"] since the "-c <file>" pair went away
-        # (single-input contract) — a carried entry must still resolve to the
-        # very list the unit was built with.
-        assert tu_arguments(result, entry) == ["gcc"]
+        assert tu_arguments(result, entry) == ["gcc", "-c", "src/main.cpp"]
+
+
+class TestOneEntryForEachListing:
+    """A file that compile_commands.json lists more than once keeps one entry for each listing.
+
+    Zephyr compiles ``misc/empty_file.c`` three times in one image, with two
+    sets of flags.  The carry-over looked the old entry up by file alone,
+    thus each listing got the last entry of the file: A, A, B became B, B, B.
+    """
+
+    @staticmethod
+    def _unit(tmp_path: Path, rel: str, define: str):
+        from unittest.mock import MagicMock
+
+        src = tmp_path / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("int x;\n")
+        args = ["gcc", define, "-c", rel]
+        unit = MagicMock()
+        unit.file = src
+        unit.directory = tmp_path
+        unit.clang_args = args[1:]
+        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": args}
+        return unit
+
+    @staticmethod
+    def _flags(unit) -> str:
+        from fw_context_mcp.indexer.config_hash import compute_flags_hash
+
+        return compute_flags_hash(unit.raw_entry, transient_defines=DEFAULT_TRANSIENT_DEFINES)
+
+    def _manifest(self, tmp_path: Path, units: list) -> dict:
+        """The manifest that the previous run wrote: one correct entry for each unit."""
+        arg_sets: list[list[str]] = []
+        entries = []
+        for unit in units:
+            if unit.clang_args not in arg_sets:
+                arg_sets.append(list(unit.clang_args))
+            entries.append({
+                # Windows adjudication: manifest keys are posix paths
+                "file": unit.file.relative_to(tmp_path).as_posix(),
+                "directory": str(tmp_path),
+                "arg_set": arg_sets.index(unit.clang_args),
+                "source_hash": "stored-source",
+                "flags_hash": self._flags(unit),
+                "headers": [],
+            })
+        return {
+            "_format": MANIFEST_FORMAT, "project_root": str(tmp_path),
+            "arg_sets": arg_sets, "headers": {}, "entries": entries,
+        }
+
+    def _update(self, tmp_path: Path, manifest: dict, units: list, *, with_tu_headers: bool) -> dict:
+        from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+
+        (tmp_path / "index").mkdir(exist_ok=True)
+        result = _update_manifest_after_index(
+            manifest=manifest,
+            units=units,
+            project_root=tmp_path,
+            db_dir=tmp_path / "index",
+            compile_commands=tmp_path / "compile_commands.json",
+            updated_count=1,
+            tu_headers={"src/main.c": []} if with_tu_headers else None,
+            config_hash="deadbeef",
+            reparsed_tus=_parsed(tmp_path, {"src/main.c"}),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
+        )
+        assert result is not None
+        return result
+
+    @pytest.mark.parametrize("with_tu_headers", [True, False], ids=["tu_headers", "incremental"])
+    def test_each_listing_keeps_its_own_flags(self, tmp_path: Path, with_tu_headers: bool):
+        from fw_context_mcp.indexer.manifest import tu_arguments
+
+        a1 = self._unit(tmp_path, "misc/empty.c", "-DA")
+        a2 = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        main = self._unit(tmp_path, "src/main.c", "-DA")
+        units = [a1, a2, b, main]
+
+        result = self._update(tmp_path, self._manifest(tmp_path, units), units, with_tu_headers=with_tu_headers)
+
+        empty = [e for e in result["entries"] if e["file"] == "misc/empty.c"]
+        assert [e["flags_hash"] for e in empty] == [self._flags(a1), self._flags(a2), self._flags(b)]
+        assert [tu_arguments(result, e)[0] for e in empty] == ["-DA", "-DA", "-DB"]
+
+    @pytest.mark.parametrize("with_tu_headers", [True, False], ids=["tu_headers", "incremental"])
+    def test_a_new_listing_with_known_flags_gets_a_copy(self, tmp_path: Path, with_tu_headers: bool):
+        """The build now lists the file with flags A three times; B is gone."""
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        main = self._unit(tmp_path, "src/main.c", "-DA")
+        manifest = self._manifest(tmp_path, [a, b, main])
+        units = [a, self._unit(tmp_path, "misc/empty.c", "-DA"), self._unit(tmp_path, "misc/empty.c", "-DA"), main]
+
+        result = self._update(tmp_path, manifest, units, with_tu_headers=with_tu_headers)
+
+        empty = [e for e in result["entries"] if e["file"] == "misc/empty.c"]
+        assert [e["flags_hash"] for e in empty] == [self._flags(a)] * 3
+
+    @pytest.mark.parametrize("with_tu_headers", [True, False], ids=["tu_headers", "incremental"])
+    def test_an_entry_keeps_the_flags_that_the_index_parsed(self, tmp_path: Path, with_tu_headers: bool):
+        """The flags of each listing changed, and no listing was parsed again.
+
+        The entries keep the old flags hash: the index still holds what the
+        old flags gave, and the decision for the next run must see that.
+        """
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        main = self._unit(tmp_path, "src/main.c", "-DA")
+        manifest = self._manifest(tmp_path, [a, b, main])
+        units = [self._unit(tmp_path, "misc/empty.c", "-DC"), self._unit(tmp_path, "misc/empty.c", "-DD"), main]
+
+        result = self._update(tmp_path, manifest, units, with_tu_headers=with_tu_headers)
+
+        empty = [e for e in result["entries"] if e["file"] == "misc/empty.c"]
+        assert [e["flags_hash"] for e in empty] == [self._flags(a), self._flags(b)]
+
+    def test_a_manifest_that_lost_a_flag_set_keeps_what_was_parsed(self, tmp_path: Path):
+        """A manifest of the old carry-over holds B, B, B for the listings A, A, B.
+
+        Without a parse of the file, the index holds what B gave, and the
+        entries say so.  The decision by flags hash then parses the two
+        listings of A again, and their fresh entries hold A.
+        """
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        main = self._unit(tmp_path, "src/main.c", "-DA")
+        manifest = self._manifest(tmp_path, [b, b, b, main])
+        units = [a, self._unit(tmp_path, "misc/empty.c", "-DA"), b, main]
+
+        result = self._update(tmp_path, manifest, units, with_tu_headers=True)
+
+        empty = [e for e in result["entries"] if e["file"] == "misc/empty.c"]
+        assert [e["flags_hash"] for e in empty] == [self._flags(b)] * 3
+
+
+class TestManifestCheckpoint:
+    """The write of the manifest during the run (``checkpoint_reached``)."""
+
+    def test_a_unit_without_an_entry_gets_none_and_no_tokenizing(self, tmp_path: Path, monkeypatch):
+        """The end of the run gives it an entry; a checkpoint must not parse it for one."""
+        import fw_context_mcp.indexer.manifest as manifest_mod
+
+        def no_tokenizing(*args, **kwargs):
+            raise AssertionError("a checkpoint read a unit from the token stream")
+
+        monkeypatch.setattr(manifest_mod, "_collect_headers_from_tokens", no_tokenizing)
+        listing = TestOneEntryForEachListing()
+        main = listing._unit(tmp_path, "src/main.c", "-DA")
+        new = listing._unit(tmp_path, "src/new.c", "-DA")
+        manifest = listing._manifest(tmp_path, [main])
+
+        from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+
+        (tmp_path / "index").mkdir()
+        result = _update_manifest_after_index(
+            manifest=manifest, units=[main, new], project_root=tmp_path, db_dir=tmp_path / "index",
+            compile_commands=tmp_path / "compile_commands.json", updated_count=1,
+            tu_headers={"src/main.c": []}, config_hash="deadbeef",
+            reparsed_tus=_parsed(tmp_path, {"src/main.c"}),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES, checkpoint_reached=2,
+        )
+
+        assert result is not None
+        assert [e["file"] for e in result["entries"]] == ["src/main.c"]
+        assert result["entries"][0]["source_hash"] == compute_source_hash(main.file)
+
+    def test_a_listing_after_the_reached_position_keeps_its_old_entry(self, tmp_path: Path):
+        """A file listed twice: the run stored the first listing, and stopped before the second.
+
+        tu_headers and reparsed_tus are keyed by file, thus the second
+        listing got a fresh entry with ITS new flags, and the next run kept
+        both listings as unchanged while the rows came from the first one.
+        """
+        from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+
+        listing = TestOneEntryForEachListing()
+        a = listing._unit(tmp_path, "misc/empty.c", "-DA")
+        b_old = listing._unit(tmp_path, "misc/empty.c", "-DB")
+        b_new = listing._unit(tmp_path, "misc/empty.c", "-DC")
+        manifest = listing._manifest(tmp_path, [a, b_old])
+
+        (tmp_path / "index").mkdir()
+        result = _update_manifest_after_index(
+            manifest=manifest, units=[a, b_new], project_root=tmp_path, db_dir=tmp_path / "index",
+            compile_commands=tmp_path / "compile_commands.json", updated_count=1,
+            tu_headers={"misc/empty.c": []}, config_hash="deadbeef",
+            reparsed_tus=_parsed(tmp_path, {"misc/empty.c"}),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES, checkpoint_reached=1,
+        )
+
+        assert result is not None
+        assert [e["flags_hash"] for e in result["entries"]] == [listing._flags(a), listing._flags(b_old)]
+
+    def test_an_unchanged_listing_after_the_reached_position_is_behind(self, tmp_path: Path):
+        """Only the flags of the first listing changed, and the run stopped before the second.
+
+        The old entry of the second listing is current by its own hashes,
+        but the rows of the file are now the rows of the first listing.
+        """
+        from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+
+        listing = TestOneEntryForEachListing()
+        a_old = listing._unit(tmp_path, "misc/empty.c", "-DA")
+        b = listing._unit(tmp_path, "misc/empty.c", "-DB")
+        a_new = listing._unit(tmp_path, "misc/empty.c", "-DX")
+        manifest = listing._manifest(tmp_path, [a_old, b])
+
+        (tmp_path / "index").mkdir()
+        result = _update_manifest_after_index(
+            manifest=manifest, units=[a_new, b], project_root=tmp_path, db_dir=tmp_path / "index",
+            compile_commands=tmp_path / "compile_commands.json", updated_count=1,
+            tu_headers={"misc/empty.c": []}, config_hash="deadbeef",
+            reparsed_tus=_parsed(tmp_path, {"misc/empty.c"}),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES, checkpoint_reached=1,
+        )
+
+        assert result is not None
+        first, second = result["entries"]
+        assert first["flags_hash"] == listing._flags(a_new) and "needs_reparse" not in first
+        assert second["flags_hash"] == listing._flags(b) and second["needs_reparse"] is True
+
+    def test_without_a_manifest_there_is_no_checkpoint(self, tmp_path: Path):
+        from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+
+        unit = TestOneEntryForEachListing()._unit(tmp_path, "src/main.c", "-DA")
+        (tmp_path / "index").mkdir()
+        result = _update_manifest_after_index(
+            manifest=None, units=[unit], project_root=tmp_path, db_dir=tmp_path / "index",
+            compile_commands=tmp_path / "compile_commands.json", updated_count=1,
+            tu_headers=None, config_hash="deadbeef", reparsed_tus={},
+            transient_defines=DEFAULT_TRANSIENT_DEFINES, checkpoint_reached=2,
+        )
+
+        assert result is None
+        assert list((tmp_path / "index").iterdir()) == []
+
+    def test_the_manifest_is_written_through_a_rename(self, tmp_path: Path, monkeypatch):
+        """A stop during the write must leave the old manifest, not a cut file."""
+        import fw_context_mcp.indexer.manifest as manifest_mod
+
+        manifest_mod.save({"_format": MANIFEST_FORMAT, "entries": []}, tmp_path, "cafe")
+        before = (tmp_path / "manifest.cafe.json").read_text(encoding="utf-8")
+
+        def stop(*args, **kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr("fw_context_mcp.utils.os.replace", stop)
+        with pytest.raises(KeyboardInterrupt):
+            manifest_mod.save({"_format": MANIFEST_FORMAT, "entries": [{"file": "a.c"}]}, tmp_path, "cafe")
+
+        assert (tmp_path / "manifest.cafe.json").read_text(encoding="utf-8") == before
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["manifest.cafe.json"]
+
+
+class TestOldEntriesTake:
+    """The order of preference of ``_OldEntries.take``, one case for each rule."""
+
+    @staticmethod
+    def _take_all(old: list[str], new: list[str]) -> list[int]:
+        """Return, for each new listing, the position of the old entry that it got."""
+        from fw_context_mcp.indexer._manifest_updater import _OldEntries
+
+        entries = [{"file": "f.c", "flags_hash": flags, "pos": i} for i, flags in enumerate(old)]
+        old_entries = _OldEntries({"entries": entries})
+        return [old_entries.take("f.c", flags)["pos"] for flags in new]
+
+    @pytest.mark.parametrize(
+        ("old", "new", "expected"),
+        [
+            (["A", "A", "B"], ["A", "A", "B"], [0, 1, 2]),  # 1: each listing, its own entry
+            (["A", "B"], ["B", "A"], [1, 0]),  # 1: the order of the listings changed
+            (["A"], ["A", "A"], [0, 0]),  # 2: one more listing with known flags
+            (["A", "B"], ["C", "A"], [0, 0]),  # 3 then 2: C takes the unused A first
+            (["A", "B"], ["C", "D"], [0, 1]),  # 3: the flags of each listing changed
+            (["A", "B"], ["C", "D", "E"], [0, 1, 0]),  # 4: no entry is left
+            (["A", "A", "B"], ["B"], [2]),  # fewer listings
+        ],
+    )
+    def test_the_order_of_preference(self, old, new, expected):
+        assert self._take_all(old, new) == expected
+
+    def test_a_file_without_an_entry_is_not_in_it(self):
+        from fw_context_mcp.indexer._manifest_updater import _OldEntries
+
+        old_entries = _OldEntries({"entries": [{"file": "f.c", "flags_hash": "A"}]})
+        assert "f.c" in old_entries
+        assert "g.c" not in old_entries
+        assert "f.c" not in _OldEntries(None)
 
 
 class TestLoadBuildDirPatterns:
@@ -1077,78 +1338,133 @@ class TestLoadBuildDirPatterns:
         assert len(m._BUILD_PATTERNS_CACHE) == before, "an empty list was not cached"
 
 
-class TestMtimeBumpIsSafe:
-    """The mtime may move forward only for a header the pipeline trusts.
+class TestBackfillHeaderSourceHashes:
+    """A header row without a hash gets the hash that the manifest proves."""
 
-    This is the site that is easy to forget.  It used to return True for a
-    vendor, a generated and an out-of-tree header with no check of the
-    content.  Left alone, a header with changed content would get a new
-    mtime, _count_modified_files would stop seeing the change, and the end
-    of trust in the other four callers would have no effect.
-    """
+    @staticmethod
+    def _db(tmp_path: Path, rows: list[tuple[str, str]], content: str = "int a;\n"):
+        from fw_context_mcp.indexer.db import (
+            open_db,
+            transaction,
+            upsert_build_config,
+            upsert_file,
+            upsert_project,
+        )
 
-    def test_the_mtime_bump_verifies_a_vendor_header(self, tmp_path: Path):
-        import hashlib
+        conn = open_db(tmp_path / "index.db")
+        with transaction(conn):
+            upsert_project(conn, "pid", "p", str(tmp_path))
+            upsert_build_config(conn, "ch", "pid", str(tmp_path / "cc.json"))
+            for path, source_hash in rows:
+                upsert_file(conn, "ch", path, "c", mtime=1.0, source_hash=source_hash)
+                conn.execute("UPDATE files SET content=? WHERE config_hash='ch' AND path=?", (content, path))
+        return conn
 
-        from fw_context_mcp.indexer._manifest_updater import _mtime_bump_is_safe
+    @staticmethod
+    def _hash_of(conn, path: str) -> str:
+        return conn.execute(
+            "SELECT source_hash FROM files WHERE config_hash='ch' AND path=?", (path,),
+        ).fetchone()[0]
 
-        header = tmp_path / "mbed-os" / "mbed.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("// changed content")
-        stored = hashlib.sha256(b"// old content").hexdigest()
+    def test_a_header_with_the_hash_of_the_manifest_gets_it(self, tmp_path: Path):
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-        assert _mtime_bump_is_safe(
-            header, {"hash": stored, "generated": False}, None
-        ) is False
+        header = tmp_path / "inc" / "a.h"
+        header.parent.mkdir()
+        header.write_text("int a;\n", encoding="utf-8")
+        conn = self._db(tmp_path, [("inc/a.h", "")])
+        try:
+            manifest = {"headers": {"inc/a.h": {"hash": compute_source_hash(header), "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", tmp_path, manifest) == 1
+            assert self._hash_of(conn, "inc/a.h") == compute_source_hash(header)
+        finally:
+            conn.close()
 
-    def test_the_mtime_bump_verifies_an_out_of_tree_header(self, tmp_path: Path):
-        import hashlib
+    def test_a_header_that_changed_since_the_manifest_stays_without(self, tmp_path: Path):
+        """The text of the row is not the text on disk: no hash would be true."""
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-        from fw_context_mcp.indexer._manifest_updater import _mtime_bump_is_safe
+        header = tmp_path / "inc" / "a.h"
+        header.parent.mkdir()
+        header.write_text("int a;\n", encoding="utf-8")
+        conn = self._db(tmp_path, [("inc/a.h", "")])
+        try:
+            manifest = {"headers": {"inc/a.h": {"hash": "an-older-text", "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", tmp_path, manifest) == 0
+            assert self._hash_of(conn, "inc/a.h") == ""
+        finally:
+            conn.close()
 
-        header = tmp_path / "toolchain" / "stdint.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("// changed content")
-        stored = hashlib.sha256(b"// old content").hexdigest()
+    def test_a_row_whose_text_is_older_than_the_file_stays_without(self, tmp_path: Path):
+        """A header of comments only holds no cursor, and the content pass skipped its new text.
 
-        assert _mtime_bump_is_safe(
-            header, {"hash": stored, "generated": False}, None
-        ) is False
+        The manifest took the hash of the reparse, thus the disk hash and
+        the manifest agree, while the row holds the text of an older run.
+        """
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-    def test_an_unchanged_vendor_header_may_bump(self, tmp_path: Path):
-        """Content-identical still qualifies — this is what fixes VCS mtime drift."""
-        import hashlib
+        header = tmp_path / "inc" / "a.h"
+        header.parent.mkdir()
+        header.write_text("#pragma once\n// new comment\n", encoding="utf-8")
+        conn = self._db(tmp_path, [("inc/a.h", "")], content="#pragma once\n// old comment\n")
+        try:
+            manifest = {"headers": {"inc/a.h": {"hash": compute_source_hash(header), "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", tmp_path, manifest) == 0
+        finally:
+            conn.close()
 
-        from fw_context_mcp.indexer._manifest_updater import _mtime_bump_is_safe
+    def test_inactive_lines_are_blank_in_the_row(self, tmp_path: Path):
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-        header = tmp_path / "mbed-os" / "mbed.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("// same content")
-        stored = hashlib.sha256(header.read_bytes()).hexdigest()
+        header = tmp_path / "inc" / "a.h"
+        header.parent.mkdir()
+        header.write_text("#if 0\nint dead;\n#endif\nint a;\n", encoding="utf-8")
+        conn = self._db(tmp_path, [("inc/a.h", "")], content="#if 0\n\n#endif\nint a;\n")
+        try:
+            manifest = {"headers": {"inc/a.h": {"hash": compute_source_hash(header), "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", tmp_path, manifest) == 1
+        finally:
+            conn.close()
 
-        assert _mtime_bump_is_safe(
-            header, {"hash": stored, "generated": False}, None
-        ) is True
+    def test_a_header_outside_the_project_gets_it_too(self, tmp_path: Path):
+        """System headers are most of the rows without a hash; their paths are absolute."""
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-    def test_a_generated_header_still_bumps_unconditionally(self, tmp_path: Path):
-        from fw_context_mcp.indexer._manifest_updater import _mtime_bump_is_safe
+        header = tmp_path / "sdk" / "types.h"
+        header.parent.mkdir()
+        header.write_text("int a;\n", encoding="utf-8")
+        project = tmp_path / "proj"
+        project.mkdir()
+        conn = self._db(project, [(str(header), "")])
+        try:
+            manifest = {"headers": {str(header): {"hash": compute_source_hash(header), "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", project, manifest) == 1
+            assert self._hash_of(conn, str(header)) == compute_source_hash(header)
+        finally:
+            conn.close()
 
-        header = tmp_path / "BUILD" / "mbed_config.h"
-        header.parent.mkdir(parents=True)
-        header.write_text("// generated")
+    def test_a_stored_hash_is_not_touched(self, tmp_path: Path):
+        from fw_context_mcp.indexer._manifest_updater import _backfill_header_source_hashes
 
-        assert _mtime_bump_is_safe(
-            header, {"hash": "whatever", "generated": True}, None
-        ) is True
+        header = tmp_path / "inc" / "a.h"
+        header.parent.mkdir()
+        header.write_text("int a;\n", encoding="utf-8")
+        conn = self._db(tmp_path, [("inc/a.h", "stored")])
+        try:
+            manifest = {"headers": {"inc/a.h": {"hash": compute_source_hash(header), "generated": False}}}
+            assert _backfill_header_source_hashes(conn, "ch", tmp_path, manifest) == 0
+            assert self._hash_of(conn, "inc/a.h") == "stored"
+        finally:
+            conn.close()
 
 
 class TestMergeHeaderRecords:
     """``generated`` goes from False to True, never the other way.
 
     ``generated`` is a property of the PATH, not of one parse.  A caller with
-    no build_dir_patterns computes False for every header, and after the end
-    of vendor trust ``generated`` is the only trust rule the pipeline has
-    left — to let False overwrite True disables it in silence.
+    no build_dir_patterns computes False for every header, and the query
+    layer and the coverage purge read the flag — to let False overwrite True
+    gives them a wrong answer in silence.
     """
 
     def test_update_entry_does_not_downgrade_generated(self):
@@ -1161,6 +1477,7 @@ class TestMergeHeaderRecords:
         update_entry(
             manifest, 0, "new-source", ["build/autoconf.h"],
             {"build/autoconf.h": {"hash": "NEW", "generated": False}},
+            flags_hash="f", arguments=[],
         )
 
         assert manifest["headers"]["build/autoconf.h"]["generated"] is True
@@ -1215,16 +1532,19 @@ class TestMergeHeaderRecords:
         assert records["build/autoconf.h"]["generated"] is False
 
 
-class TestTheTrustRuleHasOneDefinition:
-    """A copy of the rule anywhere else is the defect this commit removes."""
+class TestNoHeaderIsTrusted:
+    """No staleness check skips a header because the manifest calls it generated.
 
-    def test_every_caller_uses_the_shared_trust_predicate(self):
-        """Grep src/, do not assert over a list of known functions.
+    A trust rule did that until 2026-10-07: it said that a generated header
+    changes with each build.  Measured, it does not, and a generated header
+    carries the configuration of the build (autoconf.h, sdkconfig.h,
+    mbed_config.h).  The rule had copies in five functions once, and four
+    rounds of review missed the fifth, thus the guard greps and does not
+    list functions.
+    """
 
-        A test written as "these four functions delegate" cannot find a fifth
-        copy — and a fifth copy in compute_current_entry_hash is exactly what
-        four rounds of review missed.  The grep finds any new one.
-        """
+    def test_only_the_merge_of_the_header_table_reads_generated(self):
+        """Grep src/: the flag is kept for the query layer, and no check reads it."""
         import re
 
         src = Path(__file__).resolve().parent.parent / "src" / "fw_context_mcp"
@@ -1235,15 +1555,13 @@ class TestTheTrustRuleHasOneDefinition:
                 if line.lstrip().startswith("#"):
                     continue
                 # The rule read as: skip when the record says generated.
-                if re.search(r'\.get\("generated"\)', line) and "header_is_trusted" not in line:
-                    # POSIX spelling: the allowlist below is POSIX, and
-                    # relative_to() emits the platform separator.
-                    offenders.append(
-                        f"{path.relative_to(src).as_posix()}:{lineno}: {line.strip()}"
-                    )
+                if re.search(r'\.get\("generated"\)', line):
+                    # Windows adjudication: posix separators so the allowlist
+                    # (written with "/") matches on every platform
+                    offenders.append(f"{path.relative_to(src).as_posix()}:{lineno}: {line.strip()}")
 
         allowed = {
-            # The one definition.
+            # merge_header_records keeps the flag; it decides nothing.
             "indexer/manifest.py",
         }
         unexpected = [
@@ -1251,30 +1569,26 @@ class TestTheTrustRuleHasOneDefinition:
             if not any(o.startswith(a + ":") for a in allowed)
         ]
         assert unexpected == [], (
-            "the trust rule is copied outside header_is_trusted():\n"
+            "a check reads `generated` again, and no header is trusted:\n"
             + "\n".join(unexpected)
         )
 
     def test_the_vendor_patterns_parameter_is_gone(self):
-        """The four staleness signatures must not take a vendor set again.
+        """The staleness signatures must not take a vendor set again.
 
         A signature that still accepts it states a rule the body no longer
         applies, and the next caller passes one and believes it matters.
         """
         import inspect
 
-        from fw_context_mcp.indexer._manifest_updater import _mtime_bump_is_safe
         from fw_context_mcp.indexer.manifest import (
             check_tu_staleness,
             collect_stale_headers,
-            compute_current_entry_hash,
         )
 
         for fn in (
             check_tu_staleness,
             collect_stale_headers,
-            compute_current_entry_hash,
-            _mtime_bump_is_safe,
         ):
             assert "vendor_patterns" not in inspect.signature(fn).parameters, fn.__name__
 
@@ -1335,7 +1649,8 @@ class TestNeedsReparse:
                 "src/b.c": [{"path": "src/shared.h", "hash": "FRESH", "generated": generated}],
             },
             config_hash="deadbeef",
-            reparsed_tus=reparsed,
+            reparsed_tus=_parsed(tmp_path, reparsed),
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
         )
 
     @staticmethod
@@ -1355,12 +1670,12 @@ class TestNeedsReparse:
         assert result is not None
         assert "needs_reparse" not in self._entry(result, "src/a.c")
 
-    def test_a_generated_header_does_not_flag_anything(self, tmp_path: Path):
-        """The one header the pipeline still trusts must not queue anybody."""
+    def test_a_changed_generated_header_queues_the_other_unit(self, tmp_path: Path):
+        """A generated header is a header like any other: no header is trusted."""
         result = self._run(tmp_path, reparsed={"src/a.c"}, generated=True)
 
         assert result is not None
-        assert "needs_reparse" not in self._entry(result, "src/b.c")
+        assert self._entry(result, "src/b.c").get("needs_reparse") is True
 
     def test_an_unchanged_header_does_not_flag_anything(self, tmp_path: Path):
         """No difference in the shared table means nothing to mark."""
@@ -1402,7 +1717,8 @@ class TestNeedsReparse:
             updated_count=1,
             tu_headers={},
             config_hash="deadbeef",
-            reparsed_tus=set(),
+            reparsed_tus={},
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
         )
 
         assert result is not None
@@ -1467,7 +1783,7 @@ class TestMarkEntriesBehind:
         from fw_context_mcp.indexer.manifest import mark_entries_behind
 
         manifest = self._manifest()
-        flagged = mark_entries_behind(manifest, {"src/shared.h"}, {"src/a.c"})
+        flagged = mark_entries_behind(manifest, {"src/shared.h"}, {0})
 
         assert flagged == 1
         by_file = {e["file"]: e for e in manifest["entries"]}
@@ -1479,7 +1795,7 @@ class TestMarkEntriesBehind:
         from fw_context_mcp.indexer.manifest import mark_entries_behind
 
         manifest = self._manifest()
-        assert mark_entries_behind(manifest, set(), {"src/a.c"}) == 0
+        assert mark_entries_behind(manifest, set(), {0}) == 0
         assert all("needs_reparse" not in e for e in manifest["entries"])
 
     def test_an_already_flagged_entry_is_not_counted_twice(self):
@@ -1488,7 +1804,22 @@ class TestMarkEntriesBehind:
         manifest = self._manifest()
         manifest["entries"][1]["needs_reparse"] = True
 
-        assert mark_entries_behind(manifest, {"src/shared.h"}, {"src/a.c"}) == 0
+        assert mark_entries_behind(manifest, {"src/shared.h"}, {0}) == 0
+
+    def test_a_listing_that_was_not_parsed_is_flagged(self):
+        """A file listed twice: the run parsed one listing, and the other is behind.
+
+        A set of files kept both entries, and the rows of the other listing
+        stayed from the old header text with no mark that a run could see.
+        """
+        from fw_context_mcp.indexer.manifest import mark_entries_behind
+
+        manifest = self._manifest()
+        manifest["entries"].insert(1, {"file": "src/a.c", "headers": ["src/shared.h"]})
+
+        assert mark_entries_behind(manifest, {"src/shared.h"}, {0}) == 2
+        assert "needs_reparse" not in manifest["entries"][0]
+        assert manifest["entries"][1]["needs_reparse"] is True
 
 
 class TestTheFlagReachesTheReport:
@@ -1568,13 +1899,34 @@ class TestTheFlagReachesTheReport:
     def test_an_entry_past_the_window_is_not_seen(self, tmp_path: Path):
         """A recorded limit, not a defect to fix here.
 
-        max_files exists for the latency of get_active_build.  On the Mbed project (876
+        max_files exists for the latency of get_project_status.  On the Mbed project (876
         TUs) a flagged entry past index 200 is invisible to this report,
         while the index run itself still queues it.
         """
         db_dir, config_hash = self._write(tmp_path, flagged_at=250, total=260)
 
         assert self._count(tmp_path, db_dir, config_hash) == 0
+
+    def test_a_file_with_two_stale_listings_counts_once(self, tmp_path: Path):
+        """The report is about files; a file listed twice has two entries."""
+        import json
+        import sqlite3
+
+        from fw_context_mcp.mcp.shared.stale import _check_header_staleness
+
+        db_dir, config_hash = self._write(tmp_path, flagged_at=3, total=10)
+        path = db_dir / f"manifest.{config_hash}.json"
+        manifest = json.loads(path.read_text())
+        manifest["entries"].insert(4, dict(manifest["entries"][3]))
+        path.write_text(json.dumps(manifest))
+
+        conn = sqlite3.connect(db_dir / "index.db")
+        conn.row_factory = sqlite3.Row
+        try:
+            count, affected = _check_header_staleness(conn, config_hash, tmp_path, use_cache=False)
+        finally:
+            conn.close()
+        assert (count, affected) == (1, ["src/u3.c"])
 
 
 class TestTusToRequeue:
@@ -1689,3 +2041,83 @@ class TestFilesGeneratedColumn:
         )
         assert "project_patterns" in is_project_block
         assert "vendor_patterns" in is_project_block
+
+
+def test_an_incremental_update_keeps_the_extension_sets(tmp_path: Path):
+    """The update wrote the manifest without them, and load_tu_extensions gave None."""
+    import json
+
+    from fw_context_mcp.indexer._manifest_updater import _update_manifest_after_index
+    from fw_context_mcp.indexer.manifest import load_tu_extensions
+
+    listing = TestOneEntryForEachListing()
+    main = listing._unit(tmp_path, "src/main.c", "-DA")
+    cc = tmp_path / "compile_commands.json"
+    cc.write_text(json.dumps([
+        {"file": "src/main.c", "directory": str(tmp_path), "arguments": ["gcc", "-c", "src/main.c"]},
+        {"file": "src/start.S", "directory": str(tmp_path), "arguments": ["gcc", "-c", "src/start.S"]},
+    ]), encoding="utf-8")
+    (tmp_path / "index").mkdir()
+    _update_manifest_after_index(
+        manifest=listing._manifest(tmp_path, [main]), units=[main], project_root=tmp_path,
+        db_dir=tmp_path / "index", compile_commands=cc, updated_count=1,
+        tu_headers={"src/main.c": []}, config_hash="deadbeef",
+        reparsed_tus=_parsed(tmp_path, {"src/main.c"}), transient_defines=DEFAULT_TRANSIENT_DEFINES,
+    )
+
+    assert load_tu_extensions(tmp_path / "index", "deadbeef") == frozenset({".c", ".S"})
+
+
+class TestFoldHeadersOfOneRun:
+    """Two units of one run that read two texts of one header."""
+
+    @staticmethod
+    def _record(path: str, digest: str) -> dict:
+        return {"path": path, "hash": digest, "generated": False}
+
+    def test_two_texts_give_the_conflict_hash_and_it_stays(self):
+        from fw_context_mcp.indexer.manifest import CONFLICTING_READS_HASH, fold_headers
+
+        table: dict[str, dict] = {}
+        read_this_run: dict[str, str] = {}
+        fold_headers([self._record("src/a.h", "1" * 64)], table, read_this_run)
+        fold_headers([self._record("src/a.h", "2" * 64)], table, read_this_run)
+        assert table["src/a.h"]["hash"] == CONFLICTING_READS_HASH
+
+        # A third unit that read the first text again does not undo it.
+        fold_headers([self._record("src/a.h", "1" * 64)], table, read_this_run)
+        assert table["src/a.h"]["hash"] == CONFLICTING_READS_HASH
+
+    def test_one_text_keeps_its_hash(self):
+        from fw_context_mcp.indexer.manifest import fold_headers
+
+        table: dict[str, dict] = {}
+        read_this_run: dict[str, str] = {}
+        for _ in range(2):
+            fold_headers([self._record("src/a.h", "1" * 64)], table, read_this_run)
+        assert table["src/a.h"]["hash"] == "1" * 64
+
+    def test_a_deleted_header_with_the_conflict_hash_is_stale(self, tmp_path: Path):
+        """A file that cannot be read hashes to "", thus "" could not mark the conflict.
+
+        With "" in the table, a header deleted before the next run had the
+        hash of the table, and the run found the entry current.
+        """
+        from fw_context_mcp.indexer._unit_processor import _unchanged_entry
+        from fw_context_mcp.indexer.manifest import CONFLICTING_READS_HASH
+
+        source = tmp_path / "src" / "main.c"
+        source.parent.mkdir(parents=True)
+        source.write_text('#include "gone.h"\nint main(void) { return 0; }\n', encoding="utf-8")
+        entry = {
+            "file": "src/main.c",
+            "source_hash": compute_source_hash(source),
+            "flags_hash": "f" * 64,
+            "headers": ["src/gone.h"],
+        }
+        table = {"src/gone.h": {"hash": CONFLICTING_READS_HASH, "generated": False}}
+
+        assert _unchanged_entry(
+            [entry], compute_source_hash(source), "f" * 64, tmp_path,
+            hash_cache=None, header_table=table,
+        ) is None

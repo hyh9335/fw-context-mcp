@@ -173,8 +173,11 @@ def _project(root: Path, index_dir: Path, cc: Path, system: str = "cmake") -> Pa
     config_dir.mkdir(exist_ok=True)
     (config_dir / "config.toml").write_text(
         f'[project]\nid = "{PROJECT_ID}"\n[build]\nsystem = "{system}"\n', encoding="utf-8")
+    # Windows adjudication: a raw Windows path inside a TOML string is an
+    # escape sequence error (tomllib refuses the backslash); forward
+    # slashes mean the same directory everywhere Python opens a file.
     (config_dir / "local.toml").write_text(
-        f'[index]\ndb_dir = "{index_dir.as_posix()}"\n', encoding="utf-8")
+        f'[index]\ndb_dir = "{Path(index_dir).as_posix()}"\n', encoding="utf-8")
     return db_dir / "index.db"
 
 

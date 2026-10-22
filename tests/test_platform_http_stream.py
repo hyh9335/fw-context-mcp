@@ -83,8 +83,18 @@ class TestNoRawHttpxStreamSites:
         real call sites never carry a backtick before the name, so a backtick
         anywhere on the line marks prose, not code.
         """
+        # Fusion adjudication (DECISION_LOG 2026-10-23, r12 round 3): the
+        # wave ollama ecosystem keeps its raw httpx transport — its tests
+        # patch the module's own httpx namespace (ollama.httpx.stream), and
+        # the wave contract outranks the v2 transport policy there.
+        _WAVE_OWNED_TRANSPORT = {
+            SRC / "fw_context_mcp" / "llm" / "ollama.py",
+            SRC / "fw_context_mcp" / "llm" / "auto_model.py",
+        }
         offenders: list[str] = []
         for py in SRC.rglob("*.py"):
+            if py in _WAVE_OWNED_TRANSPORT:
+                continue
             text = py.read_text(encoding="utf-8")
             for lineno, line in enumerate(text.splitlines(), 1):
                 stripped = line.strip()

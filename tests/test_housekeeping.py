@@ -818,6 +818,9 @@ class TestHome:
         code = "import fw_context_mcp.config.settings as s; print(s._GLOBAL_CONFIG_PATH)"
         result = subprocess.run(
             [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
 
         assert result.stdout.strip() == str(tmp_path / "h" / "config.toml")

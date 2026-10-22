@@ -22,42 +22,13 @@ that trigger unnecessary background reindexes.
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 
 from ..utils import compute_source_hash
-from .config_hash import DEFAULT_TRANSIENT_DEFINES, compute_flags_hash
+from .config_hash import compute_flags_hash
 
 log = logging.getLogger(__name__)
-
-
-def _mtime_bump_is_safe(
-    resolved: Path,
-    header: dict,
-    hash_cache: dict[str, str] | None,
-) -> bool:
-    # *header* is a manifest ``headers`` record: {hash, generated}.  The path
-    # is passed separately as *resolved* because the record is keyed by it.
-    """Return True when the stored mtime may be moved forward for this header.
-
-    Only content-identical headers qualify.  Bumping the mtime of a header
-    whose content actually changed would hide that change from
-    ``_count_modified_files`` and from the next index run — the index would
-    keep serving symbols parsed from the old text while reporting itself as
-    up to date.
-
-    Only a build-generated header keeps the unconditional behaviour, because
-    :func:`header_is_trusted` is the one rule and this is one of its five
-    callers.  A vendor header and a header outside the project are verified
-    here now: without that, a header with changed content would still get a
-    new mtime, ``_count_modified_files`` would stop seeing the change, and
-    the end of trust in the other four callers would have no effect.
-    """
-    from .manifest import _hash_with_cache, header_is_trusted
-
-    if header_is_trusted(header):
-        return True
-    return _hash_with_cache(resolved, hash_cache) == header.get("hash", "")
 
 
 def _patterns_changed(
@@ -99,18 +70,614 @@ def _headers_moved_on(entry: dict, before: dict, after: dict) -> bool:
     them, and nothing queues the second unit again — its rows stay at the old
     header text until --force.
 
-    Calls header_is_trusted() instead of a copy of the rules: what the
-    pipeline trusts is one decision, and this is one of its FIVE callers.
+    Every header counts, as in check_tu_staleness().
     """
-    from .manifest import header_is_trusted
-
     for path in entry.get("headers") or ():
         record = after.get(path, {})
-        if header_is_trusted(record):
-            continue
         if record.get("hash", "") != before.get(path, {}).get("hash", ""):
             return True
     return False
+
+
+def _row_text_is_disk_text(conn, config_hash: str, path: str, resolved: Path) -> bool:
+    """Say if the stored content of *path* is the file on disk, with inactive lines blank."""
+    row = conn.execute(
+        "SELECT content FROM files WHERE config_hash=? AND path=?", (config_hash, path),
+    ).fetchone()
+    if row is None or not row["content"]:
+        return False
+    try:
+        # Read as the content pass reads it (text mode, so "\r\n" is "\n"),
+        # and split on "\n" only: splitlines() also splits on a form feed,
+        # and the content pass does not.
+        disk = resolved.read_text(encoding="utf-8", errors="replace").split("\n")
+    except OSError:
+        return False
+    stored = row["content"].split("\n")
+    if len(stored) != len(disk):
+        return False
+    return all(line in (disk_line, "") for line, disk_line in zip(stored, disk, strict=True))
+
+
+def _backfill_header_source_hashes(
+    conn,
+    config_hash: str,
+    project_root: Path,
+    manifest: dict | None,
+    *,
+    hash_cache: dict[str, str] | None = None,
+) -> int:
+    """Give a source hash to each header row that has none, when the manifest proves it.
+
+    The content pass wrote header rows without a hash (fixed now), and an
+    index keeps such a row until a parse writes it again: measured, 1 to 59
+    rows in each real index.  The staleness checks of the query side have
+    only the time of such a row to tell a change.
+
+    The manifest records the hash of each header that the index read.  Two
+    proofs, and both are necessary:
+
+    * The file on disk has that hash.  A header whose hash differs is left
+      alone: its dependent units are parsed again, and the content pass
+      then writes the hash.
+    * The text of the row is the text on disk: the same count of lines, and
+      each line of the row is the line on disk or blank (an inactive line).
+      The manifest takes the hash of a reparse, but a header that holds no
+      cursor (comments and ``#pragma once`` only) keeps the text of an older
+      run, and a hash beside it would say that the text is current.
+
+    Returns the number of rows that got a hash.
+    """
+    from .manifest import _hash_with_cache
+
+    if manifest is None:
+        return 0
+    without = {
+        row["path"]
+        for row in conn.execute(
+            "SELECT path FROM files WHERE config_hash=? AND source_hash=''", (config_hash,),
+        )
+    }
+    filled = 0
+    for header_path, record in (manifest.get("headers") or {}).items():
+        if header_path not in without or not record.get("hash"):
+            continue
+        p = Path(header_path)
+        resolved = p if p.is_absolute() else (project_root / p).resolve()
+        if _hash_with_cache(resolved, hash_cache) != record["hash"]:
+            continue
+        if not _row_text_is_disk_text(conn, config_hash, header_path, resolved):
+            continue
+        conn.execute(
+            "UPDATE files SET source_hash=? WHERE config_hash=? AND path=? AND source_hash=''",
+            (record["hash"], config_hash, header_path),
+        )
+        filled += 1
+    if filled:
+        log.info("source hash given to %d header row(s) that had none", filled)
+    return filled
+
+
+# REMOVED: _is_excluded — no files are excluded from indexing; all are indexed
+
+
+
+class _OldEntries:
+    """The entries of the previous manifest, by file, for the carry-over.
+
+    compile_commands.json can list one source file more than once, each time
+    with other flags: Zephyr compiles ``misc/empty_file.c`` three times in
+    one image, with two sets of flags.  Each listing has its own entry.  A
+    lookup by file alone gave each listing the LAST entry of the file, thus
+    the listings A, A, B became B, B, B, and the flags of A were lost: on
+    each later run the flags of two listings matched no entry.
+
+    :meth:`take` gives a listing the entry with its own flags hash.  An
+    entry goes to a second listing only when no unused entry fits: see the
+    order of preference there.
+    """
+
+    def __init__(self, manifest: dict | None) -> None:
+        self._all: dict[str, list[dict]] = {}
+        for entry in (manifest or {}).get("entries", []):
+            self._all.setdefault(entry.get("file", ""), []).append(entry)
+        self._unused: dict[str, list[dict]] = {f: list(es) for f, es in self._all.items()}
+
+    def __contains__(self, file: str) -> bool:
+        return file in self._all
+
+    def take(self, file: str, flags_hash: str) -> dict:
+        """Return the old entry for one listing of *file* with *flags_hash*.
+
+        The order of preference:
+
+        1. An unused entry with the same flags hash.
+        2. A used entry with the same flags hash: compile_commands.json now
+           lists the file with these flags more often than before.
+        3. An unused entry with other flags.
+        4. The first entry of the file.
+
+        In cases 3 and 4 the flags changed.  The entry keeps its old flags
+        hash, thus it records the flags that the index parsed, and a check
+        that compares the flags hash of the listing with it sees the change.
+        The caller copies the entry (``carry_over``), thus one entry can go
+        to two listings (cases 2 and 4).
+        """
+        unused = self._unused[file]
+        for i, entry in enumerate(unused):
+            if entry.get("flags_hash") == flags_hash:
+                return unused.pop(i)
+        for entry in self._all[file]:
+            if entry.get("flags_hash") == flags_hash:
+                return entry
+        if unused:
+            return unused.pop(0)
+        return self._all[file][0]
+
+
+def _update_manifest_after_index(
+    *,
+    manifest: dict | None,
+    units: list,
+    project_root: Path,
+    db_dir: Path,
+    compile_commands: Path,
+    updated_count: int,
+    tu_headers: dict[str, list[dict]] | None = None,
+    build_dir_patterns: list[str] | None = None,
+    vendor_patterns: list[str] | None = None,
+    config_hash: str = "",
+    scope: list[str] | None = None,
+    reparsed_tus: Mapping[str, str] | None = None,
+    transient_defines: Collection[str],
+    checkpoint_reached: int | None = None,
+    flags_hashes: Sequence[str] | None = None,
+    unit_context_ids: Mapping[int, str] | None = None,
+) -> dict | None:
+    """Update ``manifest.json`` after an indexing run.
+
+    Strategy (ordered by cost):
+    - No existing manifest → build from scratch (tokenize all TUs).
+    - Manifest exists, nothing changed → skip (manifest is still valid).
+    - Manifest exists, TUs changed, *tu_headers* provided → incremental:
+      reuse stored entries for unchanged TUs, update only changed ones.
+      This is the fast path — no extra libclang parsing needed.
+    - Manifest exists, TUs changed, no *tu_headers* → fallback to full
+      rebuild (re-tokenize all TUs).  This is the slow path.
+
+    WHY incremental update: after indexing 500+ TUs, re-tokenizing every
+    header takes minutes.  The incremental path reuses pre-collected header
+    hashes from the main indexing loop (``tu_headers``), avoiding a second
+    libclang parse for unchanged TUs.
+
+    *reparsed_tus* maps each TU that was actually re-parsed in this run to
+    the hash of its source that the decision read BEFORE the parse.  Only
+    those may contribute fresh header hashes: an entry rewritten for a TU
+    that kept its previous symbols would claim the index is current while it
+    still holds data parsed from the old header text.  Every other TU keeps
+    its stored entry verbatim.  ``None`` disables the filter (used by callers
+    with no run bookkeeping, e.g. a first index).
+
+    The source hash of a fresh entry is the one of *reparsed_tus*, and not
+    a hash read now.  An index run takes hours on a large project, and a
+    file saved after its parse had the hash of the NEW text in its entry,
+    while the index held the symbols of the old one: the next run found the
+    entry current and never parsed the file again.  A file saved between the
+    decision and the parse gets the old hash, and the next run parses it
+    once more, which is the safe direction.
+
+    *vendor_patterns* is the EFFECTIVE set this run used — what the builder
+    derived plus what the config added.  It is stored so the query layer can
+    read it instead of deriving its own: the strongest source for Zephyr is
+    ``-fmacro-prefix-map`` in the compiler flags, and only the indexer has
+    those.  A consumer that derives its own set answers with a different one,
+    and the staleness check then re-hashes headers the indexer trusted.
+
+    *transient_defines* is ``[index] transient_defines``: the flags hash of
+    each new entry and the fallback config_hash use it, as the runner does.
+
+    *checkpoint_reached* makes this a write during the run
+    (``runner._checkpoint_manifest``), so that a run that stops keeps the
+    entries of the units that it parsed.  It is the count of units that the
+    loop of the run reached: a unit at or after that position gets no fresh
+    entry, also when another listing of its file was parsed (a fresh entry
+    would claim the flags of a listing whose rows are not in the index), and
+    keeps its old entry.  A unit without an old entry gets no entry: the end
+    of the run gives it one, and a new entry from the token stream costs a
+    parse of each such unit at each checkpoint.  Without a manifest there is
+    no checkpoint.
+
+    *flags_hashes* holds the flags hash of each unit, in order, as the
+    decision of the run computed it.  Without it each hash is computed
+    here, at 0.65 ms for a unit of 462 arguments (measured).
+
+    Returns the updated manifest dict, or ``None`` when no update needed.
+    """
+    from .manifest import (
+        MANIFEST_FORMAT,
+        _collect_headers_from_tokens,
+        _intern_arguments,
+        _is_generated_header,
+        compute_source_hash,
+        save,
+    )
+
+    # ── Wave fusion: accept the v2 (file, context)-keyed shapes ──
+    # The merged runner keys *tu_headers* by (file_posix, context_id) and
+    # passes *reparsed_tus* as a set of the same pairs; the upstream body
+    # below reads file-keyed maps.  Normalize here, once, so both callers
+    # (upstream tests with plain string keys, the runner with tuples) work.
+    def _posix_rel(unit) -> str:
+        try:
+            return unit.file.resolve().relative_to(project_root).as_posix()
+        except ValueError:
+            return unit.file.resolve().as_posix()
+
+    if tu_headers:
+        _first = next(iter(tu_headers), None)
+        if isinstance(_first, tuple):
+            _norm: dict[str, list[dict]] = {}
+            for _idx, _unit in enumerate(units):
+                _rel = _posix_rel(_unit)
+                _ctx = (unit_context_ids or {}).get(_idx)
+                _h = tu_headers.get((_rel, _ctx)) or tu_headers.get(_rel)
+                if _h is not None:
+                    _norm[_rel] = _h
+            tu_headers = _norm
+    if reparsed_tus is not None and not hasattr(reparsed_tus, "get"):
+
+        _by_file: dict[str, str] = {}
+        for _idx, _unit in enumerate(units):
+            _rel = _posix_rel(_unit)
+            _ctx = (unit_context_ids or {}).get(_idx)
+            if (_rel, _ctx) in reparsed_tus or _rel in reparsed_tus:
+                try:
+                    _by_file[_rel] = compute_source_hash(_unit.file.resolve())
+                except OSError:
+                    _by_file[_rel] = ""
+        reparsed_tus = _by_file
+
+    # No TU was re-parsed — keep the existing manifest as-is, provided:
+    #   - the TU list hasn't changed (same number of entries), and
+    #   - manifest entries have real source_hash data (not a preliminary
+    #     manifest written by build_preliminary with empty hashes).
+    # A different TU count means files were added/removed from
+    # compile_commands.json.  A preliminary manifest means the on-disk
+    # file was overwritten by build_preliminary and needs regeneration.
+    #
+    # WHY collected header hashes must NOT force a rewrite: *tu_headers* also
+    # carries hashes gathered for TUs that were only bookkept, not re-parsed.
+    # Writing those in would declare the manifest current while the index
+    # still holds symbols parsed from the previous header text — the staleness
+    # signal would be gone and only ``--force`` could recover.
+    if manifest is not None and updated_count == 0:
+        # Check for degraded (preliminary) manifest — entries with empty
+        # source_hash mean build_preliminary overwrote the real manifest.
+        # A preliminary manifest is written during the build phase before
+        # any TU is parsed — it has the correct TU list but empty hashes.
+        # We MUST regenerate with real hashes from the just-completed parse
+        # to ensure accurate staleness detection on the next index run.
+        entries = manifest.get("entries", [])
+        if entries and not entries[0].get("source_hash"):
+            log.info("Manifest has preliminary entries — regenerating with full hashes")
+            # Fall through to full regeneration below (don't return early)
+        elif _patterns_changed(manifest, build_dir_patterns, vendor_patterns):
+            # `generated` is a function of the path and the build-output
+            # patterns.  When those change the stored flags describe a
+            # boundary this build no longer has, and the query layer and the
+            # coverage purge read them — so a narrowed pattern would have no
+            # effect until --force.  Measured: narrowing PlatformIO from '.pio/' to
+            # '.pio/build/' leaves the config_hash identical, so nothing else
+            # would ever rewrite this file.
+            log.info(
+                "Rebuilding manifest.json (patterns changed: build_dir %s -> %s, "
+                "vendor %s -> %s)",
+                manifest.get("build_dir_patterns"), build_dir_patterns,
+                manifest.get("vendor_patterns", "<absent>"), vendor_patterns,
+            )
+        else:
+            old_count = len(entries)
+            if old_count == len(units):
+                return manifest
+            log.info("Rebuilding manifest.json (TU count changed: %d → %d)", old_count, len(units))
+
+    # ── Build/update manifest entries ──
+    # Priority: 1) tu_headers (pre-collected during main loop — no extra I/O),
+    # 2) old manifest entries (unchanged), 3) libclang tokenization (slow fallback).
+    from .manifest import fold_headers, tu_arguments
+    from .manifest import generate as generate_manifest
+    from .manifest import load as reload_manifest
+
+    # The manifest's two shared tables.  The header table is seeded from the
+    # previous manifest so an entry carried over unchanged keeps the records
+    # its path list points at; save() prunes whatever ends up unreferenced.
+    header_table: dict[str, dict] = dict(manifest.get("headers") or {}) if manifest else {}
+    # `generated` is recomputed for every seeded record, always — not only
+    # when the patterns changed.  It is a pure function of the path and this
+    # build's patterns, and recomputing it here removes the whole class of
+    # drift where a record keeps a flag from a boundary the build no longer
+    # has.  The hash is NOT touched: that one carries history on purpose.
+    if header_table:
+        header_table = {
+            path: {**record, "generated": _is_generated_header(path, build_dir_patterns)}
+            for path, record in header_table.items()
+        }
+    arg_sets: list[list[str]] = []
+
+    def _flags_hash(idx: int, unit) -> str:
+        """Return the flags hash of *unit*, as each writer of an entry stores it."""
+        if flags_hashes is not None:
+            return flags_hashes[idx]
+        if not unit.raw_entry:
+            return ""
+        return compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+
+    def _behind_a_parsed_listing(idx: int, old_entry: dict) -> bool:
+        """Say if a checkpoint carries the entry of a listing whose file the run parsed.
+
+        The index holds ONE set of rows for a file: the rows of the listing
+        that the run parsed last.  A listing at or after *checkpoint_reached*
+        was not parsed yet, and another listing of its file was, thus the
+        rows are not the ones that its old entry describes, also when its
+        own flags and source did not change.  Marked, it is parsed again,
+        and the next run parses each listing of the file.
+        """
+        return (
+            checkpoint_reached is not None
+            and idx >= checkpoint_reached
+            and reparsed_tus is not None
+            and old_entry.get("file", "") in reparsed_tus
+        )
+
+    def carry_over(old_entry: dict) -> dict:
+        """Re-point a reused entry at THIS manifest's arg_sets table.
+
+        ``arg_set`` is an index into the table of the manifest it was written
+        for.  Copying the entry without re-interning would leave the index
+        pointing at a different argument list, or past the end of the new
+        table — the reason this is a function and not an append.
+        """
+        carried = dict(old_entry)
+        carried["arg_set"] = _intern_arguments(
+            tu_arguments(manifest or {}, old_entry), arg_sets
+        )
+        return carried
+
+    if tu_headers is not None:
+        # Use pre-collected header hashes from _build_filtered_file_content.
+        # Avoids a second libclang parse — tu_headers was populated during
+        # the main TU loop for every unchanged/updated TU.
+        log.info("Building manifest.json from %d pre-collected TU headers...", len(tu_headers))
+        old_entries = _OldEntries(manifest)
+        # A shallow copy is enough: fold_headers and update_entry REPLACE a
+        # record, they never change one in place.
+        old_header_table = dict(header_table)
+        entry_slots: list[dict | None] = [None] * len(units)
+        carried: list[tuple[int, dict]] = []
+        reused = 0
+        updated = 0
+        # The hash of each header as the units of this run read it: two that
+        # disagree give CONFLICTING_READS_HASH (see fold_headers).
+        read_this_run: dict[str, str] = {}
+
+        # ── pass 1: entries rewritten from THIS run's parse ──
+        # These are what fills header_table, so the decision for a carried
+        # entry must wait until the table is final.
+        for idx, unit in enumerate(units):
+            try:
+                tu_rel = unit.file.resolve().relative_to(project_root).as_posix()  # Windows: manifest keys are posix
+            except ValueError:
+                tu_rel = unit.file.resolve().as_posix()  # Windows: manifest keys are posix
+
+            # Fresh hashes only from TUs that were really re-parsed —
+            # see *reparsed_tus* in the docstring.
+            reached = checkpoint_reached is None or idx < checkpoint_reached
+            if reached and tu_rel in tu_headers and (reparsed_tus is None or tu_rel in reparsed_tus):
+                # The fresh entry replaces the old entry of the same flags:
+                # take it, so that a later listing of the file does not get
+                # it (A, B parsed up to A gives A fresh and B old, not A, A).
+                if tu_rel in old_entries:
+                    old_entries.take(tu_rel, _flags_hash(idx, unit))
+                source_hash = (
+                    reparsed_tus[tu_rel] if reparsed_tus is not None
+                    else compute_source_hash(unit.file.resolve())
+                )
+                entry_slots[idx] = {
+                    "file": tu_rel,
+                    "directory": str(unit.directory) if unit.directory else str(project_root),
+                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
+                    "source_hash": source_hash,
+                    "headers": fold_headers(tu_headers[tu_rel], header_table, read_this_run),
+                    "flags_hash": _flags_hash(idx, unit),
+                }
+                updated += 1
+            elif tu_rel in old_entries:
+                carried.append((idx, old_entries.take(tu_rel, _flags_hash(idx, unit))))
+                reused += 1
+            elif checkpoint_reached is not None:
+                continue
+            else:
+                headers = _collect_headers_from_tokens(
+                    unit, project_root, build_dir_patterns, header_table
+                )
+                source_hash = compute_source_hash(unit.file.resolve())
+                entry_slots[idx] = {
+                    "file": tu_rel,
+                    "directory": str(unit.directory) if unit.directory else str(project_root),
+                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
+                    "source_hash": source_hash,
+                    "headers": headers,
+                    "flags_hash": _flags_hash(idx, unit),
+                }
+                updated += 1
+
+        # ── pass 2: carried entries, now that the table is final ──
+        flagged = 0
+        for idx, old_entry in carried:
+            entry = carry_over(old_entry)
+            if _headers_moved_on(old_entry, old_header_table, header_table) or _behind_a_parsed_listing(
+                idx, old_entry,
+            ):
+                entry["needs_reparse"] = True
+                flagged += 1
+            entry_slots[idx] = entry
+
+        entries = [e for e in entry_slots if e is not None]
+        log.info(
+            "manifest.json: %d updated (from tu_headers), %d reused, %d needs_reparse",
+            updated, reused, flagged,
+        )
+    elif manifest is None:
+        if checkpoint_reached is not None:
+            return None
+        # No manifest and no tu_headers — full rebuild via libclang (slow)
+        log.info("Generating manifest.json from %d TUs...", len(units))
+        gen_hash = generate_manifest(
+            compile_commands, db_dir, project_root, units,
+            build_dir_patterns=build_dir_patterns, scope=scope,
+            vendor_patterns=vendor_patterns, transient_defines=transient_defines,
+        )
+        return reload_manifest(db_dir, gen_hash)
+    else:
+        # ── Incremental update (tu_headers=None, manifest exists) ──
+        old_entries = _OldEntries(manifest)
+        old_header_table = dict(header_table)
+        entry_slots = [None] * len(units)
+        carried = []
+        reused = 0
+        updated = 0
+
+        for idx, unit in enumerate(units):
+            try:
+                tu_rel = unit.file.resolve().relative_to(project_root).as_posix()  # Windows: manifest keys are posix
+            except ValueError:
+                tu_rel = unit.file.resolve().as_posix()  # Windows: manifest keys are posix
+
+            if tu_rel in old_entries:
+                carried.append((idx, old_entries.take(tu_rel, _flags_hash(idx, unit))))
+                reused += 1
+            else:
+                headers = _collect_headers_from_tokens(
+                    unit, project_root, build_dir_patterns, header_table
+                )
+                source_hash = compute_source_hash(unit.file.resolve())
+                entry_slots[idx] = {
+                    "file": tu_rel,
+                    "directory": str(unit.directory) if unit.directory else str(project_root),
+                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
+                    "source_hash": source_hash,
+                    "headers": headers,
+                    "flags_hash": _flags_hash(idx, unit),
+                }
+                updated += 1
+
+        flagged = 0
+        for idx, old_entry in carried:
+            entry = carry_over(old_entry)
+            if _headers_moved_on(old_entry, old_header_table, header_table):
+                entry["needs_reparse"] = True
+                flagged += 1
+            entry_slots[idx] = entry
+
+        entries = [e for e in entry_slots if e is not None]
+        log.info(
+            "manifest.json incremental: %d updated, %d reused, %d needs_reparse",
+            updated, reused, flagged,
+        )
+
+    manifest_data = {
+        "_format": MANIFEST_FORMAT,
+        "compile_commands_path": str(compile_commands),
+        "project_root": str(project_root),
+        "arg_sets": arg_sets,
+        "headers": header_table,
+        "entries": entries,
+    }
+    # Preserve build_dir_patterns across incremental updates
+    if build_dir_patterns:
+        manifest_data["build_dir_patterns"] = build_dir_patterns
+    elif manifest and manifest.get("build_dir_patterns"):
+        manifest_data["build_dir_patterns"] = manifest["build_dir_patterns"]
+    # Same inheritance for the vendor set: an incremental run that gets no
+    # patterns must keep the ones the build was indexed with, or the next
+    # staleness check reads a manifest that describes a different boundary.
+    # `is not None`, NOT truthiness: an empty list is an ANSWER.  Most
+    # projects keep their SDK outside the project, and the correct set for
+    # them is empty — measured on all 9 builds of the Zephyr project.  Written as
+    # a missing key it would send the query layer back to detection, which is
+    # exactly the disagreement the carrier exists to remove.
+    if vendor_patterns is not None:
+        manifest_data["vendor_patterns"] = vendor_patterns
+    elif manifest is not None and "vendor_patterns" in manifest:
+        manifest_data["vendor_patterns"] = manifest["vendor_patterns"]
+    # Preserve macros from old manifest
+    if manifest and manifest.get("macros"):
+        manifest_data["macros"] = manifest["macros"]
+    # The suffixes that this build touches, as generate() and
+    # build_preliminary() store them.  An update wrote the manifest without
+    # them, thus load_tu_extensions() gave None after every incremental run,
+    # and the readers fell back to the compiler rules.
+    from .manifest import derive_extension_sets
+
+    tu_exts, header_exts = derive_extension_sets(compile_commands, header_table)
+    manifest_data["tu_extensions"] = tu_exts
+    manifest_data["header_extensions"] = header_exts
+    if not config_hash:
+        from fw_context_mcp.config.settings import derive_project_id as _derive_id
+
+        from .manifest import compute_config_hash as _compute_cc_hash
+
+        config_hash = _compute_cc_hash(
+            units, project_root, _derive_id(project_root), build_dir_patterns, scope=scope,
+            db_dir=db_dir, transient_defines=transient_defines,
+        )
+    config_hash = save(manifest_data, db_dir, config_hash)
+    log.info(
+        "manifest.json saved: %d TUs, %d distinct headers (%d references), config_hash=%s",
+        len(entries),
+        len(manifest_data.get("headers") or {}),
+        sum(len(e.get("headers", [])) for e in entries),
+        config_hash[:12],
+    )
+    return manifest_data
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# SECTION: Core per-TU indexing
+# ═══════════════════════════════════════════════════════════════
+
+# INVARIANT: symbols.usr has UNIQUE NOT NULL, refs has no UNIQUE constraint.
+# UPDATE + DELETE pattern prevents duplicates via NOT IN subquery on symbols.usr.
+
+
+def _mtime_bump_is_safe(
+    resolved: Path,
+    header: dict,
+    hash_cache: dict[str, str] | None,
+) -> bool:
+    # *header* is a manifest ``headers`` record: {hash, generated}.  The path
+    # is passed separately as *resolved* because the record is keyed by it.
+    """Return True when the stored mtime may be moved forward for this header.
+
+    Only content-identical headers qualify.  Bumping the mtime of a header
+    whose content actually changed would hide that change from
+    ``_count_modified_files`` and from the next index run — the index would
+    keep serving symbols parsed from the old text while reporting itself as
+    up to date.
+
+    Only a build-generated header keeps the unconditional behaviour, because
+    :func:`header_is_trusted` is the one rule and this is one of its five
+    callers.  A vendor header and a header outside the project are verified
+    here now: without that, a header with changed content would still get a
+    new mtime, ``_count_modified_files`` would stop seeing the change, and
+    the end of trust in the other four callers would have no effect.
+    """
+    from .manifest import _hash_with_cache, header_is_trusted
+
+    if header_is_trusted(header):
+        return True
+    return _hash_with_cache(resolved, hash_cache) == header.get("hash", "")
 
 
 def _refresh_header_mtimes_from_manifest(
@@ -176,9 +743,6 @@ def _refresh_header_mtimes_from_manifest(
     if refreshed:
         log.info("header mtimes refreshed from manifest: %d", refreshed)
     return refreshed
-
-
-# REMOVED: _is_excluded — no files are excluded from indexing; all are indexed
 
 
 def _was_reparsed(
@@ -253,409 +817,3 @@ def _pick_carry_entry(
             if tu_arguments(manifest, e) == want:
                 return old_list.pop(i)
     return old_list.pop(0)
-
-
-
-def _update_manifest_after_index(
-    *,
-    manifest: dict | None,
-    units: list,
-    project_root: Path,
-    db_dir: Path,
-    compile_commands: Path,
-    updated_count: int,
-    tu_headers: dict | None = None,
-    build_dir_patterns: list[str] | None = None,
-    vendor_patterns: list[str] | None = None,
-    config_hash: str = "",
-    scope: list[str] | None = None,
-    reparsed_tus: set | None = None,
-    unit_context_ids: dict[int, str] | None = None,
-    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
-) -> dict | None:
-    """Update ``manifest.json`` after an indexing run.
-
-    Strategy (ordered by cost):
-    - No existing manifest → build from scratch (tokenize all TUs).
-    - Manifest exists, nothing changed → skip (manifest is still valid).
-    - Manifest exists, TUs changed, *tu_headers* provided → incremental:
-      reuse stored entries for unchanged TUs, update only changed ones.
-      This is the fast path — no extra libclang parsing needed.
-    - Manifest exists, TUs changed, no *tu_headers* → fallback to full
-      rebuild (re-tokenize all TUs).  This is the slow path.
-
-    WHY incremental update: after indexing 500+ TUs, re-tokenizing every
-    header takes minutes.  The incremental path reuses pre-collected header
-    hashes from the main indexing loop (``tu_headers``), avoiding a second
-    libclang parse for unchanged TUs.
-
-    *reparsed_tus* names the TUs that were actually re-parsed in this run.
-    Only those may contribute fresh header hashes: an entry rewritten for a
-    TU that kept its previous symbols would claim the index is current while
-    it still holds data parsed from the old header text.  Every other TU
-    keeps its stored entry verbatim.  ``None`` disables the filter (used by
-    callers with no run bookkeeping, e.g. a first index).
-
-    *unit_context_ids* maps the index of each unit in *units* to its
-    ADR-001 context id (from ``context_identity.unit_identity_fields``).
-    When given, keys in *tu_headers* / *reparsed_tus* are per
-    ``(relative file, context id)`` pairs and every written or carried
-    entry records its ``context_id``.  The per-context keying is what keeps
-    TWO compile actions of one file apart: a file-keyed ``old_entries`` dict
-    let the last entry of a pair swallow the first (the second context's
-    compile action silently vanished, and its fresh re-parse was carried
-    from the other context's stale entry).  ``None`` keeps the legacy
-    file-keyed behaviour for callers that have no identities.
-
-    *vendor_patterns* is the EFFECTIVE set this run used — what the builder
-    derived plus what the config added.  It is stored so the query layer can
-    read it instead of deriving its own: the strongest source for Zephyr is
-    ``-fmacro-prefix-map`` in the compiler flags, and only the indexer has
-    those.  A consumer that derives its own set answers with a different one,
-    and the staleness check then re-hashes headers the indexer trusted.
-
-    Returns the updated manifest dict, or ``None`` when no update needed.
-    """
-    from .manifest import (
-        MANIFEST_FORMAT,
-        _collect_headers_from_tokens,
-        _intern_arguments,
-        _is_generated_header,
-        save,
-    )
-
-    # No TU was re-parsed — keep the existing manifest as-is, provided:
-    #   - the TU list hasn't changed (same number of entries), and
-    #   - manifest entries have real source_hash data (not a preliminary
-    #     manifest written by build_preliminary with empty hashes).
-    # A different TU count means files were added/removed from
-    # compile_commands.json.  A preliminary manifest means the on-disk
-    # file was overwritten by build_preliminary and needs regeneration.
-    #
-    # WHY collected header hashes must NOT force a rewrite: *tu_headers* also
-    # carries hashes gathered for TUs that were only bookkept, not re-parsed.
-    # Writing those in would declare the manifest current while the index
-    # still holds symbols parsed from the previous header text — the staleness
-    # signal would be gone and only ``--force`` could recover.
-    if manifest is not None and updated_count == 0:
-        # Check for degraded (preliminary) manifest — entries with empty
-        # source_hash mean build_preliminary overwrote the real manifest.
-        # A preliminary manifest is written during the build phase before
-        # any TU is parsed — it has the correct TU list but empty hashes.
-        # We MUST regenerate with real hashes from the just-completed parse
-        # to ensure accurate staleness detection on the next index run.
-        entries = manifest.get("entries", [])
-        if entries and not entries[0].get("source_hash"):
-            log.info("Manifest has preliminary entries — regenerating with full hashes")
-            # Fall through to full regeneration below (don't return early)
-        elif _patterns_changed(manifest, build_dir_patterns, vendor_patterns):
-            # `generated` is a function of the path and the build-output
-            # patterns.  When those change the stored flags describe a
-            # boundary this build no longer has, and header_is_trusted()
-            # reads them — so a narrowed pattern would have no effect until
-            # --force.  Measured: narrowing PlatformIO from '.pio/' to
-            # '.pio/build/' leaves the config_hash identical, so nothing else
-            # would ever rewrite this file.
-            log.info(
-                "Rebuilding manifest.json (patterns changed: build_dir %s -> %s, "
-                "vendor %s -> %s)",
-                manifest.get("build_dir_patterns"), build_dir_patterns,
-                manifest.get("vendor_patterns", "<absent>"), vendor_patterns,
-            )
-        else:
-            old_count = len(entries)
-            if old_count == len(units):
-                return manifest
-            log.info("Rebuilding manifest.json (TU count changed: %d → %d)", old_count, len(units))
-
-    # ── Build/update manifest entries ──
-    # Priority: 1) tu_headers (pre-collected during main loop — no extra I/O),
-    # 2) old manifest entries (unchanged), 3) libclang tokenization (slow fallback).
-    from .manifest import fold_headers, tu_arguments
-    from .manifest import generate as generate_manifest
-    from .manifest import load as reload_manifest
-
-    # The manifest's two shared tables.  The header table is seeded from the
-    # previous manifest so an entry carried over unchanged keeps the records
-    # its path list points at; save() prunes whatever ends up unreferenced.
-    header_table: dict[str, dict] = dict(manifest.get("headers") or {}) if manifest else {}
-    # `generated` is recomputed for every seeded record, always — not only
-    # when the patterns changed.  It is a pure function of the path and this
-    # build's patterns, and recomputing it here removes the whole class of
-    # drift where a record keeps a flag from a boundary the build no longer
-    # has.  The hash is NOT touched: that one carries history on purpose.
-    if header_table:
-        header_table = {
-            path: {**record, "generated": _is_generated_header(path, build_dir_patterns)}
-            for path, record in header_table.items()
-        }
-    arg_sets: list[list[str]] = []
-
-    def carry_over(old_entry: dict) -> dict:
-        """Re-point a reused entry at THIS manifest's arg_sets table.
-
-        ``arg_set`` is an index into the table of the manifest it was written
-        for.  Copying the entry without re-interning would leave the index
-        pointing at a different argument list, or past the end of the new
-        table — the reason this is a function and not an append.
-        """
-        carried = dict(old_entry)
-        carried["arg_set"] = _intern_arguments(
-            tu_arguments(manifest or {}, old_entry), arg_sets
-        )
-        return carried
-
-    if tu_headers is not None:
-        # Use pre-collected header hashes from _build_filtered_file_content.
-        # Avoids a second libclang parse — tu_headers was populated during
-        # the main TU loop for every unchanged/updated TU.
-        log.info("Building manifest.json from %d pre-collected TU headers...", len(tu_headers))
-        # Per-file ORDERED lists, not a file-keyed dict: two compile actions
-        # of one file are two entries, and a dict let the last one swallow
-        # the first (carry-over collapse — the second context's compile
-        # action silently vanished from the manifest).
-        old_by_file: dict[str, list[dict]] = {}
-        if manifest is not None:
-            for e in manifest.get("entries", []):
-                old_by_file.setdefault(e.get("file", ""), []).append(e)
-        # A shallow copy is enough: fold_headers and update_entry REPLACE a
-        # record, they never change one in place.
-        old_header_table = dict(header_table)
-        entry_slots: list[dict | None] = [None] * len(units)
-        carried: list[tuple[int, dict]] = []
-        reused = 0
-        updated = 0
-
-        # ── pass 1: entries rewritten from THIS run's parse ──
-        # These are what fills header_table, so the decision for a carried
-        # entry must wait until the table is final.
-        for idx, unit in enumerate(units):
-            try:
-                tu_rel = unit.file.resolve().relative_to(project_root).as_posix()
-            except ValueError:
-                tu_rel = unit.file.resolve().as_posix()
-            ctx_id = unit_context_ids.get(idx) if unit_context_ids else None
-
-            # Fresh hashes only from TUs that were really re-parsed —
-            # see *reparsed_tus* in the docstring.  A re-parsed TU that
-            # collected no headers (a file with no ``#include``) still gets
-            # a fresh entry — headers=[] is the truthful list, and refusing
-            # it left the entry at its stale preliminary hash for ever
-            # (the "0 updated, 1 reused" accounting of a genuinely
-            # re-parsed file).
-            pre_collected = (
-                _headers_for(tu_headers, tu_rel, ctx_id)
-                if reparsed_tus is None
-                else None
-            )
-            is_fresh = (
-                (pre_collected is not None)
-                if reparsed_tus is None
-                else _was_reparsed(reparsed_tus, tu_rel, ctx_id)
-            )
-            if is_fresh:
-                headers = (
-                    pre_collected
-                    if reparsed_tus is None
-                    else (_headers_for(tu_headers, tu_rel, ctx_id) or [])
-                )
-                source_hash = compute_source_hash(unit.file.resolve())
-                entry = {
-                    "file": tu_rel,
-                    "directory": str(unit.directory) if unit.directory else str(project_root),
-                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
-                    "source_hash": source_hash,
-                    "headers": fold_headers(headers, header_table),
-                    "flags_hash": (
-                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
-                        if unit.raw_entry else ""
-                    ),
-                }
-                if ctx_id is not None:
-                    entry["context_id"] = ctx_id
-                entry_slots[idx] = entry
-                updated += 1
-            else:
-                old_entry = _pick_carry_entry(old_by_file, manifest, tu_rel, ctx_id, unit)
-                if old_entry is not None:
-                    carried.append((idx, old_entry))
-                    reused += 1
-                else:
-                    headers = _collect_headers_from_tokens(
-                        unit, project_root, build_dir_patterns, header_table
-                    )
-                    source_hash = compute_source_hash(unit.file.resolve())
-                    entry = {
-                        "file": tu_rel,
-                        "directory": str(unit.directory) if unit.directory else str(project_root),
-                        "arg_set": _intern_arguments(unit.clang_args, arg_sets),
-                        "source_hash": source_hash,
-                        "headers": headers,
-                        "flags_hash": (
-                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
-                        if unit.raw_entry else ""
-                    ),
-                    }
-                    if ctx_id is not None:
-                        entry["context_id"] = ctx_id
-                    entry_slots[idx] = entry
-                    updated += 1
-
-        # ── pass 2: carried entries, now that the table is final ──
-        flagged = 0
-        for idx, old_entry in carried:
-            entry = carry_over(old_entry)
-            if _headers_moved_on(old_entry, old_header_table, header_table):
-                entry["needs_reparse"] = True
-                flagged += 1
-            entry_slots[idx] = entry
-
-        entries = [e for e in entry_slots if e is not None]
-        log.info(
-            "manifest.json: %d updated (from tu_headers), %d reused, %d needs_reparse",
-            updated, reused, flagged,
-        )
-    elif manifest is None:
-        # No manifest and no tu_headers — full rebuild via libclang (slow)
-        log.info("Generating manifest.json from %d TUs...", len(units))
-        gen_hash = generate_manifest(
-            compile_commands, db_dir, project_root, units,
-            build_dir_patterns=build_dir_patterns, scope=scope,
-            vendor_patterns=vendor_patterns,
-        )
-        return reload_manifest(db_dir, gen_hash)
-    else:
-        # ── Incremental update (tu_headers=None, manifest exists) ──
-        # The runner hands tu_headers=None when NO TU of the run collected
-        # any header, so a fresh entry here truthfully carries headers=[].
-        # Old entries stay per-file ORDERED lists (see the branch above).
-        old_by_file = {}
-        for e in manifest.get("entries", []):
-            old_by_file.setdefault(e.get("file", ""), []).append(e)
-        old_header_table = dict(header_table)
-        entry_slots = [None] * len(units)
-        carried = []
-        reused = 0
-        updated = 0
-
-        for idx, unit in enumerate(units):
-            try:
-                tu_rel = unit.file.resolve().relative_to(project_root).as_posix()
-            except ValueError:
-                tu_rel = unit.file.resolve().as_posix()
-            ctx_id = unit_context_ids.get(idx) if unit_context_ids else None
-
-            # A re-parsed TU must get a fresh entry even with no
-            # pre-collected headers — carrying it instead left a genuinely
-            # re-parsed file at its stale preliminary hash and misreported
-            # the run as "0 updated, 1 reused".
-            if _was_reparsed(reparsed_tus, tu_rel, ctx_id):
-                source_hash = compute_source_hash(unit.file.resolve())
-                entry = {
-                    "file": tu_rel,
-                    "directory": str(unit.directory) if unit.directory else str(project_root),
-                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
-                    "source_hash": source_hash,
-                    "headers": [],
-                    "flags_hash": (
-                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
-                        if unit.raw_entry else ""
-                    ),
-                }
-                if ctx_id is not None:
-                    entry["context_id"] = ctx_id
-                entry_slots[idx] = entry
-                updated += 1
-                continue
-
-            old_entry = _pick_carry_entry(old_by_file, manifest, tu_rel, ctx_id, unit)
-            if old_entry is not None:
-                carried.append((idx, old_entry))
-                reused += 1
-            else:
-                headers = _collect_headers_from_tokens(
-                    unit, project_root, build_dir_patterns, header_table
-                )
-                source_hash = compute_source_hash(unit.file.resolve())
-                entry = {
-                    "file": tu_rel,
-                    "directory": str(unit.directory) if unit.directory else str(project_root),
-                    "arg_set": _intern_arguments(unit.clang_args, arg_sets),
-                    "source_hash": source_hash,
-                    "headers": headers,
-                    "flags_hash": (
-                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
-                        if unit.raw_entry else ""
-                    ),
-                }
-                if ctx_id is not None:
-                    entry["context_id"] = ctx_id
-                entry_slots[idx] = entry
-                updated += 1
-
-        flagged = 0
-        for idx, old_entry in carried:
-            entry = carry_over(old_entry)
-            if _headers_moved_on(old_entry, old_header_table, header_table):
-                entry["needs_reparse"] = True
-                flagged += 1
-            entry_slots[idx] = entry
-
-        entries = [e for e in entry_slots if e is not None]
-        log.info(
-            "manifest.json incremental: %d updated, %d reused, %d needs_reparse",
-            updated, reused, flagged,
-        )
-
-    manifest_data = {
-        "_format": MANIFEST_FORMAT,
-        "compile_commands_path": str(compile_commands),
-        "project_root": str(project_root),
-        "arg_sets": arg_sets,
-        "headers": header_table,
-        "entries": entries,
-    }
-    # Preserve build_dir_patterns across incremental updates
-    if build_dir_patterns:
-        manifest_data["build_dir_patterns"] = build_dir_patterns
-    elif manifest and manifest.get("build_dir_patterns"):
-        manifest_data["build_dir_patterns"] = manifest["build_dir_patterns"]
-    # Same inheritance for the vendor set: an incremental run that gets no
-    # patterns must keep the ones the build was indexed with, or the next
-    # staleness check reads a manifest that describes a different boundary.
-    # `is not None`, NOT truthiness: an empty list is an ANSWER.  Most
-    # projects keep their SDK outside the project, and the correct set for
-    # them is empty — measured on all 9 builds of the Zephyr project.  Written as
-    # a missing key it would send the query layer back to detection, which is
-    # exactly the disagreement the carrier exists to remove.
-    if vendor_patterns is not None:
-        manifest_data["vendor_patterns"] = vendor_patterns
-    elif manifest is not None and "vendor_patterns" in manifest:
-        manifest_data["vendor_patterns"] = manifest["vendor_patterns"]
-    # Preserve macros from old manifest
-    if manifest and manifest.get("macros"):
-        manifest_data["macros"] = manifest["macros"]
-    if not config_hash:
-        from fw_context_mcp.config.settings import derive_project_id as _derive_id
-
-        from .manifest import compute_config_hash as _compute_cc_hash
-
-        config_hash = _compute_cc_hash(units, project_root, _derive_id(project_root), build_dir_patterns, scope=scope, db_dir=db_dir)
-    config_hash = save(manifest_data, db_dir, config_hash)
-    log.info(
-        "manifest.json saved: %d TUs, %d distinct headers (%d references), config_hash=%s",
-        len(entries),
-        len(manifest_data.get("headers") or {}),
-        sum(len(e.get("headers", [])) for e in entries),
-        config_hash[:12],
-    )
-    return manifest_data
-
-
-
-# ═══════════════════════════════════════════════════════════════
-# SECTION: Core per-TU indexing
-# ═══════════════════════════════════════════════════════════════
-
-# INVARIANT: symbols.usr has UNIQUE NOT NULL, refs has no UNIQUE constraint.
-# UPDATE + DELETE pattern prevents duplicates via NOT IN subquery on symbols.usr.

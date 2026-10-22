@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from fw_context_mcp.indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
 from fw_context_mcp.indexer.db import (
     insert_symbols_batch,
     open_db,
@@ -74,6 +75,11 @@ def _cli(args: list[str], cwd: Path, timeout: int = 120) -> subprocess.Completed
         cwd=cwd,
         capture_output=True,
         text=True,
+        # Windows adjudication: the CLI prints em dashes; without an
+        # explicit encoding the GBK reader thread dies on them and the
+        # captured output is lost.
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         env=env,
     )
@@ -87,13 +93,15 @@ def _isolate_index_db(project_root: Path, tmp_dir: Path) -> None:
     local_toml = local_config_dir / "local.toml"
     index_dir = tmp_dir / "index"
     local_toml.write_text(
-        f'[index]\ndb_dir = "{index_dir}"\n',
+        # Windows adjudication: a raw Windows path inside a TOML string is an
+        # escape sequence error (tomllib refuses the backslash).
+        f'[index]\ndb_dir = "{index_dir.as_posix()}"\n',
         encoding="utf-8",
     )
 
 
 def _advance_mtime(path: Path, seconds: float = 2.0) -> None:
-    """Set file mtime to current time + seconds to bypass MTIME_TOLERANCE_S."""
+    """Move the file time forward by *seconds*, as an edit or a git checkout does."""
     now = path.stat().st_mtime
     os.utime(path, (now + seconds, now + seconds))
 def _write_file(path: Path, content: str) -> None:
@@ -414,22 +422,15 @@ class TestChangedHeaderRows:
         hdr = root / "src" / "api.h"
         hdr.write_text("#pragma once\nint kept(void);\n", encoding="utf-8")
 
-        # The row must carry the spelling _normalize_file_path — the one
-        # place that decides a file's canonical form (ops.py) — writes on
-        # THIS platform: Windows stores "src\\api.h", POSIX "src/api.h".
-        # A hard-coded POSIX spelling made every lookup miss on Windows.
-        from fw_context_mcp.indexer.ops import _normalize_file_path
-
-        rel = _normalize_file_path(str(hdr), root)
         conn = open_db(tmp_path / "index.db")
         with transaction(conn):
             upsert_project(conn, "pid", "p", str(root))
             upsert_build_config(conn, "ch", "pid", str(root / "compile_commands.json"))
-            upsert_file(conn, "ch", rel, "c", mtime=1.0,
+            upsert_file(conn, "ch", "src/api.h", "c", mtime=1.0,
                         source_hash=compute_source_hash(hdr))
             conn.execute(
-                "UPDATE files SET content=? WHERE config_hash='ch' AND path=?",
-                ("int kept(void);\n", rel),
+                "UPDATE files SET content=? WHERE config_hash='ch' AND path='src/api.h'",
+                ("int kept(void);\n",),
             )
         return conn, root, hdr
 
@@ -447,20 +448,17 @@ class TestChangedHeaderRows:
         assert rows == {}
 
     def test_a_changed_header_is_listed_with_its_path(self, tmp_path: Path):
-        from fw_context_mcp.indexer.ops import _changed_header_rows, _normalize_file_path
+        from fw_context_mcp.indexer.ops import _changed_header_rows
         from fw_context_mcp.utils import compute_source_hash
 
         conn, root, hdr = self._db(tmp_path)
         hdr.write_text("#pragma once\nint other(void);\n", encoding="utf-8")
         digest = compute_source_hash(hdr)
-        # The key is the product's canonical project-relative spelling —
-        # native separators, not a hard-coded POSIX form.
-        db_key = _normalize_file_path(str(hdr), root)
         try:
             rows = _changed_header_rows(conn, "ch", root, [(str(hdr), digest)])
         finally:
             conn.close()
-        assert rows == {db_key: (str(hdr), digest)}, (
+        assert rows == {"src/api.h": (str(hdr), digest)}, (
             "the absolute path rides along so the blank-out pass need not "
             "rebuild it from the key"
         )
@@ -513,6 +511,22 @@ class TestBlankOutInactiveFiles:
     """
 
     @staticmethod
+    def _disk_tu(monkeypatch):
+        """Return a stand-in for a TU whose parsed text is the text on the disk now.
+
+        These tests pin which header the pass may touch, and need no
+        libclang.  The source of the text is pinned by the tests of
+        ``TestTheDecisionIsByHash`` that save a header during a run.
+        """
+        from types import SimpleNamespace
+
+        from fw_context_mcp.indexer import ops
+
+        monkeypatch.setattr(ops, "parsed_bytes", lambda tu, cx_file: Path(cx_file).read_bytes())
+        monkeypatch.setattr(ops, "file_of_parse", lambda tu, name: name)
+        return SimpleNamespace()
+
+    @staticmethod
     def _project(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         """Return (root, db_path, changed_header, unchanged_header)."""
         from fw_context_mcp.indexer.db import (
@@ -539,7 +553,7 @@ class TestBlankOutInactiveFiles:
                 upsert_build_config(conn, "ch", "pid", str(root / "compile_commands.json"))
                 for path, text in ((changed, "int gone(void);\n"),
                                    (unchanged, "int kept(void);\n")):
-                    rel = TestBlankOutInactiveFiles._rel(path, root)
+                    rel = f"src/{path.name}"
                     upsert_file(conn, "ch", rel, "c", mtime=1.0,
                                 source_hash=compute_source_hash(path))
                     conn.execute(
@@ -551,19 +565,6 @@ class TestBlankOutInactiveFiles:
         return root, db_path, changed, unchanged
 
     @staticmethod
-    def _rel(path: Path, root: Path) -> str:
-        """The project-relative spelling the indexer itself would store.
-
-        _normalize_file_path is the single place that decides a file's
-        canonical form (ops.py); on Windows it writes ``src\\changed.h``,
-        on POSIX ``src/changed.h``.  Seeding a hard-coded POSIX form made
-        every lookup miss on Windows.
-        """
-        from fw_context_mcp.indexer.ops import _normalize_file_path
-
-        return _normalize_file_path(str(path), root)
-
-    @staticmethod
     def _changed(conn, root: Path, *headers: Path) -> dict:
         from fw_context_mcp.indexer.ops import _changed_header_rows
         from fw_context_mcp.utils import compute_source_hash
@@ -572,7 +573,7 @@ class TestBlankOutInactiveFiles:
             conn, "ch", root, [(str(h), compute_source_hash(h)) for h in headers]
         )
 
-    def test_a_changed_header_loses_its_stale_text(self, tmp_path: Path):
+    def test_a_changed_header_loses_its_stale_text(self, tmp_path: Path, monkeypatch):
         from fw_context_mcp.indexer.db import open_db, transaction
         from fw_context_mcp.indexer.ops import _blank_out_inactive_files
 
@@ -586,6 +587,7 @@ class TestBlankOutInactiveFiles:
             with transaction(conn):
                 count = _blank_out_inactive_files(
                     conn, "ch", root, rows, set(), set(), None,
+                    tu=self._disk_tu(monkeypatch), skip_files=None,
                 )
             stored = {
                 r["path"]: r["content"]
@@ -597,15 +599,15 @@ class TestBlankOutInactiveFiles:
             conn.close()
 
         assert count == 1, "only the changed header may be touched"
-        assert stored[self._rel(changed, root)] == "\n\n", (
+        assert stored["src/changed.h"] == "\n\n", (
             "the filter keeps line numbers and blanks inactive lines; here "
             'every line is inactive, and "" would read as "not filled yet"'
         )
-        assert stored[self._rel(unchanged, root)] == "int kept(void);\n", (
+        assert stored["src/unchanged.h"] == "int kept(void);\n", (
             "a header whose hash still matches must not be rewritten"
         )
 
-    def test_a_changed_header_with_active_code_is_left_alone(self, tmp_path: Path):
+    def test_a_changed_header_with_active_code_is_left_alone(self, tmp_path: Path, monkeypatch):
         """The regression this pass was blanking.
 
         A header can change AND still hold code.  The parse then sees active
@@ -625,15 +627,14 @@ class TestBlankOutInactiveFiles:
 
         conn = open_db(db_path)
         try:
-            rel_changed = self._rel(changed, root)
             rows = self._changed(conn, root, changed)
             with transaction(conn):
                 count = _blank_out_inactive_files(
-                    conn, "ch", root, rows, set(), {rel_changed}, None,
+                    conn, "ch", root, rows, set(), {"src/changed.h"}, None,
+                    tu=self._disk_tu(monkeypatch), skip_files=None,
                 )
             content = conn.execute(
-                "SELECT content FROM files WHERE config_hash='ch' AND path=?",
-                (rel_changed,),
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
             ).fetchone()[0]
         finally:
             conn.close()
@@ -644,7 +645,7 @@ class TestBlankOutInactiveFiles:
             "produced none, whatever the content loop then did with it"
         )
 
-    def test_a_path_the_content_loop_wrote_is_left_alone(self, tmp_path: Path):
+    def test_a_path_the_content_loop_wrote_is_left_alone(self, tmp_path: Path, monkeypatch):
         from fw_context_mcp.indexer.db import open_db, transaction
         from fw_context_mcp.indexer.ops import _blank_out_inactive_files
 
@@ -653,15 +654,14 @@ class TestBlankOutInactiveFiles:
 
         conn = open_db(db_path)
         try:
-            rel_changed = self._rel(changed, root)
             rows = self._changed(conn, root, changed)
             with transaction(conn):
                 count = _blank_out_inactive_files(
-                    conn, "ch", root, rows, {rel_changed}, set(), None,
+                    conn, "ch", root, rows, {"src/changed.h"}, set(), None,
+                    tu=self._disk_tu(monkeypatch), skip_files=None,
                 )
             content = conn.execute(
-                "SELECT content FROM files WHERE config_hash='ch' AND path=?",
-                (rel_changed,),
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
             ).fetchone()[0]
         finally:
             conn.close()
@@ -671,7 +671,7 @@ class TestBlankOutInactiveFiles:
             "the content loop already put the current text there"
         )
 
-    def test_a_header_with_no_stored_hash_is_left_alone(self, tmp_path: Path):
+    def test_a_header_with_no_stored_hash_is_left_alone(self, tmp_path: Path, monkeypatch):
         """Without a stored hash there is nothing to compare against.
 
         An index written before source_hash was filled for every file would
@@ -681,7 +681,6 @@ class TestBlankOutInactiveFiles:
         from fw_context_mcp.indexer.ops import _blank_out_inactive_files
 
         root, db_path, changed, _ = self._project(tmp_path)
-        rel_changed = self._rel(changed, root)
         conn = open_db(db_path)
         try:
             with transaction(conn):
@@ -693,10 +692,40 @@ class TestBlankOutInactiveFiles:
             with transaction(conn):
                 count = _blank_out_inactive_files(
                     conn, "ch", root, rows, set(), set(), None,
+                    tu=self._disk_tu(monkeypatch), skip_files=None,
                 )
             content = conn.execute(
-                "SELECT content FROM files WHERE config_hash='ch' AND path=?",
-                (rel_changed,),
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        assert count == 0
+        assert content == "int gone(void);\n"
+
+    def test_a_header_that_an_earlier_unit_owns_is_left_alone(self, tmp_path: Path, monkeypatch):
+        """A header in *skip_files* was walked by an earlier unit of this run.
+
+        This parse saw no active line in it because it did not walk it.  The
+        operator saved the header between the two parses, thus its hash
+        differs from the row, and the pass blanked a header that holds code.
+        """
+        from fw_context_mcp.indexer.db import open_db, transaction
+        from fw_context_mcp.indexer.ops import _blank_out_inactive_files
+
+        root, db_path, changed, _ = self._project(tmp_path)
+        changed.write_text("#pragma once\nint gone(void);\nint added(void);\n", encoding="utf-8")
+
+        conn = open_db(db_path)
+        try:
+            rows = self._changed(conn, root, changed)
+            with transaction(conn):
+                count = _blank_out_inactive_files(
+                    conn, "ch", root, rows, set(), set(), None,
+                    tu=self._disk_tu(monkeypatch), skip_files=frozenset({str(changed)}),
+                )
+            content = conn.execute(
+                "SELECT content FROM files WHERE config_hash='ch' AND path='src/changed.h'"
             ).fetchone()[0]
         finally:
             conn.close()
@@ -958,51 +987,42 @@ class TestIncrementalReindex:
                 "config_hash"
             ]
 
-            # rows/3: the symbol legitimately holds one row per context.
-            # Attach the fake analysis to EVERY row, then reindex only
-            # utils.c's context below: its rows must lose the analysis,
-            # the untouched contexts' rows must keep theirs.
-            sym_rows = conn.execute(
+            # Insert fake LLM analysis for compute_checksum
+            sym_row = conn.execute(
                 "SELECT id, usr FROM symbols WHERE config_hash=? AND name='compute_checksum'",
                 (ch,),
-            ).fetchall()
-            assert sym_rows, "compute_checksum not found"
+            ).fetchone()
+            assert sym_row is not None
 
-            for r in sym_rows:
-                conn.execute(
-                    """INSERT OR REPLACE INTO llm_analysis
-                       (symbol_id, summary, inputs, outputs, model, analyzed_at)
-                       VALUES (?, ?, ?, ?, ?, datetime('now'))""",
-                    (
-                        r["id"],
-                        "Computes XOR checksum of data buffer.",
-                        "data: input, len: buffer length",
-                        "8-bit checksum value",
-                        "test-model",
-                    ),
-                )
-                conn.execute(
-                    "UPDATE symbols SET summary=?, inputs=?, outputs=? WHERE id=?",
-                    (
-                        "Computes XOR checksum of data buffer.",
-                        "data: input, len: buffer length",
-                        "8-bit checksum value",
-                        r["id"],
-                    ),
-                )
+            conn.execute(
+                """INSERT OR REPLACE INTO llm_analysis
+                   (symbol_id, summary, inputs, outputs, model, analyzed_at)
+                   VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+                (
+                    sym_row["id"],
+                    "Computes XOR checksum of data buffer.",
+                    "data: input, len: buffer length",
+                    "8-bit checksum value",
+                    "test-model",
+                ),
+            )
+            conn.execute(
+                "UPDATE symbols SET summary=?, inputs=?, outputs=? WHERE id=?",
+                (
+                    "Computes XOR checksum of data buffer.",
+                    "data: input, len: buffer length",
+                    "8-bit checksum value",
+                    sym_row["id"],
+                ),
+            )
             conn.commit()
 
             ana_before = conn.execute(
-                """SELECT COUNT(*) FROM llm_analysis a
-                   JOIN symbols s ON s.id = a.symbol_id
-                   WHERE s.config_hash=? AND s.name='compute_checksum'""",
-                (ch,),
-            ).fetchone()[0]
-            assert ana_before == len(sym_rows), (
-                f"Analysis not stored on every per-context row: "
-                f"{ana_before}/{len(sym_rows)}"
-            )
-            print(f"  Analysis before: {ana_before} row(s)")
+                "SELECT summary FROM llm_analysis WHERE symbol_id=?",
+                (sym_row["id"],),
+            ).fetchone()
+            assert ana_before is not None, "Analysis not stored"
+            print(f"  Analysis before: {ana_before['summary']}")
 
         finally:
             conn.close()
@@ -1028,53 +1048,27 @@ class TestIncrementalReindex:
         # _delete_old_for_tu now cleans up llm_analysis for all symbols
         # of the reindexed TU. Since with_analysis=False, the
         # _reindex_llm_analysis post-phase is skipped — analysis stays gone.
-        # rows/3: the cleanup is scoped to the reindexed TU's context, so
-        # the verification must be per context too: utils.c's own context
-        # rows lose the analysis; untouched contexts keep theirs.
         conn = open_db(db_path)
         try:
             ch = conn.execute("SELECT config_hash FROM build_configs ORDER BY created_at DESC LIMIT 1").fetchone()[
                 "config_hash"
             ]
-            rows = conn.execute(
-                """SELECT s.id, b.main_file FROM symbols s
-                   LEFT JOIN build_contexts b
-                     ON b.config_hash = s.config_hash AND b.context_id = s.context_id
-                   WHERE s.config_hash=? AND s.name='compute_checksum'""",
+            sym_row = conn.execute(
+                "SELECT id FROM symbols WHERE config_hash=? AND name='compute_checksum'",
                 (ch,),
-            ).fetchall()
-            assert rows, "compute_checksum disappeared"
-            own_ctx = [r for r in rows if (r["main_file"] or "").endswith("utils.c")]
-            other_ctx = [r for r in rows if not (r["main_file"] or "").endswith("utils.c")]
-            assert own_ctx, (
-                "utils.c's own context must hold a compute_checksum row"
-            )
+            ).fetchone()
+            assert sym_row is not None
 
-            for r in own_ctx:
-                ana = conn.execute(
-                    "SELECT summary FROM llm_analysis WHERE symbol_id=?",
-                    (r["id"],),
-                ).fetchone()
-                # Analysis was deleted — with_analysis=False means no regeneration
-                assert ana is None, (
-                    f"Analysis should be deleted by _delete_old_for_tu cleanup "
-                    f"for the reindexed context (main_file={r['main_file']}), "
-                    f"but got: {ana}"
-                )
-            for r in other_ctx:
-                ana = conn.execute(
-                    "SELECT summary FROM llm_analysis WHERE symbol_id=?",
-                    (r["id"],),
-                ).fetchone()
-                assert ana is not None, (
-                    f"An untouched context's row (main_file={r['main_file']}) "
-                    f"must keep its analysis — only the reindexed context's "
-                    f"rows are cleaned"
-                )
-            print(
-                f"  Analysis correctly deleted for {len(own_ctx)} reindexed-"
-                f"context row(s), kept for {len(other_ctx)} untouched row(s)"
+            ana_after = conn.execute(
+                "SELECT summary FROM llm_analysis WHERE symbol_id=?",
+                (sym_row["id"],),
+            ).fetchone()
+            # Analysis was deleted — with_analysis=False means no regeneration
+            assert ana_after is None, (
+                f"Analysis should be deleted by _delete_old_for_tu cleanup, "
+                f"but got: {ana_after}"
             )
+            print("  Analysis correctly deleted by cleanup")
 
         finally:
             conn.close()
@@ -1315,28 +1309,19 @@ class TestMoveDetection:
             ch = conn.execute("SELECT config_hash FROM build_configs ORDER BY created_at DESC LIMIT 1").fetchone()[
                 "config_hash"
             ]
-            # rows/3: one row per (usr, context).  The declaration rows of
-            # contexts that were not re-indexed (main.c's) — and utils.c's
-            # refreshed declaration of utils.h — legitimately survive next
-            # to the moved definition.  The MOVE itself is per-context
-            # uniqueness of the definition rows.
-            def_rows = conn.execute(
-                "SELECT id, file_path FROM symbols "
-                "WHERE config_hash=? AND name='log_message' AND is_definition=1",
+            row = conn.execute(
+                "SELECT id, file_path FROM symbols WHERE config_hash=? AND name='log_message'",
                 (ch,),
-            ).fetchall()
-            assert def_rows, "log_message definition disappeared"
-            def_files = [r["file_path"] for r in def_rows]
-            print(f"  log_message definition now in: {def_files}")
+            ).fetchone()
+            assert row is not None, "log_message disappeared"
+            print(f"  log_message now in: {row['file_path']}")
             # Should now be in modem.c
-            assert all("modem.c" in f for f in def_files), (
-                f"Expected log_message definition in modem.c, got {def_files}"
-            )
+            assert "modem.c" in row["file_path"], f"Expected log_message in modem.c, got {row['file_path']}"
 
             # Check if analysis was preserved (Phase 4 move)
             ana = conn.execute(
                 "SELECT summary FROM llm_analysis WHERE symbol_id=?",
-                (def_rows[0]["id"],),
+                (row["id"],),
             ).fetchone()
             if ana:
                 print(f"  Analysis preserved after move: {ana['summary']}")
@@ -1387,21 +1372,13 @@ class TestMoveDetection:
             ch = conn.execute("SELECT config_hash FROM build_configs ORDER BY created_at DESC LIMIT 1").fetchone()[
                 "config_hash"
             ]
-            # rows/3: per-context rows.  The untouched contexts keep their
-            # declaration observations of utils.h (main.c was not reindexed;
-            # utils.c still sees the declaration), so the whole-config count
-            # is legitimately > 1.  Uniqueness holds per context: exactly one
-            # DEFINITION row exists, and the move put it in modem.c.
-            def_rows = conn.execute(
-                "SELECT file_path FROM symbols "
-                "WHERE config_hash=? AND name='compute_checksum' AND is_definition=1",
+            rows = conn.execute(
+                "SELECT file_path FROM symbols WHERE config_hash=? AND name='compute_checksum'",
                 (ch,),
             ).fetchall()
-            assert len(def_rows) == 1, (
-                f"Expected 1 compute_checksum definition row, got {len(def_rows)}"
-            )
+            assert len(rows) == 1, f"Expected 1 compute_checksum, got {len(rows)}"
             # Should be in modem.c now
-            assert "modem.c" in def_rows[0]["file_path"]
+            assert "modem.c" in rows[0]["file_path"]
         finally:
             conn.close()
 
@@ -1617,10 +1594,7 @@ class TestReindexFileImplEdgeCases:
 
         compile_commands.json lists translation units, thus a header never
         matches it directly.  The manifest names the units that include the
-        header, and under rows/3 EVERY one of them must carry a re-parse:
-        rows are per (config_hash, usr, context_id), so a single-TU refresh
-        would leave the other context's rows stale behind its own
-        per-context identity.
+        header, and one of them carries the re-parse.
 
         This also covers the iterator trap: _reindex_match_tus walks the
         units twice, so parse() — which returns a generator — has to be
@@ -1642,18 +1616,14 @@ class TestReindexFileImplEdgeCases:
                                        with_analysis=False)
 
             assert "error" not in result, f"header reindex failed: {result.get('error')}"
-            # modem.h is included by main.c and modem.c — both contexts
-            # must be refreshed for their per-context rows to agree.
-            assert result["translation_units"] == 2, (
-                "every context that includes the header must re-parse it; "
-                f"got {result.get('translation_units')}"
+            assert result["translation_units"] == 1, (
+                "one unit carries the re-parse; re-parsing every including unit "
+                "would cost hours on a real project"
             )
-            # Full includer coverage stays silent by design
-            # (_header_coverage_warning): a warning on a complete re-index
-            # is noise that trains callers to ignore the field.
-            assert "warning" not in result, (
-                f"full includer coverage must not warn, got: {result.get('warning')}"
+            assert "warning" in result, (
+                "the answer covers one compilation context and must say so"
             )
+            assert "run 'fw-context index'" in result["warning"]
 
             conn = _open_db(_db_path_for_project(indexed_project))
             try:
@@ -1704,12 +1674,6 @@ class TestReindexFileImplEdgeCases:
         it never enters ``active`` and the content loop cannot reach it.
         Measured before the fix: read_file returned the declarations and
         search_content still matched a name the file no longer carried.
-
-        rows/3: ``files`` holds one row per (path, context).  Reindexing
-        utils.c refreshes only utils.c's own context's row — the untouched
-        main.c context's row legitimately keeps serving the old text until
-        its own TU re-parses.  The refreshed row is the one whose
-        source_hash matches the file on disk.
         """
         from fw_context_mcp.indexer.db import open_db as _open_db
         from fw_context_mcp.mcp.handlers.maintenance import reindex_file
@@ -1718,21 +1682,19 @@ class TestReindexFileImplEdgeCases:
         header = indexed_project / "src" / "utils.h"
         original = header.read_text(encoding="utf-8")
 
-        def stored_rows() -> list:
+        def stored() -> tuple[str, str]:
             conn = _open_db(_db_path_for_project(indexed_project))
             try:
-                rows = conn.execute(
+                row = conn.execute(
                     "SELECT content, source_hash FROM files WHERE path LIKE ?",
                     ("%utils.h",),
-                ).fetchall()
+                ).fetchone()
             finally:
                 conn.close()
-            assert rows, "utils.h missing from the files table"
-            return rows
+            assert row is not None, "utils.h missing from the files table"
+            return row["content"] or "", row["source_hash"]
 
-        assert any(
-            "compute_checksum" in (r["content"] or "") for r in stored_rows()
-        ), "precondition: the old text is stored"
+        assert "compute_checksum" in stored()[0], "precondition: the old text is stored"
 
         try:
             _write_file(header, "#pragma once\n/* every declaration is gone */\n")
@@ -1742,26 +1704,16 @@ class TestReindexFileImplEdgeCases:
                                        with_analysis=False)
             assert "error" not in result, f"reindex failed: {result.get('error')}"
 
-            current_hash = compute_source_hash(header)
-            rows = stored_rows()
-            refreshed = [r for r in rows if r["source_hash"] == current_hash]
-            stale = [r for r in rows if r["source_hash"] != current_hash]
-            assert refreshed, (
-                "the re-parsed utils.c context's row must carry the current hash"
+            content, source_hash = stored()
+            assert "compute_checksum" not in content, (
+                "the declaration left the file, thus read_file must stop serving it"
             )
-            for row in refreshed:
-                content = row["content"] or ""
-                assert "compute_checksum" not in content, (
-                    "the declaration left the file, thus read_file must stop serving it"
-                )
-                assert content == "\n" * len(content), (
-                    f"every line is inactive, thus every line blanks out: {content!r}"
-                )
-            for row in stale:
-                assert "compute_checksum" in (row["content"] or ""), (
-                    "a context that was not re-parsed legitimately keeps the "
-                    "old text until its own TU reindexes"
-                )
+            assert content == "\n" * len(content), (
+                f"every line is inactive, thus every line blanks out: {content!r}"
+            )
+            assert source_hash == compute_source_hash(header), (
+                "content and source_hash have to move together"
+            )
         finally:
             _write_file(header, original)
             _advance_mtime(header)
@@ -2135,7 +2087,7 @@ class TestStoreSymbolsForUnitAnalysisRestore:
 
         conn.close()
 
-    def test_analysis_columns_synced_on_restore(self, store_db, tmp_path: Path, monkeypatch):
+    def test_analysis_columns_synced_on_restore(self, store_db, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Phase 3: when analysis is restored, symbols.summary/inputs/outputs are updated."""
         from fw_context_mcp.indexer.ops import store_symbols_for_unit
 
@@ -2197,18 +2149,10 @@ class TestStoreSymbolsForUnitAnalysisRestore:
             "int calc(void)",
             "",
         )
-        import fw_context_mcp.cache_client as _cache_client
-
-        # Redirect the local cache under tmp_path by patching the module
-        # attributes get_local_cache_db() reads at call time.  _LOCAL_CACHE_PATH
-        # is derived from _LOCAL_CACHE_DIR at import time, so BOTH must be
-        # patched.  The HOME env var is NOT consulted: Path.home() was already
-        # evaluated at import, and on Windows expanduser reads USERPROFILE.
-        monkeypatch.setattr(_cache_client, "_LOCAL_CACHE_DIR", tmp_path / ".fw-context")
-        monkeypatch.setattr(
-            _cache_client, "_LOCAL_CACHE_PATH", tmp_path / ".fw-context" / "llm_cache.db"
-        )
-        _get_db2 = _cache_client.get_local_cache_db
+        # The local LLM cache follows FW_CONTEXT_HOME, not HOME.  A change of
+        # HOME left this row in the cache of the operator.
+        monkeypatch.setenv("FW_CONTEXT_HOME", str(tmp_path))
+        from fw_context_mcp.cache_client import get_local_cache_db as _get_db2
 
         global_db2 = _get_db2()
         global_db2.execute(
@@ -2442,12 +2386,6 @@ def _config_hash(conn):
 # ── LLM analysis consistency tests (requires Ollama) ──────────────────
 
 
-# R2: these drive a REAL `fw-context index --analyze` against a live Ollama
-# (LLM analysis is an external provider).  NON-HERMETIC — marked
-# integration_external so ordinary runs deselect them (pyproject addopts);
-# they still SKIP with an explicit reason when Ollama is absent (conftest).
-# Opt in: `pytest -m integration_external`.
-@pytest.mark.integration_external
 @pytest.mark.ollama
 @pytest.mark.libclang
 class TestLlvmAnalysisConsistency:
@@ -2861,12 +2799,8 @@ class TestBackgroundReindex:
         conn = open_db(db_path)
         try:
             ch_before = _config_hash(conn)
-            # rows/3: select the DEFINITION row.  The modem.h declaration
-            # row (is_definition=0) is another context's observation whose
-            # extent never grows; the body edit moves the definition's.
             row = conn.execute(
-                "SELECT line, end_line FROM symbols "
-                "WHERE config_hash=? AND name='modem_send' AND is_definition=1",
+                "SELECT line, end_line FROM symbols WHERE config_hash=? AND name='modem_send'",
                 (ch_before,),
             ).fetchone()
             assert row is not None, "modem_send not found in index"
@@ -2897,11 +2831,8 @@ class TestBackgroundReindex:
             try:
                 ch_after = _config_hash(conn)
                 assert ch_after == ch_before, f"config_hash changed unexpectedly: {ch_before[:12]} → {ch_after[:12]}"
-                # Same definition-row selection as above — the declaration
-                # rows of untouched contexts keep their header extent.
                 row = conn.execute(
-                    "SELECT line, end_line FROM symbols "
-                    "WHERE config_hash=? AND name='modem_send' AND is_definition=1",
+                    "SELECT line, end_line FROM symbols WHERE config_hash=? AND name='modem_send'",
                     (ch_after,),
                 ).fetchone()
                 assert row is not None, "modem_send disappeared after reindex"
@@ -3316,105 +3247,535 @@ class TestModifiedFilesCache:
             _invalidate_modified_cache(ch)
 
 
-class TestForceRefindex:
-    """Verify ``FW_CONTEXT_FORCE_REFINDEX`` makes ``_process_unit`` skip mtime check."""
+class TestTheDecisionIsByHash:
+    """The index run decides about a unit by hashes, and by no file time.
 
-    def test_force_refindex_skips_mtime_check(self, indexed_project: Path):
-        """With FW_CONTEXT_FORCE_REFINDEX=1, unchanged files are still processed."""
-        import os as _os
+    The source, each header and the flags of the listing are compared with
+    the manifest entry.  The decision by time saw an edit that kept an old
+    time as no change (``cp -p``, a restore from a backup), and a change of
+    the flags of a unit with no edit of its source as no change too.
+    """
 
-        from fw_context_mcp.indexer.compile_commands import parse as parse_cc
-        from fw_context_mcp.indexer.db import get_file_mtimes
-        from fw_context_mcp.indexer.runner import _process_unit
+    @staticmethod
+    def _summary(result) -> str:
+        """Return the "N updated, M unchanged, K skipped" line of the run."""
+        assert result.returncode == 0, result.stderr
+        for line in result.stderr.splitlines():
+            if " updated, " in line and " unchanged, " in line and "config_hash=" in line:
+                return line
+        raise AssertionError("no summary line\n" + result.stderr[-2000:])
 
-        db_path = _db_path_for_project(indexed_project)
-        cc_json = indexed_project / "compile_commands.json"
+    @staticmethod
+    def _edit_compile_commands(project: Path, change) -> None:
+        """Apply *change* to each entry of compile_commands.json."""
+        import json
 
-        conn = open_db(db_path)
+        cc = project / "compile_commands.json"
+        entries = json.loads(cc.read_text(encoding="utf-8"))
+        for entry in entries:
+            change(entry)
+        cc.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+    def test_a_new_time_without_an_edit_parses_nothing(self, indexed_project: Path):
+        for src in (indexed_project / "src").glob("*.c"):
+            _advance_mtime(src, 30.0)
+
+        assert "0 updated, 3 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_an_edit_with_the_old_time_is_parsed(self, indexed_project: Path):
+        """A copy that keeps its time (cp -p) changes the file and not the time."""
+        utils = indexed_project / "src" / "utils.c"
+        before = utils.stat()
+        utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_late_symbol(void) { return 1; }\n",
+                         encoding="utf-8")
+        os.utime(utils, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+
+        conn = open_db(_db_path_for_project(indexed_project))
         try:
-            ch = _config_hash(conn)
-            existing = get_file_mtimes(conn, ch)
+            assert _symbol_row(conn, _config_hash(conn), "utils_late_symbol") is not None
         finally:
             conn.close()
 
-        # Use the real compilation unit from compile_commands.json
-        units = list(parse_cc(cc_json))
-        modem_unit = [u for u in units if u.file.name == "modem.c"]
-        assert modem_unit, "modem.c must be in compile_commands.json"
+    def test_a_change_of_the_flags_of_one_unit_parses_that_unit(self, indexed_project: Path):
+        """An include path in the project is not in config_hash, but it is in the flags hash."""
+        def add_include(entry: dict) -> None:
+            if entry["file"] == "modem.c":
+                entry["arguments"].insert(1, "-Iextra")
 
-        # ── Without env var: should return "unchanged" ──
-        _os.environ.pop("FW_CONTEXT_FORCE_REFINDEX", None)
-        status, _, _, _, _ = _process_unit(
-            modem_unit[0],
-            ch,
-            indexed_project,
-            [],
-            [],
-            False,
-            db_path,
-            existing_files=existing,
+        self._edit_compile_commands(indexed_project, add_include)
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_a_transient_macro_parses_nothing(self, indexed_project: Path):
+        """A build time in each unit, and then a new one, as an Mbed OS build writes it."""
+        def stamp(value: str):
+            def change(entry: dict) -> None:
+                args = [a for a in entry["arguments"] if not a.startswith("-DMBED_BUILD_TIMESTAMP=")]
+                args.insert(1, f"-DMBED_BUILD_TIMESTAMP={value}")
+                entry["arguments"] = args
+            return change
+
+        self._edit_compile_commands(indexed_project, stamp("1791274230.0483081"))
+        assert "0 updated, 3 unchanged" in self._summary(_index_cli(indexed_project))
+
+        self._edit_compile_commands(indexed_project, stamp("1791301862.9208605"))
+        assert "0 updated, 3 unchanged" in self._summary(_index_cli(indexed_project))
+
+    @staticmethod
+    def _run_in_process(project: Path, *, index_refs: bool = False) -> None:
+        from fw_context_mcp.indexer.runner import run
+
+        run(
+            compile_commands=project / "compile_commands.json",
+            db_path=_db_path_for_project(project),
+            vendor_paths=[],
+            project_paths=[],
+            project_root=project,
+            index_refs=index_refs,
+            index_embeddings=False,
+            analyze_symbols=False,
+            analyze_overrides=False,
         )
-        assert status == "unchanged", (
-            f"Without FORCE_REFINDEX, unchanged file should return 'unchanged', got '{status}'"
-        )
 
-        # ── With env var: should NOT return "unchanged" ──
-        _os.environ["FW_CONTEXT_FORCE_REFINDEX"] = "1"
+    def test_a_save_after_the_parse_is_seen_by_the_next_run(self, indexed_project: Path, monkeypatch):
+        """An index run takes hours on a large project, and the user saves files meanwhile.
+
+        The manifest took the source hash at the end of the run, thus the
+        hash of the text saved AFTER the parse.  The next run found the
+        entry current, and the index kept the symbols of the old text.
+        """
+        from fw_context_mcp.indexer import runner
+
+        utils = indexed_project / "src" / "utils.c"
+        utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_first_edit(void) { return 1; }\n",
+                         encoding="utf-8")
+        original = runner._parse_unit
+
+        def parse_then_save(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "utils.c":
+                utils.write_text(
+                    utils.read_text(encoding="utf-8") + "\nint utils_second_edit(void) { return 2; }\n",
+                    encoding="utf-8",
+                )
+            return result
+
+        monkeypatch.setattr(runner, "_parse_unit", parse_then_save)
+        self._run_in_process(indexed_project)
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+        conn = open_db(_db_path_for_project(indexed_project))
         try:
-            status_forced, syms, _, _, _ = _process_unit(
-                modem_unit[0],
-                ch,
-                indexed_project,
-            [],
-                [],
-                False,
-                db_path,
-                existing_files=existing,
-            )
-            assert status_forced == "updated", (
-                f"With FORCE_REFINDEX, unchanged file should return 'updated', got '{status_forced}'"
-            )
-            assert syms > 0, "FORCE_REFINDEX should extract symbols from the file"
-        finally:
-            _os.environ.pop("FW_CONTEXT_FORCE_REFINDEX", None)
-
-    def test_force_refindex_0_does_not_skip(self, indexed_project: Path):
-        """FW_CONTEXT_FORCE_REFINDEX=0 behaves same as unset (normal mtime check)."""
-        import os as _os
-
-        from fw_context_mcp.indexer.compile_commands import parse as parse_cc
-        from fw_context_mcp.indexer.db import get_file_mtimes
-        from fw_context_mcp.indexer.runner import _process_unit
-
-        db_path = _db_path_for_project(indexed_project)
-        cc_json = indexed_project / "compile_commands.json"
-
-        conn = open_db(db_path)
-        try:
-            ch = _config_hash(conn)
-            existing = get_file_mtimes(conn, ch)
+            assert _symbol_row(conn, _config_hash(conn), "utils_second_edit") is not None
         finally:
             conn.close()
 
-        units = list(parse_cc(cc_json))
-        modem_unit = [u for u in units if u.file.name == "modem.c"]
-        assert modem_unit, "modem.c must be in compile_commands.json"
+    def test_a_save_during_the_parse_is_not_hidden(self, indexed_project: Path, monkeypatch):
+        """The row of a parsed unit took the time of the file at the store, after the parse.
 
-        _os.environ["FW_CONTEXT_FORCE_REFINDEX"] = "0"
+        Beside the hash of the text that the parse read, the query side read
+        that row as unchanged: it does not hash a file whose time is the
+        stored one.
+        """
+        from fw_context_mcp.indexer import runner
+        from fw_context_mcp.mcp.shared.stale import _count_modified_files
+
+        utils = indexed_project / "src" / "utils.c"
+        utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_parsed(void) { return 1; }\n",
+                         encoding="utf-8")
+        original = runner._parse_unit
+
+        def parse_then_save(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "utils.c":
+                utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_saved(void) { return 2; }\n",
+                                 encoding="utf-8")
+                _advance_mtime(utils, 30.0)
+            return result
+
+        monkeypatch.setattr(runner, "_parse_unit", parse_then_save)
+        self._run_in_process(indexed_project)
+
+        conn = open_db(_db_path_for_project(indexed_project))
         try:
-            status, _, _, _, _ = _process_unit(
-                modem_unit[0],
-                ch,
-                indexed_project,
-            [],
-                [],
-                False,
-                db_path,
-                existing_files=existing,
-            )
-            assert status == "unchanged", f"FORCE_REFINDEX=0 should still do mtime check, got '{status}'"
+            assert _count_modified_files(conn, _config_hash(conn), indexed_project) == 1
         finally:
-            _os.environ.pop("FW_CONTEXT_FORCE_REFINDEX", None)
+            conn.close()
+
+    def _run_with_a_header_save(self, project: Path, monkeypatch, *, after: str) -> Path:
+        """Edit ``utils.h``, then run the index and save it again after one parse.
+
+        ``main.c`` and ``utils.c`` include ``utils.h``.  *after* is
+        ``"first"`` or ``"last"``: the save comes after the parse of the
+        first or of the last of the two units in the order of the run.  The
+        first one owns the symbols and the content of the header.  A parse
+        before the save reads the first edit (``utils_h_parsed``), a parse
+        after it reads the second one (``utils_h_saved``).
+        """
+        from fw_context_mcp.indexer import runner
+
+        header = project / "src" / "utils.h"
+        text = header.read_text(encoding="utf-8")
+        header.write_text(text.replace("#endif", "int utils_h_parsed(void);\n#endif"), encoding="utf-8")
+        original = runner._parse_unit
+        includers = {"main.c", "utils.c"}
+        units_seen: list[str] = []
+
+        def parse_then_save(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name in includers:
+                units_seen.append(unit.file.name)
+            if unit.file.name in includers and len(units_seen) == (1 if after == "first" else len(includers)):
+                current = header.read_text(encoding="utf-8")
+                header.write_text(current.replace("#endif", "int utils_h_saved(void);\n#endif"), encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(runner, "_parse_unit", parse_then_save)
+        self._run_in_process(project)
+        monkeypatch.setattr(runner, "_parse_unit", original)
+        return header
+
+    def test_a_header_saved_after_its_last_parse_is_seen_by_the_next_run(self, indexed_project: Path, monkeypatch):
+        """The hash of a header came from a read of the disk after the parse.
+
+        The manifest and the files row then held the hash of the text saved
+        after the parse, beside the symbols of the text before it.  The next
+        run found every unit current, and ``get_project_status`` found no
+        change.
+        """
+        from fw_context_mcp.mcp.shared.stale import _count_modified_files
+
+        self._run_with_a_header_save(indexed_project, monkeypatch, after="last")
+
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _count_modified_files(conn, _config_hash(conn), indexed_project) == 1
+        finally:
+            conn.close()
+
+        assert "2 updated, 1 unchanged" in self._summary(_index_cli(indexed_project))
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _symbol_row(conn, _config_hash(conn), "utils_h_saved") is not None
+        finally:
+            conn.close()
+
+    def test_a_header_saved_between_two_units_is_seen_by_the_next_run(self, indexed_project: Path, monkeypatch):
+        """Two units of one run read two texts of one header.
+
+        The manifest holds one hash for each header, and the record of the
+        unit that came last replaced the other.  The symbols of the header
+        are the ones of the unit that walked it first, thus of the old text.
+        The later unit, which skips the header, also blanked its content and
+        gave its row the hash of the new text.
+        """
+        from fw_context_mcp.mcp.shared.stale import _count_modified_files
+
+        self._run_with_a_header_save(indexed_project, monkeypatch, after="first")
+
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _count_modified_files(conn, _config_hash(conn), indexed_project) == 1
+        finally:
+            conn.close()
+
+        assert "2 updated, 1 unchanged" in self._summary(_index_cli(indexed_project))
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _symbol_row(conn, _config_hash(conn), "utils_h_saved") is not None
+        finally:
+            conn.close()
+
+    def test_the_content_of_a_header_is_the_text_of_the_parse(self, indexed_project: Path, monkeypatch):
+        """``files.content`` came from a read of the disk after the parse.
+
+        ``read_file`` and ``search_content`` then gave text that no symbol
+        row describes, with active lines that the parse computed for the
+        other text.  Measured before the fix: the 9 lines of the saved text,
+        filtered with the active lines of the 8 lines of the parsed one.
+        """
+        header = self._run_with_a_header_save(indexed_project, monkeypatch, after="first")
+        parsed_text = header.read_text(encoding="utf-8").replace("int utils_h_saved(void);\n", "")
+
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            row = conn.execute(
+                "SELECT content FROM files WHERE config_hash=? AND path LIKE ?",
+                (_config_hash(conn), "%utils.h"),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert len(row["content"].splitlines()) == len(parsed_text.splitlines())
+        assert "int utils_h_parsed(void);" in row["content"].splitlines()
+
+    def test_the_body_of_a_symbol_is_the_text_of_the_parse(self, indexed_project: Path, monkeypatch):
+        """The body of a symbol came from a read of the disk after the parse.
+
+        A source saved after the parse gave the row the body of the new text
+        within the extent that the parse computed for the old one.
+        """
+        from fw_context_mcp.indexer import runner
+
+        utils = indexed_project / "src" / "utils.c"
+        utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_body_probe(void) { return 11; }\n",
+                         encoding="utf-8")
+        original = runner._parse_unit
+
+        def parse_then_save(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "utils.c":
+                utils.write_text(utils.read_text(encoding="utf-8").replace("return 11;", "return 22;"),
+                                 encoding="utf-8")
+            return result
+
+        monkeypatch.setattr(runner, "_parse_unit", parse_then_save)
+        self._run_in_process(indexed_project)
+
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            row = conn.execute(
+                "SELECT source FROM symbols WHERE config_hash=? AND name='utils_body_probe'", (_config_hash(conn),),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert "return 11;" in row["source"]
+
+    def test_a_save_after_the_parse_of_reindex_file_is_seen_by_the_next_run(self, indexed_project: Path, monkeypatch):
+        """reindex_file parsed a second time for the manifest, and hashed the disk.
+
+        A file saved between the parse and the manifest update gave the
+        entry the hash of the new text beside the symbols of the old one,
+        and the next index run found the unit current.
+        """
+        from fw_context_mcp.indexer import symbols
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file
+
+        utils = indexed_project / "src" / "utils.c"
+        utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_reindex_parsed(void) { return 1; }\n",
+                         encoding="utf-8")
+        original = symbols.extract_all
+
+        def parse_then_save(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "utils.c":
+                utils.write_text(
+                    utils.read_text(encoding="utf-8") + "\nint utils_reindex_saved(void) { return 2; }\n",
+                    encoding="utf-8",
+                )
+            return result
+
+        monkeypatch.setattr(symbols, "extract_all", parse_then_save)
+        result = reindex_file("src/utils.c", str(indexed_project), with_analysis=False)
+        monkeypatch.setattr(symbols, "extract_all", original)
+        assert "error" not in result, result
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _symbol_row(conn, _config_hash(conn), "utils_reindex_saved") is not None
+        finally:
+            conn.close()
+
+    def test_every_row_has_a_hash_after_a_run(self, indexed_project: Path):
+        """The query side has only the time of a row without a hash.
+
+        The content pass wrote the rows of the headers that no symbol
+        created (system headers above all) without one: measured, 1 to 59
+        rows in each real index.
+        """
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            rows = conn.execute(
+                "SELECT path FROM files WHERE config_hash=? AND source_hash=''", (_config_hash(conn),),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert [r["path"] for r in rows] == []
+
+    def test_a_save_after_the_decision_is_not_hidden(self, indexed_project: Path, monkeypatch):
+        """The decision runs before the loop.  A save before the loop reaches the unit is a change.
+
+        The row got the time of the file at the write, beside the hash of
+        the decision, and the query side does not hash a file whose time is
+        the stored one: it reported no modified file.
+        """
+        from fw_context_mcp.indexer import runner
+        from fw_context_mcp.mcp.shared.stale import _count_modified_files
+
+        utils = indexed_project / "src" / "utils.c"
+        original = runner.decide_units
+
+        def decide_then_save(*args, **kwargs):
+            decisions = original(*args, **kwargs)
+            utils.write_text(utils.read_text(encoding="utf-8") + "\nint utils_late(void) { return 3; }\n",
+                             encoding="utf-8")
+            _advance_mtime(utils, 30.0)
+            return decisions
+
+        monkeypatch.setattr(runner, "decide_units", decide_then_save)
+        self._run_in_process(indexed_project)
+
+        conn = open_db(_db_path_for_project(indexed_project))
+        try:
+            assert _count_modified_files(conn, _config_hash(conn), indexed_project) == 1
+        finally:
+            conn.close()
+
+    def test_a_stopped_run_keeps_the_units_that_it_parsed(self, indexed_project: Path, monkeypatch):
+        """The manifest was written at the end of the run only.
+
+        A first index of a large project runs for hours, and a run that a
+        watchdog stopped left the preliminary manifest: the next run parsed
+        every unit again.  The checkpoint keeps the entries of the units
+        that the stopped run stored.
+        """
+        from fw_context_mcp.indexer import runner
+
+        for src in (indexed_project / "src").glob("*.c"):
+            src.write_text(src.read_text(encoding="utf-8") + "\n/* edited */\n", encoding="utf-8")
+
+        class Stop(Exception):
+            pass
+
+        original = runner._parse_unit
+
+        def parse_until_utils(unit, *args, **kwargs):
+            if unit.file.name == "utils.c":
+                raise Stop
+            return original(unit, *args, **kwargs)
+
+        monkeypatch.setattr(runner, "MANIFEST_CHECKPOINT_S", 0.0)
+        monkeypatch.setattr(runner, "_parse_unit", parse_until_utils)
+        with pytest.raises(Stop):
+            self._run_in_process(indexed_project)
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_a_run_stopped_before_its_post_processing_is_finished_by_the_next(
+        self, indexed_project: Path, monkeypatch,
+    ):
+        """Every unit was stored, the post-processing never ran.
+
+        The next run finds each unit unchanged, thus it parses nothing, and
+        the expanded values of the macros ran only after a parse.  The run
+        marker makes the next run run that step, and only that run.
+        """
+        from fw_context_mcp.indexer import _run_marker, runner
+
+        for src in (indexed_project / "src").glob("*.c"):
+            src.write_text(src.read_text(encoding="utf-8") + "\n/* edited */\n", encoding="utf-8")
+
+        class Stop(Exception):
+            pass
+
+        def no_post_processing(*args, **kwargs):
+            raise Stop
+
+        monkeypatch.setattr(runner, "MANIFEST_CHECKPOINT_S", 0.0)
+        monkeypatch.setattr(runner, "_run_postprocess", no_post_processing)
+        with pytest.raises(Stop):
+            self._run_in_process(indexed_project)
+        db_dir = _db_path_for_project(indexed_project).parent
+        assert list(db_dir.glob(f"{_run_marker.PREFIX}*{_run_marker.SUFFIX}")), "the stopped run left no marker"
+
+        finishing = _index_cli(indexed_project)
+        assert "0 updated, 3 unchanged" in self._summary(finishing)
+        assert "Post-process: macros" in finishing.stderr
+        assert not list(db_dir.glob(f"{_run_marker.PREFIX}*{_run_marker.SUFFIX}"))
+
+        quiet = _index_cli(indexed_project)
+        assert "0 updated, 3 unchanged" in self._summary(quiet)
+        assert "Post-process: macros" not in quiet.stderr
+
+    def test_a_stopped_run_parses_its_unresolved_dispatch_units_again(self, indexed_project: Path, monkeypatch):
+        """A dispatch edge waits in a TEMP table for the post-processing, and a stop loses it.
+
+        The checkpoint keeps the unit as unchanged, thus no later run gave
+        the edge again.  The marker names the unit, and the next run parses it.
+        """
+        from fw_context_mcp.indexer import runner
+        from fw_context_mcp.indexer.models import PendingDispatch
+
+        for src in (indexed_project / "src").glob("*.c"):
+            src.write_text(src.read_text(encoding="utf-8") + "\n/* edited */\n", encoding="utf-8")
+
+        class Stop(Exception):
+            pass
+
+        original = runner._parse_unit
+
+        def parse_with_a_dispatch(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "modem.c":
+                result[1].pending_dispatches.append(PendingDispatch(
+                    callee_qn="events::EventQueue::call_every", target_qn_partial="modem_init",
+                    target_name="modem_init", file="src/modem.c", line=1, caller_usr=None,
+                ))
+            return result
+
+        def no_post_processing(*args, **kwargs):
+            raise Stop
+
+        monkeypatch.setattr(runner, "MANIFEST_CHECKPOINT_S", 0.0)
+        monkeypatch.setattr(runner, "_parse_unit", parse_with_a_dispatch)
+        monkeypatch.setattr(runner, "_run_postprocess", no_post_processing)
+        with pytest.raises(Stop):
+            self._run_in_process(indexed_project, index_refs=True)
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_a_stop_during_the_post_processing_keeps_the_dispatch_units(self, indexed_project: Path, monkeypatch):
+        """The manifest step writes the full manifest, and the macros step after it runs for minutes.
+
+        The marker held only the units of the last checkpoint, and a run
+        shorter than one checkpoint wrote none: a stop in the macros step
+        lost the dispatch edges of the units stored after it.
+        """
+        from fw_context_mcp.indexer import _postprocess, runner
+        from fw_context_mcp.indexer.models import PendingDispatch
+
+        for src in (indexed_project / "src").glob("*.c"):
+            src.write_text(src.read_text(encoding="utf-8") + "\n/* edited */\n", encoding="utf-8")
+
+        class Stop(Exception):
+            pass
+
+        original = runner._parse_unit
+
+        def parse_with_a_dispatch(unit, *args, **kwargs):
+            result = original(unit, *args, **kwargs)
+            if unit.file.name == "modem.c":
+                result[1].pending_dispatches.append(PendingDispatch(
+                    callee_qn="events::EventQueue::call_every", target_qn_partial="modem_init",
+                    target_name="modem_init", file="src/modem.c", line=1, caller_usr=None,
+                ))
+            return result
+
+        def stop(*args, **kwargs):
+            raise Stop
+
+        steps = [(name, stop if name == "macros" else fn, guard) for name, fn, guard in _postprocess._STEPS]
+        monkeypatch.setattr(runner, "_parse_unit", parse_with_a_dispatch)
+        monkeypatch.setattr(_postprocess, "_STEPS", steps)
+        with pytest.raises(Stop):
+            self._run_in_process(indexed_project, index_refs=True)
+
+        assert "1 updated, 2 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_force_refindex_parses_every_unit(self, indexed_project: Path, monkeypatch):
+        monkeypatch.setenv("FW_CONTEXT_FORCE_REFINDEX", "1")
+
+        assert "3 updated, 0 unchanged" in self._summary(_index_cli(indexed_project))
+
+    def test_force_refindex_0_is_no_force(self, indexed_project: Path, monkeypatch):
+        monkeypatch.setenv("FW_CONTEXT_FORCE_REFINDEX", "0")
+
+        assert "0 updated, 3 unchanged" in self._summary(_index_cli(indexed_project))
 
 
 class TestBgReindexEndToEnd:
@@ -4403,7 +4764,28 @@ class TestCoveragePurge:
         does NOT exercise the extension whitelist that made the manifest
         incomplete: this fixture's system headers are all ``.h``, so they were
         recorded either way.  ``TestManifestRecordsEveryInclude`` covers that.
+
+        The out-of-project header is a file of the test, not ``<stdio.h>``:
+        libclang finds no system header on macOS without ``-isysroot``.
         """
+        import json
+
+        sdk = c_project.parent / "sdk"
+        sdk.mkdir()
+        _write_file(sdk / "sdk_hal.h", "#ifndef SDK_HAL_H\n#define SDK_HAL_H\nint sdk_hal_init(void);\n#endif\n")
+        main_c = c_project / "src" / "main.c"
+        main_c.write_text(
+            main_c.read_text(encoding="utf-8").replace(
+                '#include "utils.h"', '#include "utils.h"\n#include <sdk_hal.h>'
+            ),
+            encoding="utf-8",
+        )
+        cc_json = c_project / "compile_commands.json"
+        cc = json.loads(cc_json.read_text(encoding="utf-8"))
+        for entry in cc:
+            entry["arguments"][1:1] = ["-isystem", str(sdk)]
+        cc_json.write_text(json.dumps(cc, indent=2), encoding="utf-8")
+
         db_path = _db_path_for_project(c_project)
         assert _index_cli(c_project).returncode == 0
 
@@ -4721,6 +5103,127 @@ class TestManifestRecordsEveryInclude:
             conn.close()
 
 
+class TestReindexRefreshesEachListing:
+    """``reindex_file`` refreshes the manifest entry of each listing of a file.
+
+    compile_commands.json can list one file more than once, with other
+    flags.  reindex_file refreshed the FIRST entry of the file for each
+    listing: the first entry was written three times, and the other two kept
+    their old hashes, thus the staleness check reported the file stale after
+    the reindex.  A new entry also got no flags hash, and a decision by flags
+    hash parses such a unit in each run.
+    """
+
+    @staticmethod
+    def _unit(tmp_path: Path, rel: str, define: str):
+        from unittest.mock import MagicMock
+
+        src = tmp_path / rel
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("int x;\n")
+        unit = MagicMock()
+        unit.file = src
+        unit.directory = tmp_path
+        unit.clang_args = [define]
+        unit.raw_entry = {"file": rel, "directory": str(tmp_path), "arguments": ["gcc", define, "-c", rel]}
+        return unit
+
+    @staticmethod
+    def _flags(unit) -> str:
+        from fw_context_mcp.indexer.config_hash import compute_flags_hash
+
+        return compute_flags_hash(unit.raw_entry, transient_defines=DEFAULT_TRANSIENT_DEFINES)
+
+    def _run(self, tmp_path: Path, monkeypatch, entries: list[dict], units: list) -> dict:
+        from types import SimpleNamespace
+
+        from fw_context_mcp.indexer import manifest as manifest_mod
+        from fw_context_mcp.indexer.manifest import MANIFEST_FORMAT
+        from fw_context_mcp.mcp.handlers import maintenance
+
+        saved: dict = {}
+        manifest = {
+            "_format": MANIFEST_FORMAT, "project_root": str(tmp_path),
+            "arg_sets": [], "headers": {"src/h.h": {"hash": "OLD", "generated": False}},
+            "entries": entries,
+        }
+
+        monkeypatch.setattr(manifest_mod, "load", lambda db_dir, config_hash: manifest)
+        monkeypatch.setattr(manifest_mod, "save", lambda data, db_dir, config_hash: saved.update(data))
+        # The parse read the header, and it changed.  No TU: the entry gets
+        # no source hash, which is not "OLD" either.
+        maintenance._update_manifest_after_reindex(
+            [(unit, SimpleNamespace(tu=None)) for unit in units],
+            [[{"path": "src/h.h", "hash": "NEW", "generated": False}] for _ in units],
+            tmp_path, tmp_path / "index", "deadbeef",
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
+        )
+        return saved
+
+    @staticmethod
+    def _entry(file: str, flags_hash: str) -> dict:
+        return {"file": file, "source_hash": "OLD", "headers": ["src/h.h"], "flags_hash": flags_hash}
+
+    def test_each_listing_refreshes_its_own_entry(self, tmp_path, monkeypatch):
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        entries = [self._entry("misc/empty.c", self._flags(b)), self._entry("misc/empty.c", self._flags(a))]
+
+        saved = self._run(tmp_path, monkeypatch, entries, [a, b])
+
+        assert all(e["source_hash"] != "OLD" for e in saved["entries"])
+        assert [e["flags_hash"] for e in saved["entries"]] == [self._flags(b), self._flags(a)]
+
+    def test_a_listing_with_new_flags_refreshes_the_entry_that_no_listing_matches(self, tmp_path, monkeypatch):
+        """The exact matches go first: the listing with new flags takes what is left."""
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        c = self._unit(tmp_path, "misc/empty.c", "-DC")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        entries = [self._entry("misc/empty.c", self._flags(a)), self._entry("misc/empty.c", self._flags(b))]
+
+        saved = self._run(tmp_path, monkeypatch, entries, [c, b])
+
+        assert [e["flags_hash"] for e in saved["entries"]] == [self._flags(c), self._flags(b)]
+        assert all(e["source_hash"] != "OLD" for e in saved["entries"])
+
+    def test_a_listing_that_was_not_parsed_is_flagged(self, tmp_path, monkeypatch):
+        """reindex_file of a header parses one unit: the other listing is behind.
+
+        The header hash in the shared table is new now, thus without the
+        mark no check would see that the rows of the other listing come from
+        the old header text.
+        """
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        b = self._unit(tmp_path, "misc/empty.c", "-DB")
+        entries = [self._entry("misc/empty.c", self._flags(a)), self._entry("misc/empty.c", self._flags(b))]
+
+        saved = self._run(tmp_path, monkeypatch, entries, [a])
+
+        assert "needs_reparse" not in saved["entries"][0]
+        assert saved["entries"][1]["needs_reparse"] is True
+
+    def test_a_listing_with_new_flags_gets_its_own_arguments(self, tmp_path, monkeypatch):
+        """The refreshed entry describes the new flags: hash and argument list agree."""
+        from fw_context_mcp.indexer.manifest import tu_arguments
+
+        a = self._unit(tmp_path, "misc/empty.c", "-DA")
+        c = self._unit(tmp_path, "misc/empty.c", "-DC")
+        entries = [self._entry("misc/empty.c", self._flags(a))]
+        entries[0]["arg_set"] = 0
+
+        saved = self._run(tmp_path, monkeypatch, entries, [c])
+
+        assert saved["entries"][0]["flags_hash"] == self._flags(c)
+        assert tu_arguments(saved, saved["entries"][0]) == ["-DC"]
+
+    def test_a_new_entry_has_the_flags_hash(self, tmp_path, monkeypatch):
+        a = self._unit(tmp_path, "src/new.c", "-DA")
+
+        saved = self._run(tmp_path, monkeypatch, [], [a])
+
+        assert saved["entries"][0]["flags_hash"] == self._flags(a)
+
+
 class TestReindexKeepsTheGeneratedFlag:
     """``reindex_file`` must not turn a generated header into a plain one.
 
@@ -4767,27 +5270,25 @@ class TestReindexKeepsTheGeneratedFlag:
         return manifest
 
     def _run(self, tmp_path: Path, *, entries, build_dir_patterns, monkeypatch):
-        """Drive _update_manifest_after_reindex with a stubbed header collector.
+        """Drive _update_manifest_after_reindex with the header record of one store.
 
-        The real collector needs libclang and a compiled TU.  What this test
-        checks is the patterns that reach it and the merge that follows, so
-        the stub records the patterns and returns the header the build
-        generates.
+        The store runs without build-output patterns, thus its record says
+        ``generated: False``.  What this test checks is the patterns that
+        decide ``generated`` here and the merge that follows, so a spy
+        records the patterns that reach ``_is_generated_header``.
         """
-        from fw_context_mcp.mcp.handlers import maintenance
+        from types import SimpleNamespace
+
         from fw_context_mcp.indexer import manifest as manifest_mod
+        from fw_context_mcp.mcp.handlers import maintenance
 
         saved: dict = {}
         seen: list = []
+        is_generated = manifest_mod._is_generated_header
 
-        def fake_collect(unit, root, build_dir_patterns, header_table):
+        def spy(path, build_dir_patterns):
             seen.append(build_dir_patterns)
-            path = "build/zephyr/include/generated/autoconf.h"
-            header_table[path] = {
-                "hash": "NEW",
-                "generated": manifest_mod._is_generated_header(path, build_dir_patterns),
-            }
-            return [path]
+            return is_generated(path, build_dir_patterns)
 
         def fake_load(db_dir, config_hash):
             return self._manifest(
@@ -4798,15 +5299,17 @@ class TestReindexKeepsTheGeneratedFlag:
             saved.update(data)
             return config_hash
 
-        monkeypatch.setattr(manifest_mod, "_collect_headers_from_tokens", fake_collect)
+        monkeypatch.setattr(manifest_mod, "_is_generated_header", spy)
         monkeypatch.setattr(manifest_mod, "load", fake_load)
         monkeypatch.setattr(manifest_mod, "save", fake_save)
 
         maintenance._update_manifest_after_reindex(
-            [(self._unit(tmp_path, "src/main.c"), object())],
+            [(self._unit(tmp_path, "src/main.c"), SimpleNamespace(tu=None))],
+            [[{"path": "build/zephyr/include/generated/autoconf.h", "hash": "NEW", "generated": False}]],
             tmp_path,
             tmp_path / "index",
             "deadbeef",
+            transient_defines=DEFAULT_TRANSIENT_DEFINES,
         )
         return saved, seen
 

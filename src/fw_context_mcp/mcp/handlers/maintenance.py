@@ -93,7 +93,11 @@ from ...indexer.db import (
     symbols_without_embedding,
     transaction,
 )
-from ..background import read_reindex_progress, read_reindex_state
+from ..background import (  # noqa: F401  — read_reindex_state is re-exported
+    _is_bg_reindex_running,
+    read_reindex_progress,
+    read_reindex_state,
+)
 from ..shared.stale import (
     _check_header_staleness,
     _count_modified_files,
@@ -858,7 +862,7 @@ def get_active_build(
         # wording.  fw-context builds them on its own where the backend can
         # isolate its output, and then the caller has nothing to do; where it
         # cannot, or where a build already failed, the caller must act.
-        auto_state = _autobuild_state(root, proj_cfg, db_path, new_sources)
+        auto_state = _autobuild_state(root, proj_cfg, new_sources)
 
         # Three conditions force a reindex:
         #   1. Schema version in DB is older than current code expects.
@@ -1839,6 +1843,7 @@ def _reindex_parse_and_store(
     target: Path,
     vendor_patterns: list[str],
     project_patterns_list: list[str],
+    transient_defines: Collection[str],
 ) -> tuple[int, dict]:
     """Parse one or more translation units with libclang and store their symbols.
 
@@ -1855,8 +1860,6 @@ def _reindex_parse_and_store(
     ``symbols_updated``, ``elapsed_s``, and optionally ``skipped_tus``.
     """
     from ...indexer.compile_commands import CompilationUnit as TU
-    from ...indexer.context_identity import unit_identity_fields
-    from ...indexer.db import get_file_hashes_by_context
     from ...indexer.db import write_lock as db_write_lock
     from ...indexer.ops import store_symbols_for_unit
     from ...indexer.symbols import (
@@ -1867,22 +1870,20 @@ def _reindex_parse_and_store(
 
     config_hash = cfg_data["config_hash"]
 
-    # Staleness records per (path, context_id) — the same split the full
-    # index run uses.  The path-keyed view would let the first context's
-    # record falsely skip a second context's never-indexed command of the
-    # same file.
-    existing_by_context: dict[str, dict] = {}
-    for (path, ctx), rec in get_file_hashes_by_context(conn, config_hash).items():
-        existing_by_context.setdefault(ctx, {})[path] = rec
-
     # Phase 1: parse all matching TUs before acquiring the write lock.
     # Parsing is CPU-bound and does not touch the database — doing it
     # outside the lock minimises contention.
+    #
+    # return_tu: the store takes from the TU the lines that the preprocessor
+    # skipped and the text that the parse read, with its hash.  Without it,
+    # the stored bodies kept their inactive #if branches, and each row kept
+    # the hash of the text before the edit.  The TUs of one call are few:
+    # the listings of one source file, or one unit for a header.
     parsed_units: list[tuple[TU, ExtractionResult]] = []
     skipped_tus: list[str] = []
     for unit in matching:
         try:
-            parsed = extract_all(unit, with_refs=cfg_refs)
+            parsed = extract_all(unit, with_refs=cfg_refs, return_tu=True)
             parsed_units.append((unit, parsed))
         except sqlite3.Error as exc:
             return 0, {"error": f"DB error during parse of {unit.file.name}: {exc}"}
@@ -1904,94 +1905,20 @@ def _reindex_parse_and_store(
             # in a single transaction per TU.  Each TU gets its own
             # transaction so partial failures don't roll back all work.
             with db_write_lock(db_path.parent, timeout=60.0):
+                # The header records of each store, for the manifest below:
+                # their hashes are the ones of the text that the parse read.
+                unit_headers: list[list[dict] | None] = []
                 for unit, parsed in parsed_units:
-                    # ADR-001 identity of THIS compile action.  Without it
-                    # the rows landed under the canonical context_id='',
-                    # a phantom that overwrote per-context rows and let
-                    # the other context's stale rows survive.
-                    ctx_id = unit_identity_fields(
-                        unit, config_hash, root, entry_index=0
-                    )["context_id"]
                     with transaction(conn):
-                        syms_added, _, _headers = store_symbols_for_unit(
+                        syms_added, _, headers = store_symbols_for_unit(
                             conn, unit, config_hash, root,
                             vendor_patterns=vendor_patterns,
                             project_patterns=project_patterns_list,
                             index_refs=cfg_refs,
                             pre_parsed=parsed,
-                            existing_files=existing_by_context.get(ctx_id),
-                            context_id=ctx_id,
                         )
                         total_symbols += syms_added
-
-                # Phase 2.5 (M4): v2 certify/publish/bind for each re-parsed TU.
-                # When v2 write-authority (or shadow) is on, publish the
-                # updated SemanticState to v2 and bind the TU into the v2
-                # World.  This closes M4-BUG-002 (reindex_file_impl bypassed
-                # v2, leaving the v2 World stale and the M3B read authority
-                # returning stale data).
-                from ...indexer._unit_processor import _legacy_compat_on
-                # M5: v2 certification always runs (default semantic engine).
-                # In compat mode, legacy also runs alongside.
-                if True:
-                    try:
-                        import importlib as _imp
-                        _worlds_mod = _imp.import_module(
-                            "fw_context_mcp.store_v2.worlds")
-                        _cert_mod = _imp.import_module(
-                            "fw_context_mcp.store_v2.certify")
-                        _publish_mod = _imp.import_module(
-                            "fw_context_mcp.store_v2.publish")
-                        _v2_world_ctx = _worlds_mod.build_world_context(
-                            project_root=root,
-                            build_system=cfg_data.get("build_system")
-                            if isinstance(cfg_data, dict)
-                            else (cfg_data["build_system"]
-                                  if "build_system" in cfg_data.keys()
-                                  else None),
-                            project_id=cfg_data.get("project_id")
-                            if isinstance(cfg_data, dict)
-                            else (cfg_data["project_id"]
-                                  if "project_id" in cfg_data.keys()
-                                  else None),
-                        )
-                        if _v2_world_ctx is not None:
-                            for unit, parsed in parsed_units:
-                                _ctx_id = unit_identity_fields(
-                                    unit, config_hash, root, entry_index=0
-                                )["context_id"]
-                                _cert_mod.certify_and_publish_for_unit(
-                                    unit=unit, parsed=parsed,
-                                    project_root=root,
-                                    config_hash=config_hash,
-                                    context_id=_ctx_id,
-                                    db_path=db_path, world=_v2_world_ctx)
-                            # Finalize the v2 World for this reindex run.
-                            _v2_path = db_path.parent.parent / \
-                                db_path.parent.name / "index-v2.db"
-                            _v2_store = _publish_mod.open_v2_store_for_write(
-                                _v2_path)
-                            try:
-                                _fin = _worlds_mod.finalize_world(
-                                    _v2_store, _v2_world_ctx)
-                                _worlds_mod.record_run_metrics(
-                                    _v2_store, _v2_world_ctx)
-                                log.info(
-                                    "v2 reindex world %s: %s "
-                                    "(%d bound, %d poisoned, %d missing)",
-                                    _v2_world_ctx.world_id,
-                                    _fin.world_status, _fin.bound_count,
-                                    _fin.poisoned_count, len(_fin.missing))
-                            finally:
-                                _v2_store.close()
-                    except Exception as _v2_re_exc:
-                        from ...indexer._unit_processor import \
-                            _v2_write_authority_on
-                        if _v2_write_authority_on():
-                            raise
-                        log.debug(
-                            "v2 reindex leg failed (legacy unaffected): %s",
-                            _v2_re_exc)
+                    unit_headers.append(headers)
 
                 # Phase 3: resolve macro definitions after all TUs are stored.
                 # Macro resolution needs the clang flags from one TU (they
@@ -2012,7 +1939,10 @@ def _reindex_parse_and_store(
                 if deleted_orphans:
                     log.debug("Orphan files cleaned up: %d", deleted_orphans)
 
-                _update_manifest_after_reindex(parsed_units, root, db_path.parent, config_hash)
+                _update_manifest_after_reindex(
+                    parsed_units, unit_headers, root, db_path.parent, config_hash,
+                    transient_defines=transient_defines,
+                )
 
                 elapsed = round(time.monotonic() - t0, 2)
                 result = {
@@ -2032,28 +1962,46 @@ def _reindex_parse_and_store(
 
 def _update_manifest_after_reindex(
     parsed_units: list,
+    unit_headers: list[list[dict] | None],
     root: Path,
     db_dir: Path,
     config_hash: str,
+    *,
+    transient_defines: Collection[str],
 ) -> None:
     """Update manifest.json entries for reindexed translation units.
 
     The manifest tracks each TU's source hash and its set of included
     headers.  After re-parsing a file, the manifest entry must be
-    refreshed so header-staleness detection (used by ``get_active_build``)
+    refreshed so header-staleness detection (used by ``get_project_status``)
     reflects the file's current dependencies.
+
+    compile_commands.json can list one file more than once, each time with
+    other flags, and the manifest holds one entry for each listing.  Each
+    parsed listing refreshes its own entry: see :func:`_entries_for_listings`.
+    The entry gets the flags hash of the listing, with *transient_defines*
+    as the index run computes it: the carry-over of the index run gives a
+    listing the entry with its own flags hash, and a hash of another list
+    matches no listing.
 
     When the manifest does not exist (first index, or manifest not
     enabled), this is a no-op — the ``load_manifest`` guard returns
     early.
+
+    *unit_headers* holds, for each parsed unit, the header records that its
+    store returned.  Their hashes, and the source hash of the entry, are the
+    ones of the text that the parse read.  This function used to parse each
+    unit a second time and to hash the disk: a file saved between the parse
+    and this call gave the entry the hash of the new text beside the symbols
+    of the old one, and the next index run found the unit current.
     """
     try:
-        from fw_context_mcp.utils import compute_source_hash
-
+        from ...indexer._parsed_text import file_of_parse, parsed_hash
+        from ...indexer.config_hash import compute_flags_hash
         from ...indexer.manifest import (
-            _collect_headers_from_tokens,
             _intern_arguments,
-            header_is_trusted,
+            _is_generated_header,
+            fold_headers,
             mark_entries_behind,
             merge_header_records,
             update_entry,
@@ -2083,47 +2031,51 @@ def _update_manifest_after_reindex(
                 path: record.get("hash", "")
                 for path, record in (manifest_data.get("headers") or {}).items()
             }
-            reparsed_rel: set[str] = set()
-            from ...indexer.context_identity import unit_identity_fields
-
+            refreshed: set[int] = set()
+            listings: list[tuple[str, str]] = []
             for unit, _parsed in parsed_units:
+                try:
+                    rel = unit.file.resolve().relative_to(root).as_posix()  # Windows: manifest keys are posix
+                except ValueError:
+                    rel = unit.file.resolve().as_posix()  # Windows: manifest keys are posix
+                flags = (
+                    compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                    if unit.raw_entry else ""
+                )
+                listings.append((rel, flags))
+            slots = _entries_for_listings(manifest_data.get("entries", []), listings)
+            for (unit, parsed), records, (tu_rel, flags_hash), slot in zip(
+                parsed_units, unit_headers, listings, slots, strict=True,
+            ):
+                # A store without records parsed nothing: the entry keeps
+                # what it says, and its old source hash makes the next run
+                # parse the unit.
+                if records is None:
+                    continue
                 # Records go into a per-unit table and are merged by
                 # merge_header_records, so a header this re-parse is the first
                 # to see still contributes its hash to the manifest's shared
                 # map — without a downgrade of `generated` on the way.
+                # `generated` comes from the patterns of the index run (bdp):
+                # the store had none, see the comment on bdp above.
                 header_records: dict[str, dict] = {}
-                headers = _collect_headers_from_tokens(
-                    unit, root, bdp, header_records
+                headers = fold_headers(
+                    [{**record, "generated": _is_generated_header(record["path"], bdp)} for record in records],
+                    header_records,
                 )
-                source_hash = compute_source_hash(unit.file.resolve())
-                try:
-                    tu_rel = unit.file.resolve().relative_to(root).as_posix()
-                except ValueError:
-                    tu_rel = unit.file.resolve().as_posix()
-                reparsed_rel.add(tu_rel)
-                # EVERY entry of this file, not the first one: a file
-                # compiled with two flag sets has two entries, and the
-                # first-match break left the second context at its stale
-                # hashes — the staleness check then re-parsed it on every
-                # run while reindex_file claimed the manifest current.
-                unit_ctx = unit_identity_fields(
-                    unit, config_hash, root, entry_index=0
-                )["context_id"]
-                matched = False
-                for idx, entry in enumerate(manifest_data.get("entries", [])):
-                    if entry.get("file") != tu_rel:
-                        continue
-                    # Stamp the ADR-001 identity on entries that predate
-                    # per-context manifests; a per-context entry keeps its
-                    # own id, so the re-parsed context and its entry stay
-                    # bound together.
-                    entry.setdefault("context_id", unit_ctx)
-                    if entry.get("context_id") == unit_ctx or not matched:
-                        update_entry(
-                            manifest_data, idx, source_hash, headers, header_records
-                        )
-                        matched = True
-                if not matched:
+                # "" when the TU is gone: an entry without a source hash
+                # proves nothing, thus the next run parses the unit.
+                source_hash = (
+                    parsed_hash(parsed.tu, file_of_parse(parsed.tu, str(parsed.tu.spelling)))
+                    if parsed.tu is not None else ""
+                )
+                if slot is not None:
+                    update_entry(
+                        manifest_data, slot, source_hash, headers, header_records,
+                        flags_hash=flags_hash, arguments=unit.clang_args,
+                    )
+                    refreshed.add(slot)
+                else:
                     # Same merge as update_entry uses.  This branch bypasses
                     # update_entry completely, so a plain .update() here is a
                     # second place where a False overwrites a True.
@@ -2137,8 +2089,9 @@ def _update_manifest_after_reindex(
                         ),
                         "source_hash": source_hash,
                         "headers": headers,
-                        "context_id": unit_ctx,
+                        "flags_hash": flags_hash,
                     })
+                    refreshed.add(len(manifest_data["entries"]) - 1)
             # This function refreshed the SHARED header hashes, so the next
             # full index run sees no difference for the OTHER units that
             # include those headers — their rows still come from the old
@@ -2147,10 +2100,9 @@ def _update_manifest_after_reindex(
             changed = {
                 path
                 for path, record in (manifest_data.get("headers") or {}).items()
-                if not header_is_trusted(record)
-                and record.get("hash", "") != table_before.get(path, "")
+                if record.get("hash", "") != table_before.get(path, "")
             }
-            behind = mark_entries_behind(manifest_data, changed, reparsed_rel)
+            behind = mark_entries_behind(manifest_data, changed, refreshed)
             if behind:
                 log.info(
                     "reindex_file: %d entr(ies) flagged needs_reparse after "
@@ -2233,7 +2185,8 @@ def _reindex_llm_analysis(
             (config_hash,),
         ).fetchone()[0]
         result["analysis_updated"] = analyzed_count
-    except (sqlite3.Error, RuntimeError, OSError, *_transport_error_types()) as exc:
+    except (sqlite3.Error, RuntimeError, OSError,
+            *_transport_error_types()) as exc:
         result["analysis_warning"] = f"LLM analysis skipped: {exc}"
 
 
@@ -2257,7 +2210,7 @@ def _reindex_overrides(
         return
     try:
         from ...indexer.runner import _build_overrides
-        _build_overrides(conn, config_hash, db_dir, write_lock_held=False, force=True)
+        _build_overrides(conn, config_hash, db_dir, write_lock_held=False)
         conn.commit()
     except (sqlite3.Error, RuntimeError) as exc:
         result["overrides_warning"] = f"Override analysis skipped: {exc}"
@@ -2282,8 +2235,8 @@ def _reindex_pagerank(
         return
     try:
         from ...indexer.runner import _build_hotspot_cache, _build_pagerank
-        _build_pagerank(conn, config_hash, write_lock_held=False, force=True)
-        _build_hotspot_cache(conn, config_hash, force=True)
+        _build_pagerank(conn, config_hash, write_lock_held=False)
+        _build_hotspot_cache(conn, config_hash)
         conn.commit()
     except (sqlite3.Error, RuntimeError) as exc:
         result["pagerank_warning"] = f"PageRank/hotspot recompute skipped: {exc}"
@@ -2357,8 +2310,9 @@ def _reindex_embeddings(
             (config_hash,),
         ).fetchone()[0]
         result["embeddings_updated"] = reembedded
-    except (sqlite3.Error, RuntimeError, OSError, *_transport_error_types()) as exc:
-        result["embedding_warning"] = f"Embedding regeneration skipped: {exc}"
+    except (sqlite3.Error, RuntimeError, OSError,
+            *_transport_error_types()) as exc:
+        result["embedding_warning"] = f"Embeddings not complete: {exc}"
 
 
 def _reindex_post_write_phases(
@@ -2608,7 +2562,8 @@ def reindex_file(
     file_path: Annotated[
         str,
         Field(
-            description="Absolute or project-relative path to the file to re-parse. A source file must have an entry in compile_commands.json. A header is re-parsed through one translation unit that includes it, and the result then carries a warning that other units can still hold stale symbols."
+            description="Absolute or project-relative path to the file to re-parse. A source file must have an entry in compile_commands.json. A header is re-parsed through one translation unit that includes it, and the result then carries a warning that other units can still hold stale symbols.",
+            min_length=1,
         ),
     ],
     project_root: Annotated[
@@ -2702,30 +2657,7 @@ def reindex_file(
         failed in each build.  It can add ``skipped_tus`` or ``action``.
     """
     db_path, cfg, project_id, root = _resolve_context(project_root, skip_ready_check=True)
-
-    # M7-FINAL-ECONOMIC-ADDENDUM (§6): M6 direct materialization for
-    # reindex_file.  In pure M6 mode (legacy compat OFF, the default),
-    # the legacy index.db is NOT created by runner.run(), so the legacy
-    # DB check below would fail.  When M6 write authority is on (default),
-    # fall through to the M6-direct path: open the M6 store, parse the
-    # file, materialize canonical facts directly from the libclang
-    # ExtractionResult, and return.  This makes reindex_file a NORMAL
-    # M6-direct write entrypoint (§7: NORMAL_WRITE_ENTRYPOINTS ==
-    # M6_DIRECT_WRITE_ENTRYPOINTS).
-    import os as _os_mod
-    _m6_write_auth = _os_mod.environ.get(
-        "FW_CONTEXT_M6_WRITE_AUTHORITY", "1"
-    ).strip() in ("1", "true", "yes", "on")
-
     if not db_path.exists():
-        # Legacy DB doesn't exist.  In pure M6 mode, try the M6-direct
-        # path: if the M6 store exists, reindex into it directly.
-        if _m6_write_auth:
-            m6_db_path = root / ".fw-context" / "index-m6.db"
-            if m6_db_path.exists():
-                return _reindex_m6_direct(
-                    file_path, root, m6_db_path,
-                )
         return {"error": f"No index found for {root}. Run 'fw-context index' first."}
     target, error = _reindex_resolve_target(file_path, root)
     if error:
@@ -2738,65 +2670,8 @@ def reindex_file(
         return {"error": "No build config indexed."}
 
     executor = get_executor(db_path)
-
-    def _query(conn, config_hash):
-        # WRITE path: the executor is not read-only — writes are
-        # serialized with reads by the same lock.  A collision with a
-        # concurrently running CLI indexer is absorbed by the executor's
-        # 120 s busy_timeout (the CLI indexer keeps its own 10 s
-        # fail-fast).  Timeout is enforced by _wrap_tool, not here.
-        target, error = _reindex_resolve_target(file_path, root)
-        if error:
-            return error
-        if not target.exists():
-            return _reindex_cleanup_deleted_file(conn, cfg_data, target, root, db_path)
-
-        # The manifest of THIS build carries the vendor set the index run
-        # applied.  reindex_file must write is_project with that same
-        # boundary, or one file ends up on the other side of it.
-        #
-        # Loaded before the match because it answers a second question:
-        # compile_commands.json lists no headers, so a header target finds
-        # its translation unit only through the manifest.  One load serves
-        # both — it costs 14 ms on a 9.3 MB manifest.
-        from ...indexer.manifest import load as load_manifest
-
-        build_manifest = load_manifest(db_path.parent, config_hash)
-
-        matching, via_header, error = _reindex_match_tus(
-            target, cfg_data, manifest=build_manifest, project_root=root,
-        )
-        if error:
-            return error
-
-        vendor_patterns, project_patterns_list = _reindex_build_patterns(
-            cfg, root, build_manifest
-        )
-        total_symbols, result = _reindex_parse_and_store(
-            conn, matching, cfg_data, cfg.index.index_refs,
-            root, db_path, target, vendor_patterns, project_patterns_list,
-        )
-        if "error" in result:
-            return result
-
-        # Set before the with_analysis gate: the warning describes how much
-        # of the header the re-parse covered, which does not depend on
-        # whether the enrichment phases run.
-        coverage_warning = _header_coverage_warning(
-            target, matching, via_header,
-            manifest=build_manifest, project_root=root, config_hash=config_hash,
-        )
-        if coverage_warning:
-            result["warning"] = coverage_warning
-
-        if not with_analysis:
-            return result
-
-        return _reindex_post_write_phases(
-            conn, config_hash, cfg, total_symbols, db_path.parent,
-            target, result, root,
-        )
-
+    t0 = time.monotonic()
+    answers: list[tuple[sqlite3.Row, dict | None]] = []
     try:
         # One call of the executor for each build: its lock is free between
         # two builds, thus a query of another tool does not wait for all of
@@ -3101,15 +2976,16 @@ def _reindex_match_tus(
 
     A header matches nothing this way, because compile_commands.json
     lists translation units and a header is not one.  For that case
-    *manifest* supplies EVERY unit that includes the header — see
-    _tus_for_header for the full set and why one is not enough.
+    *manifest* supplies one unit that includes the header; see
+    _tu_for_header for why one and which one.
 
     Returns ``(matching_tus, via_header, None)`` on success, where
     *via_header* says the units came from the manifest fallback and the
-    result may therefore cover only the contexts that are still reachable
-    from compile_commands.json.  On failure it returns an empty list with
-    an ``error_dict`` — the compile_commands.json is missing, or nothing
-    builds the target.
+    result therefore describes a single compilation context.  A build that
+    does not compile the target gives ``([], False, None)``: the file can
+    belong to another build of the project, and only the caller sees all
+    of them (`_not_built_error`).  A missing compile_commands.json gives an
+    empty list with an ``error_dict``.
     """
     cc_path = Path(cfg_data["compile_commands_path"])
     if not cc_path.exists():
@@ -3121,19 +2997,15 @@ def _reindex_match_tus(
     if matching:
         return matching, False, None
 
-    tu_paths = _tus_for_header(target, manifest, project_root or target.parent)
-    if tu_paths:
+    tu_path = _tu_for_header(target, manifest, project_root or target.parent)
+    if tu_path is not None:
         # The manifest can name a unit that a later build dropped from
-        # compile_commands.json.  Those dropped files contribute nothing
-        # here — their contexts stay untouched in the index, and the
-        # coverage warning tells the caller how much was actually
-        # refreshed.
-        wanted = {str(p) for p in tu_paths}
-        via = [u for u in units if str(Path(u.file).resolve()) in wanted]
+        # compile_commands.json.  An empty result here falls through to
+        # the error below, which is the same answer as before.
+        via = [u for u in units if Path(u.file).resolve() == tu_path]
         if via:
-            return via, True, None
-
-    return [], False, {"error": f"{target.name} not found in compile_commands.json — it may be a header-only file."}
+            return via[:1], True, None
+    return [], False, None
 
 
 def _effective_vendor_patterns(
@@ -5321,3 +5193,48 @@ def _not_built_error(target: Path) -> dict:
     a file of the project and says nothing about the path that was refused.
     """
     return {"error": f"{target} is not built by this project — it has no entry in compile_commands.json, and no indexed translation unit includes it."}
+
+
+def _entries_for_listings(entries: list[dict], listings: list[tuple[str, str]]) -> list[int | None]:
+    """Return the manifest entry that each parsed listing refreshes.
+
+    *listings* holds ``(file, flags_hash)`` for each parsed unit, in order.
+    The result holds the index of an entry for each listing, or None when
+    the file has no entry left for it, and the caller adds a new entry.
+
+    Two passes, and each entry goes to one listing only:
+
+    1. A listing takes an entry of its file with the same flags hash.
+    2. A listing that found none takes an entry of its file that no listing
+       took, thus a listing whose flags changed refreshes the entry of the
+       flags that the file had before.
+
+    The first pass runs for all listings before the second.  In one pass, a
+    listing with new flags could take the entry that a later listing
+    matches exactly.
+
+    The previous code refreshed the first entry of the file for each
+    listing.  With three listings, the first entry was written three times,
+    and the other two kept the old hashes: the staleness check reported
+    the file stale after the reindex.
+    """
+    taken: set[int] = set()
+    slots: list[int | None] = [None] * len(listings)
+    by_file: dict[str, list[int]] = {}
+    for idx, entry in enumerate(entries):
+        by_file.setdefault(entry.get("file", ""), []).append(idx)
+    for pos, (file, flags_hash) in enumerate(listings):
+        for idx in by_file.get(file, []):
+            if idx not in taken and entries[idx].get("flags_hash") == flags_hash:
+                slots[pos] = idx
+                taken.add(idx)
+                break
+    for pos, (file, _flags_hash) in enumerate(listings):
+        if slots[pos] is not None:
+            continue
+        for idx in by_file.get(file, []):
+            if idx not in taken:
+                slots[pos] = idx
+                taken.add(idx)
+                break
+    return slots

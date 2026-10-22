@@ -150,10 +150,12 @@ def indexed_project(tmp_path: Path) -> Path:
 
 def _by_file(rows: list[dict]) -> dict[str, dict]:
     """Index the results by file name, dropping any warning element."""
+    # paged tools lead with a {"total", "offset", "shown", "more"} provenance
+    # row (r10 wave paging) — it has no "file" and is not an answer.
     return {
         Path(r["file"]).name: r
         for r in rows
-        if "warning" not in r and "error" not in r
+        if "file" in r and "warning" not in r and "error" not in r
     }
 
 
@@ -287,7 +289,7 @@ class TestFtsSyntaxSurvivesTheRepair:
     """
 
     def _names(self, rows: list[dict]) -> set[str]:
-        return {r["name"] for r in rows if "warning" not in r and "error" not in r}
+        return {r["name"] for r in rows if "name" in r and "warning" not in r and "error" not in r}
 
     def test_the_near_operator_still_works(self, indexed_project: Path):
         from fw_context_mcp.mcp.handlers.search import search_bodies

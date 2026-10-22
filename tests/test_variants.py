@@ -1,5 +1,7 @@
 """Tests for multi-variant build configuration ([[build.variants]])."""
 
+import pytest
+
 from fw_context_mcp.indexer.build import (
     BuildConfig,
     BuildVariant,
@@ -43,6 +45,10 @@ class TestBuildVariantConfig:
 
 
 class TestVariantConfigParsing:
+    @pytest.mark.skip(reason=(
+        "wave retired [build] default_variant/default_image selection "
+        "(upstream _RETIRED_SELECTION_KEYS); see DECISION_LOG 2026-10-23"
+    ))
     def test_variants_parsed(self):
         from fw_context_mcp.config.settings import _from_dict
 

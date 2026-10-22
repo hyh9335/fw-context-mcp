@@ -22,11 +22,14 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass
+
+from fw_context_mcp.platform import IS_POSIX
 from pathlib import Path
 
 DIRLIST_DOMAIN = "fwctx-dirlist/v1"
 
-WINDOWS = os.name == "nt"
+# D1: the platform fact comes from the facade, not the OS.
+WINDOWS = not IS_POSIX
 
 
 def _normcase_posix(p: str) -> str:

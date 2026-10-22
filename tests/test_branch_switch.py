@@ -76,7 +76,10 @@ def repo(tmp_path: Path) -> Path:
         subprocess.run(
             ["git", *args], cwd=tmp_path, check=True,
             capture_output=True, text=True,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
 
     run("init", "-q", "-b", "main")
     run("config", "user.email", "test@example.invalid")
@@ -95,6 +98,9 @@ def repo(tmp_path: Path) -> Path:
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+    
+        encoding="utf-8",
+        errors="replace",
     ).stdout.strip()
 
 
@@ -331,6 +337,9 @@ def _switch_to(repo: Path, branch: str) -> None:
     subprocess.run(
         ["git", "checkout", "-q", "-b", branch], cwd=repo,
         check=True, capture_output=True, text=True,
+    
+        encoding="utf-8",
+        errors="replace",
     )
 
 

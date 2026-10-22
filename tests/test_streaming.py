@@ -175,7 +175,7 @@ class TestSseDetection:
             headers={"content-type": "application/x-ndjson"},
             request=httpx.Request("POST", "http://localhost:11434"),
         )
-        # ndjson is NOT SSE 鈥?_is_sse_response should return False
+        # ndjson is NOT SSE — _is_sse_response should return False
         # (the Ollama path checks for ndjson separately)
         assert _is_sse_response(resp) is False
 
@@ -317,7 +317,7 @@ class TestAccumulateOllamaSse:
 class TestPlanAOpenaiSseFallback:
     @patch("fw_context_mcp.llm.chat_router.http_post")
     def test_sse_response_parsed_when_stream_false(self, mock_post):
-        """API returns SSE despite stream:false 鈥?should parse transparently."""
+        """API returns SSE despite stream:false — should parse transparently."""
         mock_post.return_value = _mock_sse_response(sse_lines=[
             'data: {"choices":[{"delta":{"content":"streamed response"}}]}',
             "data: [DONE]",
@@ -376,10 +376,10 @@ class TestPlanAOpenaiSseFallback:
 
 
 class TestPlanAOllamaSseFallback:
-    @patch("fw_context_mcp.llm.ollama.http_post")
+    @patch("fw_context_mcp.llm.ollama.httpx.post")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_ndjson_response_parsed_when_stream_false(self, _mock_guard, mock_post):
-        """Ollama returns NDJSON despite stream:false 鈥?should parse transparently."""
+        """Ollama returns NDJSON despite stream:false — should parse transparently."""
         mock_post.return_value = _mock_ollama_ndjson_response(lines=[
             '{"response":"ollama streamed","done":false}',
             '{"response":"","done":true}',
@@ -388,7 +388,7 @@ class TestPlanAOllamaSseFallback:
         result = call_ollama("prompt", cfg)
         assert result == "ollama streamed"
 
-    @patch("fw_context_mcp.llm.ollama.http_post")
+    @patch("fw_context_mcp.llm.ollama.httpx.post")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_json_response_still_works(self, _mock_guard, mock_post):
         mock_post.return_value = httpx.Response(
@@ -400,7 +400,7 @@ class TestPlanAOllamaSseFallback:
         result = call_ollama("prompt", cfg)
         assert result == "normal ollama"
 
-    @patch("fw_context_mcp.llm.ollama.http_post")
+    @patch("fw_context_mcp.llm.ollama.httpx.post")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_payload_has_stream_false(self, _mock_guard, mock_post):
         mock_post.return_value = httpx.Response(
@@ -433,14 +433,14 @@ class TestPlanBOpenaiStreaming:
 
     @patch("fw_context_mcp.llm.chat_router.http_stream")
     def test_stream_true_does_not_use_post(self, mock_stream):
-        """When stream=true, http_post should NOT be called."""
+        """When stream=true, httpx.post should NOT be called."""
         lines = [
             'data: {"choices":[{"delta":{"content":"text"}}]}',
             "data: [DONE]",
         ]
         mock_stream.side_effect = _mock_httpx_stream(lines)
         cfg = _cfg(stream=True)
-        with patch("fw_context_mcp.llm.chat_router.http_post") as mock_post:
+        with patch("fw_context_mcp.llm.chat_router.httpx.post") as mock_post:
             call_openai_chat("p", cfg, "endpoint")
             mock_post.assert_not_called()
 
@@ -555,7 +555,7 @@ class TestPlanBOpenaiStreaming:
 
 
 class TestPlanBOllamaStreaming:
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_true_uses_httpx_stream(self, _mock_guard, mock_stream):
         lines = [
@@ -568,7 +568,7 @@ class TestPlanBOllamaStreaming:
         result = call_ollama("prompt", cfg)
         assert result == "Hello world"
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_true_does_not_use_post(self, _mock_guard, mock_stream):
         lines = [
@@ -577,11 +577,11 @@ class TestPlanBOllamaStreaming:
         ]
         mock_stream.side_effect = _mock_httpx_stream(lines)
         cfg = _cfg(chat_api_base=None, stream=True)
-        with patch("fw_context_mcp.llm.ollama.http_post") as mock_post:
+        with patch("fw_context_mcp.llm.ollama.httpx.post") as mock_post:
             call_ollama("prompt", cfg)
             mock_post.assert_not_called()
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_payload_has_stream_true(self, _mock_guard, mock_stream):
         lines = [
@@ -594,7 +594,7 @@ class TestPlanBOllamaStreaming:
         _, kwargs = mock_stream.call_args
         assert kwargs["json"]["stream"] is True
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_no_content_raises(self, _mock_guard, mock_stream):
         lines = ['{"response":"","done":true}']
@@ -603,7 +603,7 @@ class TestPlanBOllamaStreaming:
         with pytest.raises(OllamaError, match="no content"):
             call_ollama("prompt", cfg)
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_debug_log_has_streamed_flag(self, _mock_guard, mock_stream, tmp_path):
         lines = [
@@ -619,7 +619,7 @@ class TestPlanBOllamaStreaming:
         assert entry["response"] == "logged"
         assert entry.get("streamed") is True
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_connect_error_wrapped(self, _mock_guard, mock_stream):
         mock_stream.side_effect = httpx.ConnectError("refused")
@@ -627,7 +627,7 @@ class TestPlanBOllamaStreaming:
         with pytest.raises(OllamaError, match="Cannot connect"):
             call_ollama("prompt", cfg)
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_timeout_wrapped(self, _mock_guard, mock_stream):
         mock_stream.side_effect = httpx.TimeoutException("slow")
@@ -635,7 +635,7 @@ class TestPlanBOllamaStreaming:
         with pytest.raises(OllamaError, match="timed out"):
             call_ollama("prompt", cfg)
 
-    @patch("fw_context_mcp.llm.ollama.http_stream")
+    @patch("fw_context_mcp.llm.ollama.httpx.stream")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_stream_keeps_keep_alive_and_options(self, _mock_guard, mock_stream):
         """Streaming Ollama path should still send keep_alive and options."""
@@ -678,7 +678,7 @@ class TestPlanBRoutingOpenaiStream:
         ]
         mock_stream.side_effect = _mock_httpx_stream(lines)
         cfg = _cfg(chat_api_base="https://api.example.com/v1", stream=True)
-        with patch("fw_context_mcp.llm.chat_router.http_post") as mock_post:
+        with patch("fw_context_mcp.llm.chat_router.httpx.post") as mock_post:
             call_ollama("prompt", cfg)
             mock_post.assert_not_called()
 
@@ -802,7 +802,7 @@ class TestConfigureLlmStream:
 
     @patch("fw_context_mcp.llm.chat_router.http_stream")
     def test_stream_true_written_by_configure_llm(self, mock_stream, tmp_path):
-        # When stream=True, the test call uses http_stream, not http_post
+        # When stream=True, the test call uses httpx.stream, not httpx.post
         lines = [
             'data: {"choices":[{"delta":{"content":"OK"}}]}',
             "data: [DONE]",
@@ -857,15 +857,15 @@ class TestConfigureLlmStream:
 class TestRegressionNonStreaming:
     @patch("fw_context_mcp.llm.chat_router.http_post")
     def test_non_streaming_uses_post(self, mock_post):
-        """When stream=False (default), http_post is used, not http_stream."""
+        """When stream=False (default), httpx.post is used, not httpx.stream."""
         mock_post.return_value = _mock_json_response()
         cfg = _cfg(stream=False)
-        with patch("fw_context_mcp.llm.chat_router.http_stream") as mock_stream:
+        with patch("fw_context_mcp.llm.chat_router.httpx.stream") as mock_stream:
             result = call_openai_chat("p", cfg, "endpoint")
             mock_stream.assert_not_called()
         assert result == "test response"
 
-    @patch("fw_context_mcp.llm.ollama.http_post")
+    @patch("fw_context_mcp.llm.ollama.httpx.post")
     @patch("fw_context_mcp.llm.ollama.ollama_guard")
     def test_ollama_non_streaming_uses_post(self, _mock_guard, mock_post):
         mock_post.return_value = httpx.Response(
@@ -874,7 +874,7 @@ class TestRegressionNonStreaming:
             request=httpx.Request("POST", "http://localhost:11434/api/generate"),
         )
         cfg = _cfg(chat_api_base=None, stream=False)
-        with patch("fw_context_mcp.llm.ollama.http_stream") as mock_stream:
+        with patch("fw_context_mcp.llm.ollama.httpx.stream") as mock_stream:
             result = call_ollama("prompt", cfg)
             mock_stream.assert_not_called()
         assert result == "ok"

@@ -67,9 +67,14 @@ def check_setup(cfg: LLMConfig) -> dict:
 
     from fw_context_mcp.llm.ollama import ollama_pull_command
 
+    # Platform facade: the factory sanitizes a hostile NO_PROXY (a
+    # bracketed ``[::1]`` entry would surface as httpx "Invalid port"
+    # in this message otherwise) — bare httpx.get bypasses it.
+    from ..platform import http_get
+
     base_url = cfg.ollama_url.rstrip("/")
     try:
-        resp = httpx.get(base_url + "/api/tags", timeout=5.0)
+        resp = http_get(base_url + "/api/tags", timeout=5.0)
         resp.raise_for_status()
     except httpx.ConnectError:
         return {

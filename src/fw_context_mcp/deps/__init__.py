@@ -156,7 +156,7 @@ def run_full_check(
                 )
             elif name in ("ollama", "chat-model", "embed-model"):
                 r = fn(ctx["cfg"].llm)
-            elif name in ("db-integrity", "disk-space"):
+            elif name in ("db-integrity", "disk-space", "obsolete-files"):
                 r = fn(project_root)
             else:
                 r = fn()

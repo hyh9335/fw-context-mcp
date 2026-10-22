@@ -185,7 +185,10 @@ class TestSuggestOrderIsStable:
         env = {**os.environ, "PYTHONHASHSEED": str(seed)}
         out = subprocess.run(  # noqa: S603 — fixed program and code
             [sys.executable, "-c", self._CHILD], env=env, capture_output=True, text=True, check=True, timeout=60,
-        ).stdout
+        
+        encoding="utf-8",
+        errors="replace",
+    ).stdout
         return json.loads(out.strip().splitlines()[-1])
 
     def test_the_hash_seed_does_not_change_the_suggestions(self):

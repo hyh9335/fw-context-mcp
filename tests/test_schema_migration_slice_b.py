@@ -219,7 +219,7 @@ class TestConsolidatedSchemaFreshDb:
         )
         from fw_context_mcp.indexer.db._schema import ROW_FORMAT_PAIRED_WITH
 
-        assert ROW_FORMAT_PAIRED_WITH == "fw-context-cc/5", (
+        assert ROW_FORMAT_PAIRED_WITH == "fw-context-cc/7", (
             "a row-format bump without a config-hash bump stamps the new "
             "format over old text that a reindex never rewrites — the two "
             "must move together (test_row_format_invalidation)"
@@ -229,7 +229,7 @@ class TestConsolidatedSchemaFreshDb:
                 "fw_context_mcp.indexer.manifest", fromlist=["compute_config_hash"]
             ).compute_config_hash
         )
-        assert '"_format": "fw-context-cc/5"' in source, (
+        assert '"_format": "fw-context-cc/7"' in source, (
             "compute_config_hash must mint new config hashes (cc/5) so every "
             "old index gets one real reindex instead of a migrated reuse"
         )

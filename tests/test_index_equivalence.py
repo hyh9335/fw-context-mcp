@@ -54,38 +54,13 @@ def _rebuild_from_scratch(proj: Path) -> Path:
 
     An empty database cannot carry a stale row forward, which is what makes
     this side the reference the incremental result is measured against.
-
-    W1: the previous ``_index`` run may have left a watcher daemon alive
-    (the CLI spawns one after a successful index, and on win32 that spawn
-    WORKS now), holding ``daemon.log``/sqlite open — a Windows rmtree of
-    the db dir fails while it lives.  Terminate it (identity-checked via
-    its own marker) before dropping the directory.
     """
-    db_path = _db_path_for_project(proj)
-    _stop_daemon_for_db_dir(db_path.parent)
-    shutil.rmtree(db_path.parent, ignore_errors=True)
+    shutil.rmtree(_db_path_for_project(proj).parent)
     result = _index(proj)
     assert result.returncode == 0, result.stderr
     db_path = _db_path_for_project(proj)
     assert db_path.exists(), f"rebuild produced no database at {db_path}"
     return db_path
-
-
-def _stop_daemon_for_db_dir(db_dir: Path) -> None:
-    from fw_context_mcp.platform import process as _process
-    from fw_context_mcp.platform import read_pid_marker
-
-    pid_file = db_dir / "watcher.pid"
-    try:
-        marker = read_pid_marker(pid_file)
-    except (OSError, ValueError):
-        return
-    if marker is None:
-        return
-    try:
-        _process.terminate(marker.pid, marker, grace_s=3.0)
-    except Exception:
-        pass
 
 
 def _active_config_hash(conn) -> str:

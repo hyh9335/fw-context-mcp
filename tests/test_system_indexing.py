@@ -28,6 +28,7 @@ import pytest
 
 from fw_context_mcp.indexer.build import detect_build_system
 from fw_context_mcp.indexer.builders import registry as builder_registry
+from fw_context_mcp.indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
 from fw_context_mcp.indexer.db import open_db
 
 pytestmark = pytest.mark.system
@@ -53,8 +54,18 @@ def _project_root() -> Path:
 
 
 def _cc_path(proj: Path) -> Path:
-    """Return the generated compile_commands.json location for a project."""
-    return proj / ".fw-context" / "build" / "compile_commands.json"
+    """Return the generated compile_commands.json location for a project.
+
+    The build without variants writes into ``.fw-context/build/default/out``
+    (see ``indexer/build_layout.py``), and the build system decides where
+    in it: ``out/<env>/`` for PlatformIO, ``out/zephyr/`` for a Zephyr build
+    with sysbuild.  The index run reads the file that
+    ``build.default_compile_commands`` names, thus the test asks the same.
+    """
+    from fw_context_mcp.config import load as load_config
+    from fw_context_mcp.indexer.build import default_compile_commands
+
+    return default_compile_commands(proj, load_config(project_root=proj))
 
 
 def _cli(
@@ -72,6 +83,9 @@ def _cli(
         text=True,
         timeout=timeout,
         env=env,
+    
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -525,7 +539,7 @@ class TestMakefileInitAndIndex:
     def indexed(cls):
         proj = _init_and_index(
             _BUILDS / "makefile",
-            replacements={"[build] make_dry_run": "false"},
+            replacements={"[build] make_dry_run": "false", "[build] out_dir_var": '"BUILD_DIR"'},
             clean_db=True,
         )
         yield proj
@@ -933,6 +947,37 @@ class TestESPIDFInitAndIndex:
         finally:
             conn.close()
 
+    def test_the_bootloader_is_a_second_image(self, indexed):
+        """idf.py builds the application and its bootloader, and each is an image of the build.
+
+        The application is indexed last, thus it is the newest build.  A
+        query names its image: without one, the query gets a refusal that
+        lists the two builds, and the server selects neither.
+        """
+        from fw_context_mcp.config import derive_project_id
+        from fw_context_mcp.config import load as load_config
+        from fw_context_mcp.mcp.shared.variants import resolve_build
+
+        conn = open_db(_db_path_for_project(indexed))
+        try:
+            project_id = derive_project_id(indexed)
+            rows = conn.execute(
+                "SELECT variant, image, config_hash FROM build_configs WHERE project_id = ?",
+                (project_id,),
+            ).fetchall()
+            assert {(r["variant"], r["image"]) for r in rows} == {
+                ("", "fwctx_test_esp_idf"), ("", "bootloader"),
+            }
+            app = next(r["config_hash"] for r in rows if r["image"] == "fwctx_test_esp_idf")
+            assert _config_hash(conn, indexed) == app
+            cfg = load_config(indexed)
+            assert resolve_build(conn, project_id, cfg, "", "fwctx_test_esp_idf") == (app, None)
+            chosen, err = resolve_build(conn, project_id, cfg)
+            assert chosen is None, f"the server selected {chosen}"
+            assert err is not None and 'image="bootloader"' in err, err
+        finally:
+            conn.close()
+
     def test_manifest_verification(self, indexed):
         db_path = _db_path_for_project(indexed)
         conn = open_db(db_path)
@@ -957,17 +1002,27 @@ class TestESPIDFInitAndIndex:
 class TestConfigHashStability:
     """Verify config_hash is stable across repeated indexing of the same project."""
 
-    def test_same_project_same_config_hash(self):
+    def test_same_project_same_config_hash(self, tmp_path):
+        """Two parses of one database give one hash.
+
+        The database is written here, and not taken from a build that an
+        earlier test left in ``tests/builds``: that made the result depend
+        on the order of the tests and on the leftovers of an earlier run.
+        """
         from fw_context_mcp.indexer.compile_commands import parse as parse_cc
         from fw_context_mcp.indexer.manifest import compute_structural_hash
 
         project_root = _BUILDS / "generic_cmake"
-        cc = _cc_path(project_root)
-        assert cc.exists(), "Run CMake init+index test first to generate cc.json"
+        cc = tmp_path / "compile_commands.json"
+        cc.write_text(json.dumps([{
+            "directory": str(project_root),
+            "file": str(project_root / "src" / "main.c"),
+            "arguments": ["cc", "-DFOO=1", "-std=c11", "-c", "src/main.c"],
+        }]), encoding="utf-8")
         units1 = list(parse_cc(cc))
         units2 = list(parse_cc(cc))
-        h1 = compute_structural_hash(cc, project_root, units1)
-        h2 = compute_structural_hash(cc, project_root, units2)
+        h1 = compute_structural_hash(cc, project_root, units1, transient_defines=DEFAULT_TRANSIENT_DEFINES)
+        h2 = compute_structural_hash(cc, project_root, units2, transient_defines=DEFAULT_TRANSIENT_DEFINES)
         assert h1 == h2
 
     def _hash_for(self, tmp_path, name: str, entries: list[dict]) -> str:
@@ -979,7 +1034,7 @@ class TestConfigHashStability:
         project_root = Path(__file__).parent / "builds" / "bare"
         cc = tmp_path / name
         cc.write_text(json.dumps(entries))
-        return compute_structural_hash(cc, project_root, list(parse_cc(cc)))
+        return compute_structural_hash(cc, project_root, list(parse_cc(cc)), transient_defines=DEFAULT_TRANSIENT_DEFINES)
 
     def test_config_hash_changes_with_different_dialect(self, tmp_path):
         """A different macro or standard is a different build."""

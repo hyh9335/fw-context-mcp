@@ -70,7 +70,7 @@ class KeywordCache:
             if entry is None:
                 return None
             ts, value = entry
-            if time.monotonic() - ts > self._ttl_s:
+            if time.monotonic() - ts >= self._ttl_s:
                 del self._store[key]
                 return None
             self._store.move_to_end(key)  # LRU refresh

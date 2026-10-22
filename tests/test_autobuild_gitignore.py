@@ -79,7 +79,10 @@ def test_git_really_stops_reporting_the_directory(tmp_path):
         return subprocess.run(
             ["git", "-C", str(tmp_path), *args],
             capture_output=True, text=True, check=True,
-        ).stdout
+        
+        encoding="utf-8",
+        errors="replace",
+    ).stdout
 
     git("init", "-q")
     # Hermetic: the machine's identity and signing settings must not decide

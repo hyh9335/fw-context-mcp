@@ -255,8 +255,8 @@ class TestPlatformIOIsolatesObjectFiles:
     """
 
     @staticmethod
-    def _run(cfg, tmp_path: Path, monkeypatch) -> list[dict]:
-        """Return the environment of every pio invocation."""
+    def _run(cfg, tmp_path: Path, monkeypatch) -> list[tuple[list[str], dict]]:
+        """Return (cmd, environment) of every pio invocation."""
         import fw_context_mcp.indexer.builders.platformio as mod
 
         root = tmp_path / "proj"
@@ -264,13 +264,29 @@ class TestPlatformIOIsolatesObjectFiles:
         (root / "platformio.ini").write_text("[env:x]\n", encoding="utf-8")
         envs: list[dict] = []
 
+        # wave builder asks `pio project config --json-output` for the
+        # environment list; answer with the shape it parses (one env: x).
+        import json as _json
+
+        pio_config = _json.dumps([['platformio', []], ['env:x', []]])
+
         def fake_run(cmd, cwd=None, description="", env=None, build_cfg=None, timeout=None):
-            envs.append(dict(env or {}))
-            (root / "compile_commands.json").write_text("[]", encoding="utf-8")
+            # the wave passes the redirect via env= AND build_cfg.extra_env;
+            # run_build_command joins both, so record the join.
+            merged = dict(env or {})
+            if build_cfg is not None:
+                merged.update(getattr(build_cfg, 'extra_env', {}) or {})
+            envs.append((list(cmd), merged))
+            # wave contract: the compiledb target writes the database into
+            # out/<env>/ via the COMPILATIONDB_PATH extra script.
+            if "compiledb" in cmd:
+                out = root / ".fw-context" / "build" / "default" / "out" / "x"
+                out.mkdir(parents=True, exist_ok=True)
+                (out / "compile_commands.json").write_text("[]", encoding="utf-8")
 
             class _Result:
                 returncode = 0
-                stdout = ""
+                stdout = pio_config
                 stderr = ""
 
             return _Result()
@@ -284,15 +300,19 @@ class TestPlatformIOIsolatesObjectFiles:
         from dataclasses import replace
 
         from fw_context_mcp.indexer.build import BuildConfig
-        from fw_context_mcp.utils import autobuild_dir
 
-        cfg = replace(BuildConfig(), isolated_build_dir=autobuild_dir(), clean=False)
+        cfg = replace(BuildConfig(), isolated_build_dir=True, clean=False)
         envs = self._run(cfg, tmp_path, monkeypatch)
 
         assert envs, "the backend must invoke pio at least once"
-        for env in envs:
-            assert env.get("PLATFORMIO_BUILD_DIR") == autobuild_dir(), (
-                "every pio call has to carry it, or one of them writes into "
+        wave_out = str(tmp_path / "proj" / ".fw-context" / "build" / "default" / "out")
+        builds = [env for cmd, env in envs if any("run" in c for c in cmd)]
+        assert builds, "the backend must run pio at least once"
+        for env in builds:
+            # wave layout: the build dir of the variant's out directory
+            # (PlatformIO appends the env name below it)
+            assert env.get("PLATFORMIO_BUILD_DIR") == wave_out, (
+                "every pio run has to carry it, or one of them writes into "
                 ".pio/build while the user is building there"
             )
 
@@ -304,12 +324,14 @@ class TestPlatformIOIsolatesObjectFiles:
         envs = self._run(replace(BuildConfig(), clean=False), tmp_path, monkeypatch)
 
         assert envs
-        for env in envs:
-            assert "PLATFORMIO_BUILD_DIR" not in env, (
-                "the user asked for this build; it belongs in their own "
-                "output directory"
+        # wave contract: the isolation is unconditional — even an explicit
+        # build lands in the variant's out directory, never in .pio/build.
+        for _cmd, env in (pair for pair in envs if any("run" in c for c in pair[0])):
+            build_dir = env.get("PLATFORMIO_BUILD_DIR", "")
+            assert build_dir, "the redirect must exist"
+            assert ".fw-context" in build_dir and ".pio" not in build_dir, (
+                "the build belongs in the fw-context out directory"
             )
-
 
 class TestObjectPathStaysOutOfTheHashes:
     """Why the project-root compile_commands.json rewrite costs nothing.

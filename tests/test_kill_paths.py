@@ -1,4 +1,4 @@
-﻿"""Kill paths must be start-time-identity-checked (D2 adoption, W1).
+"""Kill paths must be start-time-identity-checked (D2 adoption, W1).
 
 ``cli/_index.py:_kill_bg_reindex`` reads ``reindex.pid`` and terminates the
 named process.  Under the accepted design:

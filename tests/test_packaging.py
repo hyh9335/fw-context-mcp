@@ -97,6 +97,9 @@ def test_gitignore_still_covers_the_local_work_directory():
         capture_output=True,
         text=True,
         check=False,
+    
+        encoding="utf-8",
+        errors="replace",
     )
     assert result.returncode == 0, "git does not ignore the work/ directory of the project root"
     assert "/work/" in result.stdout, f"an unexpected pattern covers work/: {result.stdout.strip()}"

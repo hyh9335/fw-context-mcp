@@ -20,6 +20,7 @@ Why a single utils module instead of topic-split utility files:
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import os
 import re
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from fw_context_mcp.indexer.build import BuildConfig
 
 from fw_context_mcp import _stdlib_sqlite3
+from fw_context_mcp.platform import IS_POSIX
 
 log = logging.getLogger(__name__)
 
@@ -1027,9 +1029,6 @@ def write_text_atomic(path: Path, text: str, *, mode: int | None = None) -> None
         tmp.unlink(missing_ok=True)
 
 
-BUILD_GROUP_GRACE_S = 5.0
-
-
 class BuildTimeoutError(RuntimeError):
     """A build command ran longer than its timeout.
 
@@ -1052,44 +1051,13 @@ _ERROR_INVALID_PARAMETER = 87
 _OWNER_TOKEN_AT_END = re.compile(r"(?:^|\.)(\d+@[A-Za-z0-9._-]+)$")
 
 
-_ON_WINDOWS = os.name == "nt"
+# D1: the platform fact comes from the facade, not the OS (win32 probe
+# of owner_is_dead keys off it).
+_ON_WINDOWS = not IS_POSIX
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 _STILL_ACTIVE = 259
-
-
-def _remove_group_record(record: Path, pgid: int) -> None:
-    """Remove *record* when it still names the group *pgid*."""
-    try:
-        if json.loads(record.read_text(encoding="utf-8")).get("pgid") == pgid:
-            record.unlink(missing_ok=True)
-    except (OSError, ValueError, AttributeError):
-        return
-
-
-def _write_group_record(record: Path, pgid: int, program: str) -> None:
-    """Write ``{"index_pid", "pgid", "leader", "started"}`` to *record* atomically.
-
-    ``leader`` is the base name of the program that leads the group, and
-    ``started`` its start time (see :func:`process_start_time`).  The reader
-    compares the two with the live leader, because a PID can come back for
-    an unrelated process.
-    """
-    temporary = record.with_name(f".{record.name}.{os.getpid()}")
-    payload = {
-        "index_pid": os.getpid(),
-        "pgid": pgid,
-        "leader": Path(program).name,
-        "started": process_start_time(pgid),
-    }
-    try:
-        temporary.write_text(json.dumps(payload), encoding="utf-8")
-        os.replace(temporary, record)
-    except OSError as exc:
-        # The record helps only after a SIGKILL.  A build must not fail for it.
-        log.warning("Cannot record the build process group in %s: %s", record, exc)
-        temporary.unlink(missing_ok=True)
 
 
 def build_cfg_env(build_cfg: BuildConfig | None, env: dict[str, str] | None = None) -> dict[str, str]:
@@ -1202,127 +1170,6 @@ def macro_signature(name: str, is_function_like: bool, params: str) -> str:
     return f"{name}({params})"
 
 
-def process_group_is_gone(pgid: int, leader: subprocess.Popen | None = None) -> bool:
-    """Return True when no process of the group *pgid* runs.
-
-    *leader* as in :func:`stop_process_group`: it is reaped first, because
-    a zombie leader still counts as a member.
-    """
-    if leader is not None:
-        leader.poll()
-    try:
-        os.killpg(pgid, 0)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    return False
-
-
-def process_start_time(pid: int) -> str | None:
-    """Return a value that names the start of process *pid*, or None when unknown.
-
-    WHY: a PID can come back for an unrelated process, and the program name
-    alone does not tell the two apart — a build under ``activate`` has
-    ``bash`` as its leader, and so has the shell in a new terminal.  The
-    start time of a process does not change while it lives, and a new
-    process with the same PID has a different one.
-
-    Linux: field 22 of ``/proc/<pid>/stat``, the start in clock ticks after
-    the boot.  The name in field 2 can hold spaces and ")", thus the fields
-    are counted after the LAST ")".  Elsewhere (macOS): ``ps -o lstart=``.
-    """
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
-    except FileNotFoundError:
-        if Path("/proc/self/stat").exists():
-            return None  # /proc works, thus the process is gone
-    except OSError:
-        return None
-    else:
-        fields = stat.rpartition(")")[2].split()
-        # fields[0] is field 3 (the state), thus field 22 is fields[19].
-        return fields[19] if len(fields) > 19 else None
-    # A fixed locale and time zone: `lstart` is local time in the format of
-    # the locale, and the writer (a daemon run) and the reader (a run in a
-    # terminal) can have different ones.  The two strings must be equal.
-    env = {"LC_ALL": "C", "TZ": "UTC0", "PATH": os.environ.get("PATH", "/bin:/usr/bin")}
-    try:
-        result = subprocess.run(  # noqa: S603 — fixed argv, no shell
-            ["ps", "-o", "lstart=", "-p", str(pid)],
-            capture_output=True, text=True, timeout=5, check=False, env=env,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
-
-
-def record_build_groups(record: Path) -> Iterator[None]:
-    """Record the process group of each build in this block in *record*.
-
-    WHY: a run that SIGKILL stops cannot stop its build.  The record lets
-    the next run that owns the index find the group and stop it (see
-    ``cli/_index._reap_orphan_build_group``).
-    """
-    token = _BUILD_GROUP_RECORD.set(record)
-    try:
-        yield
-    finally:
-        _BUILD_GROUP_RECORD.reset(token)
-
-
-def run_in_process_group(
-    cmd: list[str],
-    *,
-    cwd: Path,
-    env: dict[str, str],
-    timeout: float | None,
-    capture_output: bool,
-) -> subprocess.CompletedProcess:
-    """Run *cmd* in a new session, and stop its whole process group on any exit but its own.
-
-    Same result as ``subprocess.run(..., text=True)``: a timeout raises
-    ``TimeoutExpired`` with the output so far.  Any exception while the
-    command runs (the timeout, ``IndexStopped`` from a SIGTERM handler,
-    ``KeyboardInterrupt``) first stops the group, then goes on.
-
-    A new session also takes the build out of the process group of the
-    terminal.  Ctrl-C thus reaches this process only, as a
-    ``KeyboardInterrupt``, and this function stops the build.  The build has
-    no controlling terminal: output to the terminal still works, but an open
-    of ``/dev/tty`` fails, thus a password prompt (``sudo``, ``ssh``) or a
-    curses screen (``menuconfig``) in a ``pre_build`` hook does not work.
-    No build that fw-context starts needs one.
-
-    The record goes only when the group is gone.  An exception during the
-    stop (a second Ctrl-C) can leave members alive, and the next index run
-    then finds them through the record.
-    """
-    pipe = subprocess.PIPE if capture_output else None
-    proc = subprocess.Popen(  # noqa: S603 — argv list, no shell
-        cmd, cwd=cwd, env=env, stdout=pipe, stderr=pipe, text=True, start_new_session=True,
-    )
-    record = _BUILD_GROUP_RECORD.get()
-    try:
-        if record is not None:
-            _write_group_record(record, proc.pid, cmd[0])
-        stdout, stderr = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        stop_process_group(proc.pid, leader=proc)
-        stdout, stderr = proc.communicate()
-        raise subprocess.TimeoutExpired(cmd, timeout or 0, output=stdout, stderr=stderr) from None
-    except BaseException:
-        stop_process_group(proc.pid, leader=proc)
-        proc.wait()
-        raise
-    finally:
-        if record is not None and process_group_is_gone(proc.pid, proc):
-            _remove_group_record(record, proc.pid)
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
-
-
 def staging_owner(path: Path) -> str | None:
     """Return the owner token in the name of a staging file, or None.
 
@@ -1332,46 +1179,6 @@ def staging_owner(path: Path) -> str | None:
     the token holds dots too (see :func:`temporary_owner`).
     """
     return temporary_owner(path, _CC_STEM, _CC_SUFFIX)
-
-
-def stop_process_group(
-    pgid: int,
-    grace: float = BUILD_GROUP_GRACE_S,
-    leader: subprocess.Popen | None = None,
-) -> None:
-    """Send SIGTERM to the group *pgid*, and SIGKILL to what remains after *grace*.
-
-    The group can live on after its leader: the leader of a ``make -j``
-    exits and its compilers still run.  Thus the wait is for the whole
-    group, with ``killpg(pgid, 0)``, and not for the leader only.
-
-    *leader* is the ``Popen`` of the leader when this process started it.
-    Until this process reaps it, a leader that exited is a zombie, and a
-    zombie still counts as a member of the group.  The wait thus reaps it,
-    or it would always last the whole *grace*.
-
-    The SIGKILL is in ``finally``: a second Ctrl-C during the wait raises
-    ``KeyboardInterrupt`` out of ``time.sleep``, and a build that ignores
-    SIGTERM then ran on.
-    """
-    try:
-        os.killpg(pgid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        deadline = time.monotonic() + grace
-        while time.monotonic() < deadline:
-            if process_group_is_gone(pgid, leader):
-                return
-            time.sleep(0.05)
-    finally:
-        # PermissionError: macOS refuses a signal to a group that holds only
-        # zombies (EPERM, where Linux gives success).  Nothing runs there, and
-        # the parent of each zombie reaps it.
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            pass
 
 
 def temporary_owner(path: Path, stem: str, suffix: str) -> str | None:

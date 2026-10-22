@@ -457,6 +457,7 @@ class TestFallbackToSearchCode:
             query="uart_init",
             limit=10,
             warning="Test warning",
+            config_hash="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
         )
         assert isinstance(result, list), f"Expected list, got {type(result)}"
         assert len(result) == 1, f"Expected 1-item list, got {len(result)}"
@@ -481,6 +482,7 @@ class TestFallbackToSearchCode:
             query="",
             limit=10,
             warning="Empty query",
+            config_hash="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
         )
         # Must return a dict (error) or list (results), not crash
         assert isinstance(result, (list, dict))

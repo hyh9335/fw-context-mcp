@@ -18,7 +18,8 @@ compare the stored hashes against current on-disk content.
 ``config_hash`` is ``SHA-256`` of the **structural** part of the manifest
 (file, directory, arguments, macros — excluding source_hash, headers, and
 build_dir_patterns).  This means a header content change triggers per-TU
-reparsing (Tier 2) but NOT a full reindex (config_hash stays the same).
+reparsing (the hashes of the manifest entry) but NOT a full reindex
+(config_hash stays the same).
 """
 
 from __future__ import annotations
@@ -30,14 +31,14 @@ import time
 from collections.abc import Collection
 from pathlib import Path
 
-from fw_context_mcp.indexer import context_identity
 from fw_context_mcp.indexer.compile_commands import _DROP_WITH_ARG
 from fw_context_mcp.indexer.config_hash import (
-    DEFAULT_TRANSIENT_DEFINES,
     _TRANSIENT_DROP,
+    DEFAULT_TRANSIENT_DEFINES,
     compute_flags_hash,
+    drop_transient_defines,
 )
-from fw_context_mcp.utils import compute_source_hash
+from fw_context_mcp.utils import compute_source_hash, write_text_atomic
 
 log = logging.getLogger(__name__)
 
@@ -81,9 +82,20 @@ def tu_headers(manifest: dict, entry: dict) -> list[dict]:
     return resolve_headers(entry, manifest.get("headers"))
 
 
+CONFLICTING_READS_HASH = "conflicting-reads"
+"""The hash of a header that two units of one run read with two texts.
+
+No file gives this value: a hash is 64 hex digits, and a file that cannot be
+read gives ``""``.  ``""`` was not usable here, because a header deleted
+before the next run also hashes to ``""``, and that run then found the
+entry current.
+"""
+
+
 def fold_headers(
     headers: list[dict] | list[str],
     header_table: dict[str, dict],
+    read_this_run: dict[str, str] | None = None,
 ) -> list[str]:
     """Fold header records into *header_table*, return the entry's path list.
 
@@ -96,6 +108,16 @@ def fold_headers(
     previous manifest passes through without a special case at the call site.
     A record whose path is already in the table wins over the stored one: it
     was read during this run and is the newer of the two.
+
+    *read_this_run* holds the hash of each path that an earlier record of
+    the same run gave.  Two units of one run can read two texts of one
+    header, when the operator saves it between the two parses.  The table
+    holds one hash for each header, and the symbols of the header are the
+    ones of the unit that walked it first.  The record of the later unit
+    then replaced the other one, and the next run found every unit current
+    beside the symbols of the old text.  When two records of one run
+    disagree, the hash is :data:`CONFLICTING_READS_HASH`: no file has that
+    hash, thus the next run parses each unit that includes the header.
     """
     paths: list[str] = []
     for item in headers:
@@ -104,8 +126,13 @@ def fold_headers(
             continue
         path = item["path"]
         paths.append(path)
+        item_hash = item.get("hash", "")
+        if read_this_run is not None:
+            if read_this_run.setdefault(path, item_hash) != item_hash:
+                read_this_run[path] = CONFLICTING_READS_HASH
+            item_hash = read_this_run[path]
         header_table[path] = {
-            "hash": item.get("hash", ""),
+            "hash": item_hash,
             "generated": item.get("generated", False),
         }
     return paths
@@ -167,7 +194,8 @@ def derive_extension_sets(
     new-file scan would then stay blind to the files that need reporting.
 
     Reading the file again costs a plain json.load of a few hundred
-    kilobytes, once per index run.  It is not on the query path.
+    kilobytes, once per write of the manifest (the end of an index run and
+    each checkpoint).  It is not on the query path.
     """
     try:
         raw = json.loads(compile_commands_path.read_text(encoding="utf-8"))
@@ -267,6 +295,7 @@ def _collect_headers_from_tokens(
         # no hash was recorded to compare.  A whitelist of "what counts as a
         # header" cannot be kept complete; not filtering can.
         try:
+            # Windows adjudication: manifest keys are posix paths
             rel = resolved.relative_to(project_root).as_posix()
         except ValueError:
             rel = resolved.as_posix()  # absolute path for files outside project tree
@@ -292,7 +321,7 @@ def generate(
     scope: list[str] | None = None,
     vendor_patterns: list[str] | None = None,
     *,
-    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
+    transient_defines: Collection[str],
 ) -> str:
     """Generate ``manifest.json`` from compile_commands + libclang token stream.
 
@@ -309,6 +338,8 @@ def generate(
         vendor_patterns: The effective vendor/SDK set this build used.  Stored
             so the query layer reads the same boundary the indexer applied
             instead of deriving its own.
+        transient_defines: ``[index] transient_defines``, for the flags hash
+            of each entry and for the fallback config_hash.
 
     Returns:
         The ``config_hash`` — SHA-256 of the structural part of the manifest.
@@ -324,7 +355,7 @@ def generate(
     for unit in units:
         source_file = str(unit.file.resolve())
         try:
-            source_rel = unit.file.resolve().relative_to(project_root).as_posix()
+            source_rel = str(unit.file.resolve().relative_to(project_root))
         except ValueError:
             source_rel = source_file
 
@@ -371,25 +402,14 @@ def generate(
         # New callers should pass config_hash computed from the normalized
         # compile_commands.json instead.
         project_id = derive_project_id(project_root)
-        config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir, transient_defines=transient_defines)
-
-    # ADR-001: the per-compile-action context id belongs on the entry, so a
-    # file built with two flag sets keeps two distinguishable entries.  The
-    # config_hash must be final here — it is the identity's build_id
-    # component — hence the fallback computation above runs BEFORE the loop
-    # that stamps the ids.
-    from .context_identity import unit_identity_fields
-
-    for i, entry in enumerate(entries):
-        entry["context_id"] = unit_identity_fields(
-            units[i], config_hash, project_root, entry_index=i,
+        config_hash = compute_config_hash(
+            units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir,
             transient_defines=transient_defines,
-        )["context_id"]
+        )
 
     manifest["config_hash"] = config_hash
     manifest_json = json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False)
-    manifest_path = _manifest_path(db_dir, config_hash)
-    manifest_path.write_text(manifest_json, encoding="utf-8")
+    write_text_atomic(_manifest_path(db_dir, config_hash), manifest_json)
 
     elapsed = time.monotonic() - t0
     # Both numbers, because their ratio is the whole point of the /2 format:
@@ -582,7 +602,7 @@ def compute_structural_hash(
     project_id: str = "",
     scope: list[str] | None = None,
     *,
-    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
+    transient_defines: Collection[str],
 ) -> str:
     """Compute the config_hash from structural build identity — no I/O, no libclang.
 
@@ -597,7 +617,10 @@ def compute_structural_hash(
 
     if not project_id:
         project_id = derive_project_id(project_root)
-    return compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, transient_defines=transient_defines)
+    return compute_config_hash(
+        units, project_root, project_id, build_dir_patterns, scope=scope,
+        transient_defines=transient_defines,
+    )
 
 
 def build_preliminary(
@@ -609,7 +632,7 @@ def build_preliminary(
     project_id: str = "",
     scope: list[str] | None = None,
     *,
-    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
+    transient_defines: Collection[str],
 ) -> str:
     """Build a preliminary ``manifest.json`` from structural data only — no libclang.
 
@@ -634,15 +657,18 @@ def build_preliminary(
     if not project_id:
         project_id = derive_project_id(project_root)
 
-    config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir, transient_defines=transient_defines)
+    config_hash = compute_config_hash(
+        units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir,
+        transient_defines=transient_defines,
+    )
 
     # Build entries for the manifest file
     entries: list[dict] = []
     arg_sets: list[list[str]] = []
-    for i, unit in enumerate(units):
+    for unit in units:
         source_file = str(unit.file.resolve())
         try:
-            source_rel = unit.file.resolve().relative_to(project_root).as_posix()
+            source_rel = str(unit.file.resolve().relative_to(project_root))
         except ValueError:
             source_rel = source_file
 
@@ -652,17 +678,6 @@ def build_preliminary(
             "arg_set": _intern_arguments(unit.clang_args, arg_sets),
             "source_hash": "",
             "headers": [],
-            # ADR-001 context id of THIS compile action.  config_hash is
-            # final above, so the identity is stable; preliminary entries
-            # still carry a stale-on-purpose source_hash, and every
-            # downstream refresh (update_entry, the post-index updater)
-            # preserves the id.  Without it a preliminary manifest's two
-            # same-file entries are indistinguishable and the first one
-            # loses its identity on the first carry-over.
-            "context_id": context_identity.unit_identity_fields(
-                unit, config_hash, project_root, entry_index=i,
-                transient_defines=transient_defines,
-            )["context_id"],
         })
 
     manifest: dict = {
@@ -707,7 +722,7 @@ def build_preliminary(
             )
             return config_hash
 
-    manifest_path.write_text(manifest_json, encoding="utf-8")
+    write_text_atomic(manifest_path, manifest_json)
     log.info("manifest.json (preliminary): %d TUs, config_hash=%s", len(entries), config_hash[:12])
     return config_hash
 
@@ -749,14 +764,6 @@ def compute_config_hash(
 ) -> str:
     """Return SHA-256 of the build's **compilation dialect**.
 
-    ROLE DEMOTED (T14 ADR-001): this set-union hash is now the *grouping*
-    component of the per-context identity — the ``build_id`` that
-    ``context_identity.compute_context_id`` mixes with the per-compile-action
-    facts (main file, compile directory, argv, rsp hashes, output).  It must
-    never again be used as a per-context identity on its own: two files
-    compiled with the same flags share this hash but are different contexts,
-    and one file compiled with two ``-D`` sets shares nothing with itself.
-
     The hash answers exactly one question: *could the same source text compile
     to something different now?*  Only two kinds of flag can change that
     answer, so only those are hashed:
@@ -786,21 +793,22 @@ def compute_config_hash(
     list comes back into the hash through the side door.
     - **Build-output paths**, whether they arrive as a path flag or embedded
       in another flag, detected via *build_dir_patterns*.
-    - **Transient ``-D`` macros** (timestamps, build counters) — they change
-      every build without changing semantics.
+    - **The ``-D`` macros of *transient_defines*** (``[index]
+      transient_defines``: build times, build counters).  Their value changes
+      in each build, and each build would get a new identity.  The same list
+      goes to compute_flags_hash, see :func:`drop_transient_defines`.
 
     Flag order and TU order do not matter: both accumulate into sets.
 
     What detects real change is therefore split by scope: this hash for the
-    dialect, ``files.source_hash`` for content, ``files.flags_hash`` for a
-    TU's own flags, and the manifest entry list for which files belong to the
-    build at all.
+    dialect, and the manifest entry of each listing for the rest — the hash
+    of the source, of each header, and of the flags of that listing — and
+    the manifest entry list for which files belong to the build at all.
 
-    ``files.flags_hash`` only counts for a TU that already got past Tier 1.
-    Tier 1 compares the source file mtime and stops there, and a change of
-    flags alone moves no mtime.  A statement that flags_hash catches a
-    changed include path is therefore wrong on its own, which is why the
-    out-of-project paths belong in THIS hash.
+    The flags hash of an entry holds every include path, thus it sees a
+    changed include path too.  The out-of-project paths belong in THIS hash
+    for another reason: they name the toolchain, and two toolchains must be
+    two builds (see the path pass below).
 
     The canonical JSON is written to
     ``<db_dir>/<project_id>/compile_commands.<hash>.json``
@@ -816,15 +824,6 @@ def compute_config_hash(
     # Build-output directory patterns from the build system.
     # When no patterns are provided, no arguments are filtered.
     _markers: tuple[str, ...] = tuple(build_dir_patterns) if build_dir_patterns else ()
-
-    # ``-D`` macros that contain per-build transient values (timestamps,
-    # build counter, etc.) — their presence destabilizes the config_hash
-    # without changing compilation semantics.  Drop them during normalization.
-    # ``[index] transient_defines`` supplies the names (see
-    # :data:`config_hash.DEFAULT_TRANSIENT_DEFINES` for the default and its
-    # WHY); a caller that does not pass the layer gets the same default, so
-    # the build identity and the per-unit flags never disagree.
-    _TRANSIENT_DEFINES: frozenset[str] = frozenset(transient_defines)
 
     def _is_build_output(arg_value: str) -> bool:
         return any(marker in arg_value for marker in _markers)
@@ -901,8 +900,7 @@ def compute_config_hash(
     for unit in units:
         # ── Pre-pass: collapse space-separated -D NAME=VALUE → -DNAME=VALUE ──
         # Sorting alphabetically (next step) would separate "-D" from its value
-        # token — join them first so the sort is semantically safe.  Also
-        # drops transient -D macros in the same pass.
+        # token — join them first so the sort is semantically safe.
         raw_args = unit.clang_args
         # The unit's own source file, by basename.  The join below must not
         # take it for the value of the flag in front of it: "-c main.c" would
@@ -923,23 +921,9 @@ def compute_config_hash(
                 j += 2 if (j + 1 < len(raw_args) and not raw_args[j + 1].startswith("-")) else 1
                 continue
             if a == "-D" and j + 1 < len(raw_args):
-                val = raw_args[j + 1]
-                eq_idx = val.find("=")
-                name = val[:eq_idx] if eq_idx != -1 else val
-                if name in _TRANSIENT_DEFINES:
-                    j += 2
-                    continue
-                collapsed_args.append(f"-D{val}")
+                collapsed_args.append(f"-D{raw_args[j + 1]}")
                 j += 2
             elif a.startswith("-D") and len(a) > 2:
-                name_part = a[2:]
-                if "=" in name_part:
-                    name = name_part.split("=", 1)[0]
-                else:
-                    name = name_part
-                if name in _TRANSIENT_DEFINES:
-                    j += 1
-                    continue
                 collapsed_args.append(a)
                 j += 1
             # Join ANY flag with a following non-flag token, before the sort.
@@ -974,6 +958,13 @@ def compute_config_hash(
             else:
                 collapsed_args.append(a)
                 j += 1
+
+        # The macros of transient_defines go AFTER the pre-pass, which made
+        # each of them one -DNAME token.  Before the pre-pass, a removed
+        # macro no longer separates its two neighbours, and the join puts
+        # them into one token: "-mthumb -DBUILD_ID=1 x.c" became
+        # "-mthumbx.c", and the config_hash of the build changed.
+        collapsed_args = drop_transient_defines(collapsed_args, transient_defines)
 
         # Normalize arguments: sort, then process path-bearing flags
         args = sorted(collapsed_args)
@@ -1010,9 +1001,8 @@ def compute_config_hash(
             #
             # Detection is a separate question, answered elsewhere: the
             # staleness pass hashes every header the units include, so it
-            # sees a content change at an unchanged path.  Tier 1 sees
-            # neither — it compares the source file mtime, and a toolchain
-            # update moves no source file.
+            # sees a content change at an unchanged path, and the flags hash
+            # of each manifest entry sees a changed path.
             for prefix in _PATH_PREFIXES:
                 if arg == prefix:
                     # Dangling: the pre-pass joined every real pair, so a
@@ -1052,16 +1042,11 @@ def compute_config_hash(
 
         # Split this TU's surviving flags into the two things that define
         # the compilation dialect.  The TU's own identity is deliberately
-        # NOT recorded here — the per-compile-action identity lives in
-        # indexer.context_identity (ADR-001); this loop only feeds the
-        # build-level set-union.  The define/dialect classification comes
-        # from the shared helper so the build-level sets and the per-context
-        # dialect hash can never disagree about what a token is.
+        # NOT recorded — see the canonical dict below.
         for token in normalized_args:
-            kind = context_identity.dialect_token_kind(token)
-            if kind == "define":
+            if token.startswith("-D"):
                 defines.add(token)
-            elif kind == "dialect" and _is_dialect_token(token):
+            elif _is_dialect_token(token):
                 dialect.add(token)
 
         # The attached token goes into the intersection, not the bare path:
@@ -1082,6 +1067,21 @@ def compute_config_hash(
         # second change of the stored rows: ``files.content`` holds the
         # comments and the preprocessor directives of every file, which the
         # one-line-per-token rule and the token-free headers had dropped.
+        # /5 marks a third change: ``symbols.source`` holds a definition that
+        # begins and ends on one line, ``macros.is_function_like`` says
+        # whether a macro takes arguments, and ``symbols.template_usr`` links
+        # an instance to its template.  Each of the three held a constant
+        # before, thus no answer over them could be right.  ``macros.value``
+        # also lost the parameter list it used to carry — that text is now
+        # ``macros.params``.  /6 marks a fourth change: a build with a GCC
+        # compiler is parsed with the system headers and the macros of its
+        # own driver (``_driver_query``).  Before it, an ESP32 or AVR build
+        # was parsed with the headers and the #if branches of the host.
+        # /7 marks a fifth change: ``files.content`` of each file that only
+        # assembly units read comes from the preprocessor record of libclang,
+        # and a file that a C unit also reads keeps the C text.  Before it, the
+        # assembly pass wrote the ``clang -E`` view over the C text: each
+        # directive was blank, and a short skipped block read as live.
         #
         # WHY the format version belongs in THIS hash: a new config_hash
         # leaves no row for the build, thus a plain `fw-context index` writes
@@ -1092,7 +1092,7 @@ def compute_config_hash(
         #
         # Every existing index therefore gets one final reindex, which is
         # intended.
-        "_format": "fw-context-cc/5",
+        "_format": "fw-context-cc/7",
         "project_root": str(project_root),
         # WHY only these two: config_hash answers "could the same source text
         # compile to something different now?"  Macros flip #ifdef, and the
@@ -1120,17 +1120,20 @@ def compute_config_hash(
     # (db_dir), never ~/.fw-context/index.  db_dir is None only on the no-I/O
     # path (compute_structural_hash) — skip the artifact there so no stray
     # file escapes test isolation (FW_CONTEXT_INDEX_DIR).
+    #
+    # db_dir is the database directory of the project, which already holds
+    # the project id, and the manifest of the same hash goes there too.  The
+    # artifact went to `db_dir / project_id` before, where no cleanup looks:
+    # see `_embedding._cleanup_orphaned_cc_artifacts`, which removes those.
     if db_dir is not None:
-        cc_dir = db_dir / project_id
-        cc_dir.mkdir(parents=True, exist_ok=True)
-        out_path = cc_dir / f"compile_commands.{config_hash}.json"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        out_path = db_dir / f"compile_commands.{config_hash}.json"
         try:
             out_path.write_text(canonical_json, encoding="utf-8")
         except OSError:
             pass  # best-effort — hash is already computed
 
     return config_hash
-
 
 def _hash_with_cache(path: Path, hash_cache: dict[str, str] | None) -> str:
     """Return the SHA-256 of *path*, memoized in *hash_cache* by resolved path.
@@ -1152,40 +1155,6 @@ def _hash_with_cache(path: Path, hash_cache: dict[str, str] | None) -> str:
     return cached
 
 
-def header_is_trusted(record: dict) -> bool:
-    """May the pipeline keep the stored hash of this header without a re-read?
-
-    ONE definition, FIVE callers: collect_stale_headers(),
-    check_tu_staleness(), compute_current_entry_hash(),
-    _mtime_bump_is_safe() and _headers_moved_on().  What the pipeline trusts
-    is one decision, and five copies of it move apart.  A caller that
-    repeats the rule instead of a call to this function is a defect.
-
-    compute_current_entry_hash() was the copy that four rounds of review did
-    not see: it answers a different question ("what IS the hash now") and so
-    it reads as a hash function, not as a trust rule.  It carries the same
-    three conditions, and a copy that keeps the STORED hash for a header the
-    run just re-read writes a files.content_hash that describes no text at
-    all.  grep for the rule, not for the word "trust".
-
-    Only a build-generated header is trusted.  Its content changes with every
-    build without a change of meaning, and config_hash plus flags_hash carry
-    what does change.
-
-    A vendor header and a header outside the project are NOT trusted any
-    more.  External code reaches the index THROUGH the project's own units:
-    an inline function, a macro, a constexpr, a C++ template, or a struct
-    layout expands from the header INTO every unit that includes it.  A
-    changed external header therefore changes the indexed symbols of PROJECT
-    files — their signatures, their lines, and which code survives the
-    #ifdefs.  A full reparse is the correct answer, not a conservative one.
-
-    Cost measured: to hash every header in the manifest takes 45 ms, against
-    an index run of 42 minutes.
-    """
-    return bool(record.get("generated"))
-
-
 def merge_header_records(
     manifest: dict,
     header_records: dict[str, dict],
@@ -1195,8 +1164,8 @@ def merge_header_records(
     Merge, do not replace: the hash is newer and wins, but ``generated`` is a
     property of the PATH, not of this parse.  A caller with no
     build_dir_patterns computes False for every header, and ``generated`` is
-    the only trust rule the pipeline has left — to let False overwrite True
-    disables it in silence.
+    a property of the file that the query layer and the coverage purge
+    read — to let False overwrite True gives them a wrong answer in silence.
 
     ONE definition, and every writer of that map calls it.  A second copy of
     this merge is how the defect it fixes came back the first time.
@@ -1215,8 +1184,13 @@ def check_tu_staleness(
     *,
     hash_cache: dict[str, str] | None = None,
     headers: list[dict] | None = None,
+    source_hash: str | None = None,
 ) -> tuple[bool, str | None]:
     """Check whether a translation unit's source or project headers have changed.
+
+    *source_hash* is the current hash of the source file when the caller
+    read it already: the index run hashes each source for its decision, and
+    a second read of each source here doubled that work.
 
     *headers* are the entry's resolved header records from
     :func:`tu_headers`.  It is a required argument in practice: the entry
@@ -1228,9 +1202,20 @@ def check_tu_staleness(
     when only a few source files changed.  This function enables incremental
     indexing — only TUs whose source or project headers changed are re-parsed.
 
-    Every header is re-hashed except a build-generated one — see
-    :func:`header_is_trusted` for the one rule and for why the vendor and
-    out-of-tree exceptions are gone.
+    Every header is re-hashed, and no header keeps its stored hash without a
+    re-read.  A vendor header and a header outside the project are re-hashed
+    because external code reaches the index THROUGH the project's own units:
+    an inline function, a macro, a constexpr, a C++ template, or a struct
+    layout expands from the header INTO every unit that includes it.  A
+    build-generated header is re-hashed because it carries the configuration
+    of the build: ``autoconf.h`` (Zephyr), ``sdkconfig.h`` (ESP-IDF) and
+    ``mbed_config.h`` (Mbed) change when ``prj.conf``, ``sdkconfig`` or
+    ``mbed_app.json`` changes, and the #ifdefs of the units follow them.
+    The rule that trusted it said that its content changes with each build;
+    measured on 2026-10-07, it does not: 0 of 212 (NCS), 2 (ESP-IDF), 1 (Mbed)
+    and 325 (a real sysbuild project) headers changed between two pristine
+    builds, and only the header of the configuration changed after a change
+    of it.  Cost: to hash every header of a manifest takes 45 ms.
 
     An entry marked ``needs_reparse`` is stale whatever its hashes say.  The
     manifest keeps ONE hash per header path and every entry shares it, so a
@@ -1251,7 +1236,7 @@ def check_tu_staleness(
     if not source_file.is_absolute():
         source_file = (project_root / entry["file"]).resolve()
 
-    current_source_hash = compute_source_hash(source_file)
+    current_source_hash = source_hash if source_hash is not None else compute_source_hash(source_file)
     if current_source_hash != entry.get("source_hash", ""):
         return True, current_source_hash
 
@@ -1262,9 +1247,6 @@ def check_tu_staleness(
 
     # ── Check header hashes ──
     for h in headers or ():
-        if header_is_trusted(h):
-            continue
-
         header_path = h["path"]
         p = Path(header_path)
         if not p.is_absolute():
@@ -1276,43 +1258,6 @@ def check_tu_staleness(
     return False, None
 
 
-def select_entry_for_unit(
-    manifest: dict | None,
-    entries: list[dict],
-    context_id: str | None,
-    unit,
-) -> dict | None:
-    """Pick the manifest entry that belongs to THIS compile action.
-
-    One file compiled with two flag sets has TWO entries, and a file-keyed
-    lookup ({file: entry}, last-wins) resolved both contexts to the same —
-    the last — entry.  That made the first context's Tier-2 check read the
-    second context's source hash and entry hash.
-
-    Preference order: an entry that names the same ADR-001 context id, then
-    one whose argument list matches this unit's (``tu_arguments``), then
-    the first remaining.  Entries written before the context id existed are
-    still told apart by their arguments; a single-entry file degenerates to
-    that entry whatever the caller asks for.
-    """
-    if not entries:
-        return None
-    if context_id is not None:
-        for e in entries:
-            if e.get("context_id") == context_id:
-                return e
-    if manifest is not None:
-        try:
-            want = list(unit.clang_args)
-        except AttributeError:
-            want = None
-        if want is not None:
-            for e in entries:
-                if tu_arguments(manifest, e) == want:
-                    return e
-    return entries[0]
-
-
 def collect_stale_headers(
     manifest: dict,
     project_root: Path,
@@ -1322,14 +1267,12 @@ def collect_stale_headers(
     """Return the manifest header paths whose on-disk content has changed.
 
     WHY this pre-pass exists: a header is not a translation unit, so editing
-    one never moves the mtime of any TU.  The per-TU mtime fast-path would
-    therefore report every dependent TU as unchanged and the header's symbols
-    would stay frozen at their first-index state.  Collecting the changed
-    headers up front lets the runner mark the dependent TUs for re-parsing.
+    one changes the hash of no TU source.  Collecting the changed headers up
+    front lets the runner mark each file with a dependent listing for
+    re-parsing, every listing of it, and log how many it marked.  The check
+    of each entry (check_tu_staleness) reads the same hashes.
 
-    Trust rules match :func:`check_tu_staleness` exactly, because both call
-    :func:`header_is_trusted`.  A build-generated header keeps its stored
-    hash; every other header is re-read.
+    Every header is re-read, as :func:`check_tu_staleness` re-reads it.
 
     Reads the manifest's ``headers`` map, which already holds each path once,
     so a header shared by 300 TUs is checked once.  Pass *hash_cache* to share
@@ -1341,9 +1284,6 @@ def collect_stale_headers(
     stale: set[str] = set()
 
     for header_path, record in (manifest.get("headers") or {}).items():
-        if header_is_trusted(record):
-            continue
-
         p = Path(header_path)
         if not p.is_absolute():
             p = (project_root / header_path).resolve()
@@ -1379,11 +1319,19 @@ def update_entry(
     source_hash: str,
     headers: list[str],
     header_records: dict[str, dict] | None = None,
+    *,
+    flags_hash: str,
+    arguments: list[str],
 ) -> None:
     """Update a single translation unit's entry in the manifest in-place.
 
-    Called after a TU has been re-parsed — updates ``source_hash`` and the
-    entry's header path list.  *header_records* carries the ``{hash,
+    Called after a TU has been re-parsed — updates ``source_hash``, the
+    ``flags_hash`` and the ``arg_set`` of the flags that the parse used (a
+    listing whose flags changed refreshes the entry of its old flags, and
+    the two fields must describe the same flags), and the entry's header
+    path list, and removes ``needs_reparse``: the parse is the reparse that
+    the mark asked for, and check_tu_staleness reads a marked entry as stale
+    whatever its hashes say.  *header_records* carries the ``{hash,
     generated}`` records for those paths and is merged into the manifest's
     shared ``headers`` map; a re-parse that discovered a header no other TU
     has seen must contribute its record, or the path would resolve with an
@@ -1398,6 +1346,9 @@ def update_entry(
         return
     entries[entry_index]["source_hash"] = source_hash
     entries[entry_index]["headers"] = headers
+    entries[entry_index]["flags_hash"] = flags_hash
+    entries[entry_index]["arg_set"] = _intern_arguments(arguments, manifest.setdefault("arg_sets", []))
+    entries[entry_index].pop("needs_reparse", None)
     if header_records:
         merge_header_records(manifest, header_records)
 
@@ -1405,28 +1356,33 @@ def update_entry(
 def mark_entries_behind(
     manifest: dict,
     changed_paths: set[str],
-    keep: set[str],
+    keep: set[int],
 ) -> int:
     """Flag each entry that depends on a header another unit refreshed.
 
-    Trusts what :func:`header_is_trusted` trusts, and nothing else — the same
-    one decision that collect_stale_headers() and _headers_moved_on() read.
+    Every changed header counts, as in collect_stale_headers() and
+    _headers_moved_on().
 
     *changed_paths* is the difference of the shared header table, taken
     BEFORE the loop over the re-parsed units, not one time per unit.  A
     per-unit difference makes the second unit read what the first one just
     wrote as somebody else's change.
 
-    *keep* is the set of ``tu_rel`` paths this run really re-parsed.  Those
-    entries hold current rows and must not be flagged.
+    *keep* is the set of the INDEXES of the entries this run really
+    re-parsed.  Those entries hold current rows and must not be flagged.
+    An index, not a file: a file that compile_commands.json lists twice has
+    two entries, and a run can parse one listing only (reindex_file of a
+    header parses one unit, and a listing can fail to parse).  A set of
+    files kept the other listing too, and its rows from the old header text
+    stayed in the index with no mark that a later run could see.
 
     Returns the number of entries flagged.
     """
     if not changed_paths:
         return 0
     flagged = 0
-    for entry in manifest.get("entries", []):
-        if entry.get("file") in keep or entry.get("needs_reparse"):
+    for idx, entry in enumerate(manifest.get("entries", [])):
+        if idx in keep or entry.get("needs_reparse"):
             continue
         if any(path in changed_paths for path in entry.get("headers") or ()):
             entry["needs_reparse"] = True
@@ -1465,8 +1421,79 @@ def save(manifest: dict, db_dir: Path, config_hash: str) -> str:
     prune_header_table(manifest)
     manifest["config_hash"] = config_hash
     manifest_json = json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False)
-    _manifest_path(db_dir, config_hash).write_text(manifest_json, encoding="utf-8")
+    write_text_atomic(_manifest_path(db_dir, config_hash), manifest_json)
     return config_hash
+
+
+def header_is_trusted(record: dict) -> bool:
+    """May the pipeline keep the stored hash of this header without a re-read?
+
+    ONE definition, FIVE callers: collect_stale_headers(),
+    check_tu_staleness(), compute_current_entry_hash(),
+    _mtime_bump_is_safe() and _headers_moved_on().  What the pipeline trusts
+    is one decision, and five copies of it move apart.  A caller that
+    repeats the rule instead of a call to this function is a defect.
+
+    compute_current_entry_hash() was the copy that four rounds of review did
+    not see: it answers a different question ("what IS the hash now") and so
+    it reads as a hash function, not as a trust rule.  It carries the same
+    three conditions, and a copy that keeps the STORED hash for a header the
+    run just re-read writes a files.content_hash that describes no text at
+    all.  grep for the rule, not for the word "trust".
+
+    Only a build-generated header is trusted.  Its content changes with every
+    build without a change of meaning, and config_hash plus flags_hash carry
+    what does change.
+
+    A vendor header and a header outside the project are NOT trusted any
+    more.  External code reaches the index THROUGH the project's own units:
+    an inline function, a macro, a constexpr, a C++ template, or a struct
+    layout expands from the header INTO every unit that includes it.  A
+    changed external header therefore changes the indexed symbols of PROJECT
+    files — their signatures, their lines, and which code survives the
+    #ifdefs.  A full reparse is the correct answer, not a conservative one.
+
+    Cost measured: to hash every header in the manifest takes 45 ms, against
+    an index run of 42 minutes.
+    """
+    return bool(record.get("generated"))
+
+
+def select_entry_for_unit(
+    manifest: dict | None,
+    entries: list[dict],
+    context_id: str | None,
+    unit,
+) -> dict | None:
+    """Pick the manifest entry that belongs to THIS compile action.
+
+    One file compiled with two flag sets has TWO entries, and a file-keyed
+    lookup ({file: entry}, last-wins) resolved both contexts to the same —
+    the last — entry.  That made the first context's Tier-2 check read the
+    second context's source hash and entry hash.
+
+    Preference order: an entry that names the same ADR-001 context id, then
+    one whose argument list matches this unit's (``tu_arguments``), then
+    the first remaining.  Entries written before the context id existed are
+    still told apart by their arguments; a single-entry file degenerates to
+    that entry whatever the caller asks for.
+    """
+    if not entries:
+        return None
+    if context_id is not None:
+        for e in entries:
+            if e.get("context_id") == context_id:
+                return e
+    if manifest is not None:
+        try:
+            want = list(unit.clang_args)
+        except AttributeError:
+            want = None
+        if want is not None:
+            for e in entries:
+                if tu_arguments(manifest, e) == want:
+                    return e
+    return entries[0]
 
 
 def get_manifest_entry_hash(entry: dict, headers: list[dict] | None = None) -> str:
@@ -1533,5 +1560,3 @@ def compute_current_entry_hash(
         for h in sorted(current_headers, key=lambda x: x.get("path", ""))
     )
     return hashlib.sha256(f"{source}|{header_hashes}".encode()).hexdigest()
-
-

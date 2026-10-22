@@ -24,8 +24,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from .protocol import BuildSystem
 from ._linker import LinkRecord
+from .protocol import BuildSystem
 
 log = logging.getLogger(__name__)
 
@@ -63,107 +63,6 @@ def background_build_safe(builder: BuildSystem | None, cfg) -> bool:
         # A backend that cannot answer must not be trusted with a build.
         log.debug("background_build_safe failed for %r", builder, exc_info=True)
         return False
-
-
-def linker_scripts(
-    builder: BuildSystem | None,
-    project_root: Path,
-    *,
-    compile_commands: Path | None = None,
-    variant: str = "",
-    units: list | None = None,
-) -> list[Path]:
-    """Return the linker scripts of *builder*, or an empty list.
-
-    A backend that does not implement ``get_linker_scripts`` answers with
-    nothing, which is correct: the concrete classes implement the
-    ``BuildSystem`` protocol structurally and not by inheritance, thus a
-    default on the protocol never reaches them.
-
-    A backend that raises answers with nothing too.  A missing memory map
-    must not stop an index run, and a partial index is better than none.
-    """
-    if builder is None:
-        return []
-    probe = getattr(builder, "get_linker_scripts", None)
-    if probe is None:
-        return []
-    try:
-        found = probe(
-            project_root,
-            compile_commands=compile_commands,
-            variant=variant,
-            units=units,
-        )
-    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
-        log.debug("get_linker_scripts failed for %r", builder, exc_info=True)
-        return []
-    return [Path(item) for item in found or []]
-
-
-class BuildSystemRegistry:
-    """Holds registered build systems and delegates detection to them.
-
-    Each builder class is registered with its ``config_key`` (the string
-    used in ``[build] system = "..."`` config).  Detection iterates all
-    registered builders and returns the first match.
-    """
-
-    def __init__(self) -> None:
-        self._builders: dict[str, type[BuildSystem]] = {}
-
-    def register(self, builder_cls: type[BuildSystem]) -> None:
-        """Register a build system class.
-
-        The class must have a ``config_key`` attribute and implement the
-        ``BuildSystem`` protocol.
-        """
-        self._builders[builder_cls.config_key] = builder_cls
-
-    def detect(self, project_root: Path) -> str | None:
-        """Return the config_key of the first matching build system, or None."""
-        root = project_root.resolve()
-        for key, builder_cls in self._builders.items():
-            try:
-                if builder_cls.detect(root):
-                    log.debug("Detected build system: %s", key)
-                    return key
-            except (ValueError, TypeError, RuntimeError, AttributeError):
-                log.debug("Builder %s raised during detection", key, exc_info=True)
-                continue
-        return None
-
-    def get(self, config_key: str) -> type[BuildSystem] | None:
-        """Return the builder class for *config_key*, or None."""
-        return self._builders.get(config_key)
-
-    def keys(self) -> list[str]:
-        """Return all registered config keys."""
-        return list(self._builders.keys())
-
-
-# Singleton registry — populated by builder modules on import.
-registry = BuildSystemRegistry()
-
-# Import builder modules so they self-register via ``registry.register()``.
-# Order matters: first-registered builder wins ties in the scoring system.
-# Tier 1: already-supported build systems
-from . import mbed_os  # noqa: F401, E402, I001
-from . import platformio  # noqa: F401, E402, I001
-from . import zephyr  # noqa: F401, E402, I001
-# Tier 2: new first-class builders
-from . import arduino  # noqa: F401, E402, I001
-from . import esp_idf  # noqa: F401, E402, I001
-from . import generic_cmake  # noqa: F401, E402, I001
-# Tier 3/4: stubs (detect-only, no automated build)
-from . import stubs  # noqa: F401, E402, I001
-# Manual / bare mode (flags-driven compile_commands.json generation)
-from . import manual  # noqa: F401, E402, I001
-# Makefile via compiledb
-from . import makefile  # noqa: F401, E402, I001
-# Keil MDK and IAR EWARM via keil2clangd
-from . import keil  # noqa: F401, E402, I001
-from . import iar  # noqa: F401, E402, I001
 
 
 def output_compile_commands(builder: BuildSystem | None, out_dir: Path, cfg) -> dict[str, Path]:
@@ -232,6 +131,42 @@ def implicit_variants(builder: BuildSystem | None, project_root: Path, cfg) -> l
     return list(probe(project_root, cfg))
 
 
+def linker_scripts(
+    builder: BuildSystem | None,
+    project_root: Path,
+    *,
+    compile_commands: Path | None = None,
+    variant: str = "",
+    units: list | None = None,
+) -> list[Path]:
+    """Return the linker scripts of *builder*, or an empty list.
+
+    A backend that does not implement ``get_linker_scripts`` answers with
+    nothing, which is correct: the concrete classes implement the
+    ``BuildSystem`` protocol structurally and not by inheritance, thus a
+    default on the protocol never reaches them.
+
+    A backend that raises answers with nothing too.  A missing memory map
+    must not stop an index run, and a partial index is better than none.
+    """
+    if builder is None:
+        return []
+    probe = getattr(builder, "get_linker_scripts", None)
+    if probe is None:
+        return []
+    try:
+        found = probe(
+            project_root,
+            compile_commands=compile_commands,
+            variant=variant,
+            units=units,
+        )
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        log.debug("get_linker_scripts failed for %r", builder, exc_info=True)
+        return []
+    return [Path(item) for item in found or []]
+
+
 def link_record(
     builder: BuildSystem | None,
     project_root: Path,
@@ -288,3 +223,68 @@ def link_record(
     ):
         return None
     return found
+
+
+class BuildSystemRegistry:
+    """Holds registered build systems and delegates detection to them.
+
+    Each builder class is registered with its ``config_key`` (the string
+    used in ``[build] system = "..."`` config).  Detection iterates all
+    registered builders and returns the first match.
+    """
+
+    def __init__(self) -> None:
+        self._builders: dict[str, type[BuildSystem]] = {}
+
+    def register(self, builder_cls: type[BuildSystem]) -> None:
+        """Register a build system class.
+
+        The class must have a ``config_key`` attribute and implement the
+        ``BuildSystem`` protocol.
+        """
+        self._builders[builder_cls.config_key] = builder_cls
+
+    def detect(self, project_root: Path) -> str | None:
+        """Return the config_key of the first matching build system, or None."""
+        root = project_root.resolve()
+        for key, builder_cls in self._builders.items():
+            try:
+                if builder_cls.detect(root):
+                    log.debug("Detected build system: %s", key)
+                    return key
+            except (ValueError, TypeError, RuntimeError, AttributeError):
+                log.debug("Builder %s raised during detection", key, exc_info=True)
+                continue
+        return None
+
+    def get(self, config_key: str) -> type[BuildSystem] | None:
+        """Return the builder class for *config_key*, or None."""
+        return self._builders.get(config_key)
+
+    def keys(self) -> list[str]:
+        """Return all registered config keys."""
+        return list(self._builders.keys())
+
+
+# Singleton registry — populated by builder modules on import.
+registry = BuildSystemRegistry()
+
+# Import builder modules so they self-register via ``registry.register()``.
+# Order matters: first-registered builder wins ties in the scoring system.
+# Tier 1: already-supported build systems
+from . import mbed_os  # noqa: F401, E402, I001
+from . import platformio  # noqa: F401, E402, I001
+from . import zephyr  # noqa: F401, E402, I001
+# Tier 2: new first-class builders
+from . import arduino  # noqa: F401, E402, I001
+from . import esp_idf  # noqa: F401, E402, I001
+from . import generic_cmake  # noqa: F401, E402, I001
+# Tier 3/4: stubs (detect-only, no automated build)
+from . import stubs  # noqa: F401, E402, I001
+# Manual / bare mode (flags-driven compile_commands.json generation)
+from . import manual  # noqa: F401, E402, I001
+# Makefile via compiledb
+from . import makefile  # noqa: F401, E402, I001
+# Keil MDK and IAR EWARM via keil2clangd
+from . import keil  # noqa: F401, E402, I001
+from . import iar  # noqa: F401, E402, I001

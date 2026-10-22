@@ -86,7 +86,10 @@ def golden():
 def test_reference_self_tests_pass(script):
     """The verbatim reference copies still pass their own self-test suites."""
     r = subprocess.run([sys.executable, script], cwd=REF_DIR,
-                       capture_output=True, text=True, timeout=120)
+                       capture_output=True, text=True, timeout=120,
+                       encoding="utf-8",
+                       errors="replace",
+    )
     assert r.returncode == 0, r.stdout + r.stderr
 
 

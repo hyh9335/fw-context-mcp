@@ -1,4 +1,4 @@
-"""Tests for PipelineRunner, PipelineConfig, and PipelineContext.
+﻿"""Tests for PipelineRunner, PipelineConfig, and PipelineContext.
 
 Covers: phase registration, error propagation, should_run gating,
 unknown phase handling, predefined configs, context creation/validation.
@@ -16,7 +16,6 @@ import pytest
 from fw_context_mcp.search.context import PipelineContext
 from fw_context_mcp.search.phases.base import Phase
 from fw_context_mcp.search.pipeline import (
-    SEARCH_CODE,
     PipelineConfig,
     PipelineRunner,
     _build_registry,
@@ -99,7 +98,7 @@ class TestRegistry:
     """Tests for _build_registry() — lazy phase registration."""
 
     def test_registry_contains_all_expected_phases(self) -> None:
-        """All 14 phase names must be present."""
+        """All 10 phase names must be present."""
         registry = _build_registry()
         expected = {
             "translate",
@@ -112,10 +111,6 @@ class TestRegistry:
             "deduplicate",
             "expand_context",
             "format",
-            "name_tokens_fallback",
-            "docstring_fallback",
-            "individual_terms_fallback",
-            "macros_fts_fallback",
         }
         assert set(registry.keys()) == expected
 
@@ -146,21 +141,6 @@ class TestPipelineConfig:
         cfg = PipelineConfig(phases=["translate", "format"])
         assert cfg.phases == ["translate", "format"]
 
-    def test_search_code_predefined(self) -> None:
-        """SEARCH_CODE contains the expected fallback chain."""
-        assert isinstance(SEARCH_CODE, PipelineConfig)
-        phases = SEARCH_CODE.phases
-        assert "rough_search" in phases
-        assert "fts5_search" in phases
-        assert "name_tokens_fallback" in phases
-        assert "docstring_fallback" in phases
-        assert "individual_terms_fallback" in phases
-        assert "macros_fts_fallback" in phases
-        assert "deduplicate" in phases
-        assert "format" in phases
-        # order matters — fallbacks must be before deduplicate
-        assert phases.index("name_tokens_fallback") < phases.index("deduplicate")
-
     def test_smart_search_has_translate_first(self) -> None:
         cfg = _build_smart_search()
         assert cfg.phases[0] == "translate"
@@ -170,10 +150,20 @@ class TestPipelineConfig:
         assert any(isinstance(p, Phase) for p in cfg.phases)
 
     def test_semantic_search_uses_params(self) -> None:
-        cfg = _build_semantic_search(threshold=0.7, overfetch=60)
-        # Should have an EmbeddingPhase instance and format
+        from fw_context_mcp.search.phases.embedding import EmbeddingPhase
+        from fw_context_mcp.search.phases.format import FormatPhase
+
+        cfg = _build_semantic_search(threshold=0.7)
         assert len(cfg.phases) == 2
-        assert cfg.phases[1] == "format"
+        embedding, fmt = cfg.phases
+        assert isinstance(embedding, EmbeddingPhase)
+        assert (embedding.threshold, embedding.source_boost, embedding.whole_set) == (0.7, True, True)
+        # The handler reads `_similarity` for its relevance floor, thus the
+        # format phase of this pipeline must keep the field.  The handler
+        # cuts the page, thus the format must keep the whole set.
+        assert isinstance(fmt, FormatPhase)
+        assert fmt.keep_similarity is True
+        assert fmt.cut is False
 
 
 # ── PipelineRunner ──────────────────────────────────────────────────────────

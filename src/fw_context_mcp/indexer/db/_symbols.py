@@ -68,9 +68,11 @@ from fw_context_mcp.utils import is_db_exception
 from ._chunking import chunked
 from ._connection import ConnectionCache
 
+_MACRO_EXACT_WHERE = "m.config_hash = ? AND m.name = ?"
+_MACRO_PREFIX_WHERE = r"m.config_hash = ? AND m.name LIKE ? ESCAPE '\\'"
+
 __all__ = [
     "_expand_query",
-    "count_macros",
     "delete_macros_for_files",
     "find_macro_refs",
     "insert_macros_batch",
@@ -125,9 +127,8 @@ _RE_COL_FILTER = re.compile(r"(?<!:):(?!:)")
 # Extra columns beyond these 9 (e.g. 'source' body text when present) get
 # weight 1.0 — they contribute but don't dominate the ranking.
 _BASE_WEIGHTS = [1.2, 0.75, 10.0, 1.0, 3.0, 2.0, 1.0, 5.0, 1.0]
-# Cache: PRAGMA table_info column count per connection → avoids
-# querying the schema on every search_symbols call.  See ConnectionCache
-# for why it is not a dict keyed by id(conn).
+# Cache: PRAGMA table_info column count per connection id → avoids
+# querying the schema on every search_symbols call.
 _bm25_col_count_cache = ConnectionCache()
 
 # Noise words that pollute FTS5 — strip before tokenizing (module-level, cached)
@@ -185,6 +186,7 @@ def split_tokens(name: str, qualified_name: str = "") -> str:
 def insert_symbols_batch(
     conn: sqlite3.Connection,
     rows: list[tuple],
+    context_id: str = "",
 ) -> int:
     """Insert symbol rows, promoting declaration→definition on USR conflict.
 
@@ -192,7 +194,21 @@ def insert_symbols_batch(
                qualified_name, kind, line, col, end_line, is_definition,
                signature, docstring, enum_value, is_virtual, is_pure_virtual,
                parent_usr, is_template, template_usr, is_project, pagerank, source,
-               is_weak)
+               is_weak, section, attr_flags)
+
+    The last two columns carry the ADR-009 stage-1 attribute evidence
+    (SLICE-I).  Rows of the previous 24-field shape are accepted and
+    padded with empty evidence — the CASE merge below stores no evidence
+    for them — so the many direct callers (production and test fixtures
+    alike) keep working without touching every call site.  Any other
+    length is rejected loudly.
+
+    *context_id* attributes every row to one compile context (ADR-002): one
+    USR observed under two ``-D`` sets of one build stores two observations,
+    and a definition in one context never erases another context's row.
+    ``""`` is the canonical context — pre-context callers keep today's
+    single-row-per-USR behavior.  Within ONE context the guard below still
+    promotes a declaration to its definition (pinned regression).
 
     Returns count of rows inserted or upgraded to definition.
 
@@ -203,9 +219,10 @@ def insert_symbols_batch(
     both as separate rows with the same USR.  The declaration row has
     ``is_definition=0``; the definition row has ``is_definition=1``.
 
-    ``ON CONFLICT(config_hash, usr) DO UPDATE`` merges duplicates on the
-    same USR.  The ``WHERE excluded.is_definition = 1 AND
-    symbols.is_definition = 0`` guard ensures:
+    ``ON CONFLICT(config_hash, usr, context_id) DO UPDATE`` merges duplicates
+    on the same USR within one compile context (rows/3).  The
+    ``WHERE excluded.is_definition = 1 AND symbols.is_definition = 0`` guard
+    ensures:
 
       • A **declaration** arriving before a definition is silently
         overwritten when the definition row arrives later.
@@ -217,15 +234,25 @@ def insert_symbols_batch(
     Without this guard, a declaration row arriving AFTER a definition
     would overwrite ``is_definition`` back to 0 — breaking the call graph.
     """
+    # ADR-009 stage-1 evidence columns (SLICE-I): legacy 24-field rows are
+    # padded with empty section/attr_flags — never fabricate evidence, and
+    # the CASE merge never overwrites observed evidence with the pad.
+    widths = {len(r) for r in rows}
+    if widths - {24, 26}:
+        raise ValueError(
+            f"insert_symbols_batch: rows must have 24 or 26 fields, got {sorted(widths)}"
+        )
+    if 24 in widths:
+        rows = [r if len(r) == 26 else r + ("", "") for r in rows]
 
     cur = conn.executemany(
         """INSERT INTO symbols
            (config_hash, file_id, file_path, name_tokens, usr, name, qualified_name, kind,
             line, col, end_line, is_definition, signature, docstring, enum_value,
             is_virtual, is_pure_virtual, parent_usr, is_template, template_usr, is_project, pagerank, source,
-            is_weak)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT(config_hash, usr) DO UPDATE SET
+            is_weak, section, attr_flags, context_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(config_hash, usr, context_id) DO UPDATE SET
                file_id       = excluded.file_id,
                file_path     = excluded.file_path,
                name_tokens   = excluded.name_tokens,
@@ -244,9 +271,15 @@ def insert_symbols_batch(
                is_project    = excluded.is_project,
                pagerank      = excluded.pagerank,
                source        = excluded.source,
-               is_weak       = excluded.is_weak
+               is_weak       = excluded.is_weak,
+               -- ADR-009 stage-1 evidence: a declaration row usually carries
+               -- no attribute, the definition row does.  Never erase an
+               -- observed flag — upgrade empty only (the expanded_value
+               -- precedent above).
+               section       = CASE WHEN excluded.section != '' THEN excluded.section ELSE symbols.section END,
+               attr_flags    = CASE WHEN excluded.attr_flags != '' THEN excluded.attr_flags ELSE symbols.attr_flags END
            WHERE excluded.is_definition = 1 AND symbols.is_definition = 0""",
-        rows,
+        [row + (context_id,) for row in rows],
     )
     return cur.rowcount  # approximate with ON CONFLICT DO UPDATE WHERE (used for logging only)
 
@@ -254,12 +287,16 @@ def insert_symbols_batch(
 def insert_macros_batch(
     conn: sqlite3.Connection,
     rows: list[tuple],
+    context_id: str = "",
 ) -> int:
     """Insert macro rows, updating on (config_hash, file_id, line) conflict.
 
-    Each row:
-    (config_hash, file_id, name, value, params, expanded_value, line,
-    is_function_like)
+    Each row: (config_hash, file_id, name, value, expanded_value, line, is_function_like)
+
+    *context_id* attributes every row to one compile context (ADR-002): the
+    same (file, line) macro under two ``-D`` values of one build keeps both
+    values instead of overwriting (T02 RC2).  ``""`` is the canonical
+    context — pre-context callers keep today's behavior.
 
     Returns count of rows inserted or updated.
 
@@ -273,16 +310,14 @@ def insert_macros_batch(
     """
     cur = conn.executemany(
         """INSERT INTO macros
-           (config_hash, file_id, name, value, params, expanded_value, line,
-            is_function_like)
+           (config_hash, file_id, name, value, expanded_value, line, is_function_like, context_id)
            VALUES (?,?,?,?,?,?,?,?)
-           ON CONFLICT(config_hash, file_id, line) DO UPDATE SET
+           ON CONFLICT(config_hash, file_id, line, context_id) DO UPDATE SET
                name           = excluded.name,
                value          = excluded.value,
-               params         = excluded.params,
                expanded_value = CASE WHEN excluded.expanded_value != '' THEN excluded.expanded_value ELSE macros.expanded_value END,
                is_function_like = excluded.is_function_like""",
-        rows,
+        [row + (context_id,) for row in rows],
     )
     return cur.rowcount  # approximate with ON CONFLICT DO UPDATE WHERE (used for logging only)
 
@@ -311,46 +346,6 @@ def delete_macros_for_files(conn: sqlite3.Connection, file_ids: Sequence[int]) -
             f"DELETE FROM macros WHERE file_id IN ({placeholders})",
             chunk,
         )
-
-
-_MACRO_EXACT_WHERE = "m.config_hash = ? AND m.name = ?"
-_MACRO_PREFIX_WHERE = r"m.config_hash = ? AND m.name LIKE ? ESCAPE '\'"
-
-
-def _macro_where(name: str, exact: bool) -> tuple[str, str, str]:
-    r"""Give the WHERE text, the name parameter and the ORDER BY of a lookup.
-
-    The count and the page must run on the SAME conditions.  Two copies of
-    the text drift apart, and a ``total`` that describes another answer
-    than the rows do is worse than no total at all.
-
-    The ``ESCAPE '\'`` clause is required because a macro name legally
-    holds underscores (common in embedded code — ``SYSTICK_HANDLER``), and
-    ``_`` is the single-character wildcard of LIKE.  Without the escape it
-    would match any character at that position.
-    """
-    if exact:
-        return _MACRO_EXACT_WHERE, name, "ORDER BY m.line, m.file_id"
-    esc = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return _MACRO_PREFIX_WHERE, f"{esc}%", "ORDER BY m.name, m.line, m.file_id"
-
-
-def count_macros(
-    conn: sqlite3.Connection,
-    config_hash: str,
-    name: str,
-    exact: bool = False,
-) -> int:
-    """Count the macros that ``lookup_macro`` answers with.
-
-    Reports how many macros the name matches ALTOGETHER, thus a reader of
-    one page knows whether more exist.
-    """
-    where, param, _order = _macro_where(name, exact)
-    return conn.execute(
-        f"SELECT COUNT(*) FROM macros m WHERE {where}",
-        (config_hash, param),
-    ).fetchone()[0]
 
 
 def lookup_macro(
@@ -604,65 +599,6 @@ def _expand_query(query: str, *, for_body_search: bool = False) -> str:
     return " OR ".join(_expand_token(p) for p in parts)
 
 
-def _symbol_search_filters(
-    kind: str | None, exclude_variables: bool, project_only: bool,
-) -> tuple[str, str]:
-    """Give the two SQL filters of a symbol search.
-
-    The count and the page must run on the SAME conditions.  Two copies of
-    this text drift apart, and a ``total`` that describes another answer
-    than the rows do is worse than no total at all.
-    """
-    if kind:
-        kind_filter = "AND s.kind = ?"
-    elif exclude_variables:
-        # Covers both 'variable' (legacy unsplit kind) and 'varlocal'
-        # (post-split kind for locals).  'varglobal' is deliberately NOT
-        # excluded — global variables carry higher architectural weight
-        # and their names are often meaningful search targets.
-        kind_filter = "AND s.kind NOT IN ('variable', 'varlocal')"
-    else:
-        kind_filter = ""
-    project_filter = "AND s.is_project = 1" if project_only else ""
-    return kind_filter, project_filter
-
-
-def count_symbols(
-    conn: sqlite3.Connection,
-    query: str,
-    config_hash: str,
-    kind: str | None = None,
-    exclude_variables: bool = False,
-    project_only: bool = False,
-) -> int:
-    """Count the symbols that ``search_symbols`` answers with.
-
-    Reports how many symbols the query matches ALTOGETHER, thus a reader
-    of one page knows whether more exist.  A query that FTS5 refuses
-    counts as zero, which is what ``search_symbols`` answers with.
-    """
-    kind_filter, project_filter = _symbol_search_filters(
-        kind, exclude_variables, project_only,
-    )
-    params: list = [_expand_query(query), config_hash]
-    if kind:
-        params.append(kind)
-    try:
-        return conn.execute(
-            f"""SELECT COUNT(*)
-               FROM symbols_fts
-               JOIN symbols s ON s.id = symbols_fts.rowid
-               WHERE symbols_fts MATCH ? AND s.config_hash = ?
-                 {kind_filter} {project_filter}""",
-            params,
-        ).fetchone()[0]
-    except sqlite3.OperationalError as e:
-        if getattr(e, "sqlite_errorcode", 0) == 1 and "fts5" in str(e).lower():
-            log.debug("count_symbols: FTS5 syntax error (%s) — counting zero", e)
-            return 0
-        raise
-
-
 def search_symbols(
     conn: sqlite3.Connection,
     query: str,
@@ -728,4 +664,99 @@ def search_symbols(
         if getattr(e, "sqlite_errorcode", 0) == 1 and "fts5" in str(e).lower():
             log.debug("search_symbols: FTS5 syntax error (%s) — returning empty", e)
             return []
+        raise
+
+
+def _macro_where(name: str, exact: bool) -> tuple[str, str, str]:
+    r"""Give the WHERE text, the name parameter and the ORDER BY of a lookup.
+
+    The count and the page must run on the SAME conditions.  Two copies of
+    the text drift apart, and a ``total`` that describes another answer
+    than the rows do is worse than no total at all.
+
+    The ``ESCAPE '\'`` clause is required because a macro name legally
+    holds underscores (common in embedded code — ``SYSTICK_HANDLER``), and
+    ``_`` is the single-character wildcard of LIKE.  Without the escape it
+    would match any character at that position.
+    """
+    if exact:
+        return _MACRO_EXACT_WHERE, name, "ORDER BY m.line, m.file_id"
+    esc = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return _MACRO_PREFIX_WHERE, f"{esc}%", "ORDER BY m.name, m.line, m.file_id"
+
+
+def _symbol_search_filters(
+    kind: str | None, exclude_variables: bool, project_only: bool,
+) -> tuple[str, str]:
+    """Give the two SQL filters of a symbol search.
+
+    The count and the page must run on the SAME conditions.  Two copies of
+    this text drift apart, and a ``total`` that describes another answer
+    than the rows do is worse than no total at all.
+    """
+    if kind:
+        kind_filter = "AND s.kind = ?"
+    elif exclude_variables:
+        # Covers both 'variable' (legacy unsplit kind) and 'varlocal'
+        # (post-split kind for locals).  'varglobal' is deliberately NOT
+        # excluded — global variables carry higher architectural weight
+        # and their names are often meaningful search targets.
+        kind_filter = "AND s.kind NOT IN ('variable', 'varlocal')"
+    else:
+        kind_filter = ""
+    project_filter = "AND s.is_project = 1" if project_only else ""
+    return kind_filter, project_filter
+
+
+def count_macros(
+    conn: sqlite3.Connection,
+    config_hash: str,
+    name: str,
+    exact: bool = False,
+) -> int:
+    """Count the macros that ``lookup_macro`` answers with.
+
+    Reports how many macros the name matches ALTOGETHER, thus a reader of
+    one page knows whether more exist.
+    """
+    where, param, _order = _macro_where(name, exact)
+    return conn.execute(
+        f"SELECT COUNT(*) FROM macros m WHERE {where}",
+        (config_hash, param),
+    ).fetchone()[0]
+
+
+def count_symbols(
+    conn: sqlite3.Connection,
+    query: str,
+    config_hash: str,
+    kind: str | None = None,
+    exclude_variables: bool = False,
+    project_only: bool = False,
+) -> int:
+    """Count the symbols that ``search_symbols`` answers with.
+
+    Reports how many symbols the query matches ALTOGETHER, thus a reader
+    of one page knows whether more exist.  A query that FTS5 refuses
+    counts as zero, which is what ``search_symbols`` answers with.
+    """
+    kind_filter, project_filter = _symbol_search_filters(
+        kind, exclude_variables, project_only,
+    )
+    params: list = [_expand_query(query), config_hash]
+    if kind:
+        params.append(kind)
+    try:
+        return conn.execute(
+            f"""SELECT COUNT(*)
+               FROM symbols_fts
+               JOIN symbols s ON s.id = symbols_fts.rowid
+               WHERE symbols_fts MATCH ? AND s.config_hash = ?
+                 {kind_filter} {project_filter}""",
+            params,
+        ).fetchone()[0]
+    except sqlite3.OperationalError as e:
+        if getattr(e, "sqlite_errorcode", 0) == 1 and "fts5" in str(e).lower():
+            log.debug("count_symbols: FTS5 syntax error (%s) — counting zero", e)
+            return 0
         raise

@@ -48,6 +48,13 @@ if os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE") is None:
 # failing closed (M3B design).  Symmetric with V2_WRITE_AUTHORITY=0 above.
 if os.environ.get("FW_CONTEXT_V2_READ_AUTHORITY") is None:
     os.environ["FW_CONTEXT_V2_READ_AUTHORITY"] = "0"
+# Wave fusion: the M6 read gate defaults ON in production, but the
+# legacy fixtures here have no M6 store — a gate that fails closed
+# would answer RuntimeError where the test expects the legacy
+# structured error.  Symmetric with V2_READ_AUTHORITY above; the tests
+# that exercise the gate set it to 1 themselves.
+if os.environ.get("FW_CONTEXT_M6_READ_AUTHORITY") is None:
+    os.environ["FW_CONTEXT_M6_READ_AUTHORITY"] = "0"
 
 # ── Result logging ─────────────────────────────────────────────────────────
 

@@ -99,7 +99,10 @@ class TestO3CrossProcessExclusion:
             result = subprocess.run(  # noqa: S603 — fixed argv, no shell
                 [sys.executable, "-c", _child_script(lock_file)],
                 capture_output=True, text=True, timeout=60,
-            )
+            
+        encoding="utf-8",
+        errors="replace",
+    )
             assert result.stdout.strip() == "REFUSED", result.stdout + result.stderr
         finally:
             holder.release()
@@ -112,7 +115,10 @@ class TestO3CrossProcessExclusion:
         result = subprocess.run(  # noqa: S603 — fixed argv, no shell
             [sys.executable, "-c", _child_script(lock_file)],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
         assert result.stdout.strip() == "ACQUIRED", result.stdout + result.stderr
 
 

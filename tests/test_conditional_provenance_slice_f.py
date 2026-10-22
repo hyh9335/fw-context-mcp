@@ -225,6 +225,9 @@ def _clang_preprocess_functions(src: Path, defines: list[str], include: Path) ->
         capture_output=True,
         text=True,
         timeout=60,
+    
+        encoding="utf-8",
+        errors="replace",
     )
     if out.returncode != 0:
         return None

@@ -71,7 +71,7 @@ from ..utils import SAFE_EXCEPT, is_fatal
 from ._dispatch_bridges import _DISPATCH_ENTRY_POINTS, merge_user_bridges
 from ._embedding import _build_embeddings
 from ._llm_analysis import _build_llm_analysis
-from ._manifest_updater import _refresh_header_mtimes_from_manifest, _update_manifest_after_index
+from ._manifest_updater import _refresh_header_mtimes_from_manifest, _update_manifest_after_index, _backfill_header_source_hashes
 from .db import (
     CURRENT_ROW_FORMAT,
     CURRENT_SCHEMA_VERSION,
@@ -759,6 +759,17 @@ def _step_update_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
             updated_manifest,
             hash_cache=ctx.get("header_hash_cache"),
         )
+    # Wave: each run, also a run that parsed nothing — the rows of an
+    # older index stay without a hash until something writes them.
+    # The manifest proves the parse-time hash of a header row whose
+    # text is the disk text.
+    _backfill_header_source_hashes(
+        conn,
+        config_hash,
+        ctx["project_root"],
+        ctx.get("effective_manifest"),
+        hash_cache=ctx.get("header_hash_cache"),
+    )
 
 
 def _build_coverage_set(units: list, manifest: dict | None, project_root: Path) -> set[str] | None:
@@ -1753,6 +1764,16 @@ def _step_reconcile_generated(conn: sqlite3.Connection, ctx: dict) -> None:
         )
 
 
+def _needs_macros(ctx: dict) -> bool:
+    """Say if the expanded values of the macros can differ from the last run.
+
+    ``pending_run`` says that an earlier run of the build stored rows and
+    stopped before this step: its units now read as unchanged (the manifest
+    checkpoint), and their values are not in the index (see ``_run_marker``).
+    """
+    return bool(ctx.get("updated")) or bool(ctx.get("removed_files")) or bool(ctx.get("pending_run"))
+
+
 _STEPS: list[tuple[str, Callable[..., None], Callable[..., bool] | None]] = [
     ("purge_missing",    _step_purge_missing_files, None),
     ("fts5",             _step_rebuild_fts,       None),
@@ -1761,7 +1782,7 @@ _STEPS: list[tuple[str, Callable[..., None], Callable[..., bool] | None]] = [
     ("manifest",         _step_update_manifest,    None),
     ("generated_flag",   _step_reconcile_generated, None),
     ("coverage_purge",   _step_purge_files_outside_build, None),
-    ("macros",           _step_expand_macros,      lambda c: c["index_macros_expanded"] and c["units"]),
+    ("macros",           _step_expand_macros,      lambda c: c["index_macros_expanded"] and c["units"] and _needs_macros(c)),
     ("dispatch_edges",   _step_resolve_dispatches,  lambda c: c["index_refs"]),
     ("llm_analysis",     _step_llm_analysis,       lambda c: c["analyze_symbols"] and c["llm_config"] is not None and c["llm_config"].enabled),
     ("embeddings",       _step_build_embeddings,   lambda c: c["index_embeddings"] and c["llm_config"] is not None and c["llm_config"].enabled),
@@ -1814,6 +1835,7 @@ def _run_postprocess(
     header_hash_cache: dict[str, str] | None = None,
     reparsed_tus: set | None = None,
     unit_context_ids: dict[int, str] | None = None,
+    pending_run: bool = False,
 ) -> None:
     """Run all post-processing phases via a data-driven pipeline.
 
@@ -1836,6 +1858,7 @@ def _run_postprocess(
         "project_root": project_root,
         "db_dir": db_dir,
         "units": units,
+        "pending_run": pending_run,
         "asm_paths": asm_paths or set(),
         "tu_headers": tu_headers,
         "manifest": manifest,

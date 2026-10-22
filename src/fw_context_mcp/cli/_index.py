@@ -24,7 +24,10 @@ resolution, and graceful degradation when optional phases fail.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+import os
+import signal
 import sys
 import time
 from pathlib import Path
@@ -473,15 +476,29 @@ def _resolve_compile_commands(
     Three resolution strategies, tried in order:
     1. ``--build`` — force a fresh build, ignoring any existing file.
     2. Explicit path (positional arg) — use the provided file.
-    3. Default — reuse existing cc.json from config; build if missing.
+    3. Default — the database of the build of fw-context, built when it is
+       missing; or the database of the user that ``[index]
+       compile_commands`` names (``build.user_database``), never built.
 
     WHY: Users should not need to know where their build system stores
-    compile_commands.json.  The default path is discovered from the
-    detected build system and stored in config.  The explicit path
-    option exists for edge cases (CI pipelines, unsupported build
-    systems) where the user manages cc.json themselves.
+    compile_commands.json.  The explicit path option exists for edge cases
+    (CI pipelines, unsupported build systems) where the user manages
+    cc.json themselves.
     """
+    from ..indexer.build import user_database
+
     explicit_cc = bool(args.compile_commands)
+
+    # `--build` writes the database of the build of fw-context, and a run
+    # with a database of the user reads the other file: the index would
+    # change from one database to the other with each run.
+    if args.build and not explicit_cc and user_database(project_root, cfg) is not None:
+        print(
+            "error: [index] compile_commands names a database of your own, and --build would "
+            "index the build of fw-context instead. Remove the key, or run without --build.",
+            file=sys.stderr,
+        )
+        return None, False
 
     if args.build:
         # A background run builds only with a backend that may build on its
@@ -519,27 +536,37 @@ def _resolve_compile_commands(
     # Default: reuse existing, build only if missing
     from ..indexer.build import (
         check_completeness,
+        default_compile_commands,
         generate_compile_commands,
-        resolve_reuse_compile_commands,
     )
 
-    cc = resolve_reuse_compile_commands(project_root, cfg.index.compile_commands)
+    cc = default_compile_commands(project_root, cfg)
+    if not cc.exists() and user_database(project_root, cfg) is not None:
+        # A build of fw-context writes another file, thus it cannot give
+        # the user the file that the config names.
+        print(f"error: {cc} not found — [index] compile_commands names it", file=sys.stderr)
+        print("  Make the file, or remove the key to index the build of fw-context.", file=sys.stderr)
+        return None, False
     if not cc.exists():
-        if bg:
+        if bg and not _may_build_in_background(cfg, detected_system):
             print(f"error: compile_commands.json not found at {cc}", file=sys.stderr)
-            print("  Background reindex requires an existing compile_commands.json.", file=sys.stderr)
+            print("  fw-context cannot run this build in the background.", file=sys.stderr)
             print("  Run 'fw-context index --build' first to set up the project.", file=sys.stderr)
             return None, False
         print("compile_commands.json not found, running build...", file=sys.stderr)
         try:
-            return generate_compile_commands(project_root, cfg.build), False
+            built = generate_compile_commands(project_root, cfg.build)
+            _note_build(args)
+            return built, False
         except RuntimeError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return None, False
 
     for warning in check_completeness(cc, project_root):
         print(f"warning: {warning}", file=sys.stderr)
-    return cc, False
+    # A database of the user is explicit: `_validate_and_fix_artifacts` must
+    # not rebuild it, as it does not rebuild a file on the command line.
+    return cc, user_database(project_root, cfg) is not None
 
 
 def _validate_and_fix_artifacts(
@@ -1235,13 +1262,52 @@ def cmd_index(args: argparse.Namespace) -> int:
     ``fw-context index``).  Forcing a build on every run would be
     wasteful — Mbed/zephyr builds can take minutes.  The auto-detect
     logic only triggers a build when necessary.
+
+    Fusion: the SIGTERM handler of the whole command is
+    _SigtermOutsideTheLock, and the handler of the caller comes back when
+    the command ends.  The index itself is taken by the v2 index-run lock
+    (``index_run_lock``), not by upstream _owned_index: the takeover of a
+    background run is ``_kill_bg_reindex()``.
+
+    An exception that stops the run writes the MCP warning as a non-zero
+    exit does, then goes on to the caller unchanged.
     """
+    outside = _SigtermOutsideTheLock()
+    previous = signal.signal(signal.SIGTERM, outside)
+    try:
+        return _cmd_index(args, outside)
+    except Exception as exc:
+        if outside.db_dir is not None and not outside.index_done:
+            autobuild.record_problem(outside.db_dir, _run_failed_text(
+                f"{type(exc).__name__}: {exc}", bool(getattr(args, "background", False)),
+                outside.db_dir,
+            ))
+        raise
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if previous is None else previous)
+
+
+def _cmd_index(args: argparse.Namespace, outside: _SigtermOutsideTheLock) -> int:
+    """Build or rebuild the symbol index from compile_commands.json.
+
+    By default, reuses an existing ``compile_commands.json`` for fast
+    incremental indexing.  When the file is missing, a clean build is
+    triggered automatically (auto-detecting Mbed OS / Zephyr / PlatformIO).
+
+    Pass ``--build`` to force a fresh build and full re-index.
+
+    WHY: Most invocations are incremental (user edits a file and runs
+    ``fw-context index``).  Forcing a build on every run would be
+    wasteful — Mbed/zephyr builds can take minutes.  The auto-detect
+    logic only triggers a build when necessary.
+    """
+
     from ..config import derive_project_id
     from ..config import load as load_config
-    from ..exit_codes import EXIT_ALREADY_RUNNING, EXIT_SUPERSEDED
+    from ..exit_codes import EXIT_ALREADY_RUNNING, EXIT_SUPERSEDED, EXIT_TERMINATED
     from ..indexer.build import detect_build_system
     from ..indexer.db._locking import IndexRunLocked, index_run_lock
-    from ..indexer.runner import IndexSuperseded, run
+    from ..indexer.runner import IndexStopped
     from ..utils import resolve_project_root
 
     if args.verbose:
@@ -1260,6 +1326,9 @@ def cmd_index(args: argparse.Namespace) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     project_root = resolve_project_root(args.project)
+    # Before the config loads: a retired key such as build_dir goes from the
+    # file, and the run does not stop on it.
+    _clean_obsolete(args, project_root)
     cfg = load_config(project_root=project_root)
     bg = getattr(args, "background", False)
     # The config wins over the markers, the same form _run_multi already
@@ -1272,8 +1341,9 @@ def cmd_index(args: argparse.Namespace) -> int:
     if detected_system:
         print(f"Project: {project_root.name}  path={project_root}  build={detected_system}")
     elif bg:
-        cc_fallback = project_root / CC_OUTPUT_REL
-        if cc_fallback.exists():
+        from ..indexer.build import default_compile_commands
+
+        if default_compile_commands(project_root, cfg).exists():
             print(f"Project: {project_root.name}  path={project_root}  build=unknown (bg, reusing cc)")
         else:
             print(f"error: No build system detected and no compile_commands.json for {project_root}.", file=sys.stderr)
@@ -1284,6 +1354,7 @@ def cmd_index(args: argparse.Namespace) -> int:
 
     project_id = derive_project_id(project_root)
     db_path = cfg.index.db_dir / project_id / "index.db"
+    outside.db_dir = db_path.parent
 
     # A retired key stops the run before any build.  Each build goes to
     # .fw-context/build/<variant>/out, and a config that still names another
@@ -1391,7 +1462,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     # A plain reindex cannot repair any of them.  `_plan_auto_build` returns
     # a non-empty list only when the backend may build on its own.
     auto_build_sources: list[str] = []
-    if not getattr(args, "build", False):
+    if not getattr(args, "build", False) and not explicit_cc:
         auto_build_sources, auto_build_cfg, auto_build_reason = _plan_auto_build(
             project_root, db_path, cfg, detected_system, background=bg, args=args
         )
@@ -1399,14 +1470,20 @@ def cmd_index(args: argparse.Namespace) -> int:
         # type checker see that, and it costs nothing.
         if auto_build_sources and auto_build_cfg is not None:
             args.build = True
-            # The candidate that _plan_auto_build asked the backend about.
-            # Applying it here, and nowhere else, keeps every "do not build"
-            # path from leaving an isolated directory behind on cfg.  It also
-            # carries `isolated_build_dir`, which is what makes `--build`
-            # legal on a `--background` run — see the check in
-            # `_resolve_compile_commands`.
             cfg.build = auto_build_cfg
             log.info("%s", auto_build_reason)
+
+    # ── A build that is not there, and that this run does not make ──
+    # The run would index units with no answer of their compiler: wrong
+    # system headers and macros, presented as a good index.  It stops with a
+    # clear error instead.  A background run has no terminal: the marker
+    # gives the same text to each query tool answer of the project.
+    if not getattr(args, "build", False) and not explicit_cc and not cfg.build.variants:
+        refusal = _refuse_without_build(project_root, cfg, detected_system, indexed_cc)
+        if refusal:
+            print(f"error: {refusal}", file=sys.stderr)
+            autobuild.record_problem(db_path.parent, refusal, build_missing=True)
+            return 1
 
     # The CLI flag REPLACES the [index] layer.  A variant's own [index] keys
     # are added on top of whichever of the two won — see _layered_paths().
@@ -1418,45 +1495,75 @@ def cmd_index(args: argparse.Namespace) -> int:
         from dataclasses import replace
         cs_config = replace(cs_config, force=True)
 
-    # ── Multi-variant: dispatch BEFORE single-build resolution ──
-    # WHY: [[build.variants]] replaces the single [build] board/source flow.
-    # build_multi() builds each variant; the single-build path below
-    # (generate_compile_commands → builder.build()) would fail on a project
-    # whose board lives per-variant (Zephyr "requires a board name").
-    if cfg.build.variants:
-        # Takes over from a background run by killing it, which also drops
-        # its index lock; the lock below then only refuses another
-        # FOREGROUND run.  The markers are claimed AFTER the lock — see
-        # _kill_bg_reindex().
-        _kill_bg_reindex(db_path)
-        run_kwargs = _build_run_kwargs(
-            args, cfg, project_root, project_id, vendor_paths, project_paths, cs_config,
-        )
-        try:
-            # Held across every (variant, image) build, not per build: a
-            # second run slipping in between two builds would index against a
-            # database this one is still changing.
-            with index_run_lock(db_path.parent):
-                _claim_index(db_path.parent)
-                try:
-                    exit_code = _run_multi(
-                        args, cfg, project_root, project_id, db_path,
-                        detected_system, run_kwargs,
-                    )
-                finally:
-                    _release_index(db_path.parent)
-        except IndexRunLocked as exc:
-            print(f"error: {exc}", file=sys.stderr)
-            return EXIT_ALREADY_RUNNING
+    run_kwargs = _build_run_kwargs(
+        args, cfg, project_root, project_id, vendor_paths, project_paths, cs_config,
+    )
+    run_kwargs["record_git"] = _records_checkout(
+        args, cfg, detected_system, project_root, project_id, db_path, explicit_cc,
+    )
+    multi = bool(cfg.build.variants)
 
-        # Outside the index lock, and only after a run that was
-        # successful — see the same call at the end of this function.
-        if exit_code == 0:
-            if auto_build_sources:
-                autobuild.clear_failure(db_path.parent)
-            _ensure_watcher_after_index(project_root)
-        elif auto_build_sources:
-            autobuild.record_failure(db_path.parent, auto_build_sources)
+    # The index is owned BEFORE anything is built, on both paths below.  A
+    # build run under another index run cleans the build directory and
+    # rewrites compile_commands.json under it, and a run that is refused
+    # afterwards has spent the whole build for nothing.  _owned_index takes
+    # over from a background run, and from a foreground one with --takeover.
+    # Fusion: the v2 index-run lock instead of upstream _owned_index.  The
+    # takeover of a background run is _kill_bg_reindex(), which also drops
+    # the background run's lock; the lock below then refuses only another
+    # foreground run.  The markers are claimed AFTER the lock — see
+    # _kill_bg_reindex() and _claim_index().
+    _kill_bg_reindex(db_path)
+    try:
+        with index_run_lock(db_path.parent):
+            # ── Multi-variant: dispatch BEFORE single-build resolution ──
+            # WHY: [[build.variants]] replaces the single [build] board/source
+            # flow.  build_multi() builds each variant; the single-build path
+            # (generate_compile_commands → builder.build()) would fail on a
+            # project whose board lives per-variant (Zephyr "requires a board
+            # name").  The index stays owned across every (variant, image)
+            # build: a second run slipping in between two builds would index
+            # against a database this one is still changing.
+            if multi:
+                exit_code = _run_multi(
+                    args, cfg, project_root, project_id, db_path,
+                    detected_system, run_kwargs,
+                )
+            else:
+                exit_code = _run_single(
+                    args, cfg, project_root, project_id, db_path,
+                    detected_system, bg, run_kwargs,
+                )
+            # Again after a run that ended well, under the index lock: the
+            # builds of this run replaced the builds that read an old copy,
+            # thus that copy goes now.  A run that fails leaves the old index,
+            # and the old index reads the old copies.
+            if exit_code == 0:
+                _clean_obsolete(args, project_root)
+    except IndexRunLocked as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ALREADY_RUNNING
+    except IndexStopped as exc:
+        # Not a failure — see IndexStopped.  The distinct exit codes let the
+        # daemon retry a superseded run, and not a terminated one, instead
+        # of treating either as a broken run.
+        print(f"{exc.label}: {exc}", file=sys.stderr)
+        exit_code = exc.exit_code
+
+    # Everything below runs outside the index lock.  The daemon does a
+    # staleness check when it starts, thus a daemon that starts inside the
+    # lock could start a second index run against the database that this run
+    # still changes.
+    if exit_code != 0:
+        # The failed step printed its error.  The marker gives the LLM the
+        # same news in each query tool answer, because a background run has no
+        # terminal and a run of the user can end before the LLM asks.  A run
+        # that another run took over, or that a SIGTERM stopped, did not
+        # fail: the run that follows decides.
+        if exit_code not in (EXIT_SUPERSEDED, EXIT_TERMINATED):
+            autobuild.record_problem(
+                db_path.parent, _run_failed_text(f"exit code {exit_code}", bg, db_path.parent)
+            )
         return exit_code
 
     # The run ended well, but the check is done again and not taken from
@@ -1473,9 +1580,10 @@ def cmd_index(args: argparse.Namespace) -> int:
     else:
         autobuild.clear_problem(db_path.parent)
 
-    multi = bool(cfg.build.variants)
     if not multi and getattr(args, "build", False):
         _record_still_uncovered(project_root, db_path, cfg)
+
+    outside.index_done = True
 
     _ensure_watcher_after_index(project_root)
     return 0
@@ -1560,16 +1668,7 @@ def _run_single(
 
     Called ONLY inside _owned_index — the build writes the files the index
     run reads, so it has to be excluded the same way the indexing is.
-
-    Fusion: the image machinery (``_single_build_images``, per-image runs,
-    ``record_git``) is upstream v0.35; the index-run lock, the background
-    takeover, the autobuild backoff markers and the watcher start are the
-    v2 daemon contract this codebase runs on.
     """
-    from ..exit_codes import EXIT_SUPERSEDED
-    from ..indexer._postprocess import cleanup_retired_builds
-    from ..indexer.db import open_db
-    from ..indexer.db._locking import IndexRunLocked, index_run_lock
     from ..indexer.runner import IndexStopped, run
 
     # ── Resolve compile_commands.json ──
@@ -1613,77 +1712,53 @@ def _run_single(
         )
         return 1
 
-    # ── Manage background reindex ──
-    # Takes over from a background run by killing it, which also drops its
-    # index lock; the lock below then only refuses another FOREGROUND run.
-    # The markers are claimed AFTER the lock — see _kill_bg_reindex().
-    _kill_bg_reindex(db_path)
-
     # A database that this run built belongs to the tree of now.
     if getattr(args, "build_ran", False):
         run_kwargs = {**run_kwargs, "record_git": True}
-
     failed: list[str] = []
-    try:
-        with index_run_lock(db_path.parent):
-            _claim_index(db_path.parent)
-            try:
-                for image, cc in selected:
-                    try:
-                        config_hash = run(
-                            compile_commands=cc,
-                            db_path=db_path,
-                            build_dir_patterns=build_dir_patterns,
-                            image=image,
-                            **run_kwargs,
-                        )
-                    except IndexStopped:
-                        raise
-                    except Exception as exc:  # noqa: BLE001 — one image of several, as in _run_multi
-                        if len(selected) == 1:
-                            raise
-                        # The images are separate programs: a failure in the bootloader
-                        # must not keep the application out of the index.
-                        print(f"error: indexing image={image}: {exc}", file=sys.stderr)
-                        failed.append(image)
-                        continue
-                    label = f" image={image}" if image else ""
-                    print(f"Indexed{label}. config_hash={config_hash[:16]}…  db={db_path}")
+    for image, cc in selected:
+        try:
+            config_hash = run(
+                compile_commands=cc,
+                db_path=db_path,
+                build_dir_patterns=build_dir_patterns,
+                image=image,
+                **run_kwargs,
+            )
+        except IndexStopped:
+            raise
+        except Exception as exc:  # noqa: BLE001 — one image of several, as in _run_multi
+            if len(selected) == 1:
+                raise
+            # The images are separate programs: a failure in the bootloader
+            # must not keep the application out of the index.
+            print(f"error: indexing image={image}: {exc}", file=sys.stderr)
+            failed.append(image)
+            continue
+        label = f" image={image}" if image else ""
+        print(f"Indexed{label}. config_hash={config_hash[:16]}…  db={db_path}")
 
-                # The project has one build now, thus the builds of variants that an
-                # earlier config (or an earlier platformio.ini) made are retired, and so
-                # are the images that this build no longer makes.  A run that --image
-                # narrowed does not see the other images.  A run with a failed image
-                # retires nothing: the build of the image without a name, from before
-                # the images, can be the only complete one.
-                if not _is_narrowed(args) and not failed:
-                    conn = open_db(db_path)
-                    try:
-                        retired = cleanup_retired_builds(
-                            conn, project_id, db_path.parent, {""}, {("", image) for image, _ in selected},
-                        )
-                    finally:
-                        conn.close()
-                    if retired:
-                        print(f"Removed the builds that the project no longer makes: {_pair_names(retired)}")
+    # The project has one build now, thus the builds of variants that an
+    # earlier config (or an earlier platformio.ini) made are retired, and so
+    # are the images that this build no longer makes.  A run that --image
+    # narrowed does not see the other images.  A run with a failed image
+    # retires nothing: the build of the image without a name, from before
+    # the images, can be the only complete one.
+    if not _is_narrowed(args) and not failed:
+        from ..indexer._postprocess import cleanup_retired_builds
+        from ..indexer.db import open_db
 
-                _post_index_optimize(
-                    db_path, project_root, project_id, detected_system, args
-                )
-            except IndexSuperseded as exc:
-                # Not a failure — see IndexSuperseded.  The distinct exit code
-                # lets the daemon retry instead of treating it as a broken run.
-                print(f"Superseded: {exc}", file=sys.stderr)
-                return EXIT_SUPERSEDED
-            except IndexStopped as exc:
-                print(f"{exc.label}: {exc}", file=sys.stderr)
-                return exc.exit_code
-            finally:
-                _release_index(db_path.parent)
-    except IndexRunLocked as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return EXIT_ALREADY_RUNNING
+        conn = open_db(db_path)
+        try:
+            retired = cleanup_retired_builds(
+                conn, project_id, db_path.parent, {""}, {("", image) for image, _ in selected},
+            )
+        finally:
+            conn.close()
+        if retired:
+            print(f"Removed the builds that the project no longer makes: {_pair_names(retired)}")
 
+    _post_index_optimize(db_path, project_root, project_id, detected_system, args)
     return 1 if failed else 0
 
 
@@ -1753,3 +1828,135 @@ def _record_still_uncovered(project_root: Path, db_path: Path, cfg) -> None:
         db_path.parent,
         {path: compute_source_hash(project_root / path) for path in uncovered},
     )
+
+
+def _run_failed_text(failure: str, bg: bool, db_dir: Path) -> str:
+    """Give the text that the MCP answers carry after a failed index run.
+
+    *failure* is ``"exit code N"``, or the type and text of the exception
+    that stopped the run.  The text names where the full error is: each
+    failed step prints its own error, and the run does not collect them.  A
+    background run is a run of the daemon, which writes its output to
+    ``reindex.log`` (``daemon._run_index_async``).
+    """
+    where = (f"Its output is in {db_dir / 'reindex.log'}." if bg
+             else "Its error is in the output of 'fw-context index'.")
+    return (f"The last index run failed ({failure}), thus the index holds the data "
+            f"of an earlier run. {where} Repair the cause, then run 'fw-context index'.")
+
+
+
+def _clean_obsolete(args: argparse.Namespace, project_root: Path) -> None:
+    """Remove what an older fw-context wrote and no version uses, see ``housekeeping.clean``.
+
+    The file on the command line stays, with each database that the index
+    or the config reads.  The cleanup never stops the run: a path that
+    cannot go gives a warning.
+    """
+    from ..housekeeping import clean
+
+    keep: list[Path] = []
+    if getattr(args, "compile_commands", None):
+        given = Path(args.compile_commands)
+        keep.append(given if given.is_absolute() else project_root / given)
+    clean(project_root, keep=keep)
+
+
+class _SigtermOutsideTheLock:
+    """The SIGTERM handler of ``cmd_index`` while this run does not own the index.
+
+    Inside the lock, _owned_index has its own handler, and it gives this one
+    back when the run releases the index.
+
+    WHY a handler here and not the default action: a run that takes over
+    sends SIGTERM once, and the holder can release the lock between the
+    check of the taker and the arrival of the signal.  With the default
+    action that holder died with -15 in the middle of its work after the
+    lock (the daemon start, the registry update), and the daemon logged it
+    as a failure.  The taker only wants the index, and it has it, thus this
+    handler ignores a SIGTERM of a takeover (see _taken_over).
+
+    Any other SIGTERM stops the run with EXIT_TERMINATED.  SystemExit, not
+    a signal to itself: ``finally`` blocks then run, and the status is the
+    same as the one that _owned_index gives.
+
+    ``db_dir`` is None until ``cmd_index`` knows the index directory.
+    ``index_done`` is True once the run wrote its index: ``cmd_index`` then
+    writes no "run failed" warning for an error of a later step, because the
+    index is complete.
+    """
+
+    def __init__(self) -> None:
+        self.db_dir: Path | None = None
+        self.index_done = False
+
+    def __call__(self, signum: int, frame: object) -> None:
+        from ..exit_codes import EXIT_TERMINATED
+
+        if self.db_dir is not None and _taken_over(self.db_dir):
+            log.info("Ignored the SIGTERM of a takeover: this run no longer owns the index")
+            return
+        # os.write, not print: the signal can arrive while the main code
+        # writes to sys.stderr, and a second write to that buffered stream
+        # then raises "reentrant call" instead of this SystemExit.
+        os.write(2, b"Terminated: a SIGTERM that no index run sent stopped this run\n")
+        raise SystemExit(EXIT_TERMINATED)
+
+
+
+def _taken_over(db_dir: Path) -> bool:
+    """Return True when a process that still runs takes the index from this process.
+
+    The check is that the taker runs, not that it is an index run (see
+    _index_run_kind): that check reads the argv, and a signal handler must
+    stay short and must not start ``ps`` on macOS.  The rest risk is a
+    marker that a dead taker left, whose PID the system gave to another
+    process, and that names THIS process as the victim.  Then a foreign
+    SIGTERM reads as a takeover, and the run exits 75 instead of 143.
+    """
+    data = _read_takeover_marker(db_dir / _TAKEOVER_MARKER)
+    taker = data.get("taker")
+    if data.get("victim") != os.getpid() or taker is None or taker == os.getpid():
+        return False
+    return PidFile._pid_exists(taker)
+
+
+
+def _read_takeover_marker(marker: Path) -> dict[str, int]:
+    """Return the marker as a dict, or an empty dict when it is missing or bad."""
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {key: value for key, value in data.items() if isinstance(value, int)}
+
+
+
+def _write_takeover_marker(db_dir: Path, victim: int) -> None:
+    """Write ``{"taker": <this PID>, "victim": <victim>}`` atomically.
+
+    Atomic, because the victim reads it in its signal handler at any time
+    after the signal.  The victim is named, thus a SIGTERM that a different
+    run gets at the same time does not read as a takeover.
+
+    Another marker than ``reindex.pause`` and ``reindex.pid``.  The rule
+    "write nothing before the lock is won" (see _acquire_index) keeps those
+    two from naming a run that lost.  No code reads this file except the
+    victim, and only to classify a signal, thus a run that loses harms
+    nothing with it.
+    """
+    marker = db_dir / _TAKEOVER_MARKER
+    temporary = marker.with_name(f".{marker.name}.{os.getpid()}")
+    temporary.write_text(json.dumps({"taker": os.getpid(), "victim": victim}), encoding="utf-8")
+    os.replace(temporary, marker)
+
+
+
+def _remove_takeover_marker(db_dir: Path) -> None:
+    """Remove the takeover marker when this process wrote it."""
+    marker = db_dir / _TAKEOVER_MARKER
+    if _read_takeover_marker(marker).get("taker") == os.getpid():
+        marker.unlink(missing_ok=True)
+

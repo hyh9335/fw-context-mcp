@@ -89,7 +89,7 @@ class TestChangeDuringIndex:
         """This is the defect.  One edit at 16:09:21, one more index run."""
         daemon_mod = fast_loop
         _no_pause(monkeypatch)
-        pending = asyncio.Event()
+        pending = daemon_mod._PendingWork(tmp_path)
         pending.set()
         flag_at_spawn: list[bool] = []
 
@@ -120,7 +120,7 @@ class TestChangeDuringIndex:
         """No change during the run, thus one run only."""
         daemon_mod = fast_loop
         _no_pause(monkeypatch)
-        pending = asyncio.Event()
+        pending = daemon_mod._PendingWork(tmp_path)
         pending.set()
         spawns: list[int] = []
 
@@ -161,7 +161,7 @@ class TestChangeDuringIndex:
         monkeypatch.setattr(daemon_mod, "_wait_for_pause_to_clear", _never_clears)
         monkeypatch.setattr(daemon_mod, "_run_index_async", _must_not_run)
 
-        pending = asyncio.Event()
+        pending = daemon_mod._PendingWork(tmp_path)
         pending.set()
         self._run_loop(
             daemon_mod,
@@ -186,7 +186,7 @@ class TestWatcherTask:
         from fw_context_mcp.mcp import daemon as daemon_mod
 
         shutdown = asyncio.Event()
-        pending = asyncio.Event()
+        pending = daemon_mod._PendingWork(tmp_path)
 
         def _fake_awatch(*paths, **kwargs):
             async def _gen():

@@ -118,7 +118,10 @@ class TestTheCorpusItself:
             [str(_ARM_GCC), "-mcpu=cortex-m4", "-mthumb", "-c",
              "-o", str(obj), str(path)],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
 
     def test_the_file_assembles(self, name: str, tmp_path: Path):
         run = self._assemble(CORPUS / f"{name}.S", tmp_path)
@@ -134,7 +137,10 @@ class TestTheCorpusItself:
         out = subprocess.run(
             [str(_ARM_NM), str(tmp_path / f"{name}.o")],
             capture_output=True, text=True, timeout=60,
-        )
+        
+        encoding="utf-8",
+        errors="replace",
+    )
         defined = set()
         for line in out.stdout.splitlines():
             parts = line.split()

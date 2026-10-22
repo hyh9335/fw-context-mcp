@@ -52,6 +52,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Collection
+from dataclasses import dataclass
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
@@ -209,6 +210,7 @@ def _check_and_parse_unit(
     hash_cache: dict[str, str] | None = None,
     header_table: dict[str, dict] | None = None,
     context_id: str = "",
+    pre_decision=None,
     *,
     transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ):
@@ -273,81 +275,126 @@ def _check_and_parse_unit(
     # ifdef-filtered content get refreshed.
     tu_header_stale = file_path in header_stale_tus
 
-    # ── Tier 1: mtime fast-path ──
-    if not force_refs and not tu_header_stale and file_path in existing_files:
-        rec = existing_files[file_path]
-        stored_mtime = rec.mtime
-        try:
-            current_mtime = unit.file.stat().st_mtime if unit.file.exists() else 0.0
-        except OSError:
-            current_mtime = 0.0
-        if current_mtime <= stored_mtime + MTIME_TOLERANCE_S:
-            return ("unchanged", None, None, None)
+    # ── Wave fusion: the decision is by hash, not by file time ──
+    # Upstream removed the mtime fast-path: a copy that keeps its time
+    # (cp -p) changes the file and not the time, and only the content
+    # hashes below see it.  Every candidate now pays one source-hash
+    # read; the unchanged answer then comes from Tier 2 alone.
 
-    # ── Tier 2: content-hash check (mtime differs) ──
-    # Compute source hash first — cheap, no libclang.
-    try:
-        source_hash = compute_source_hash(unit.file)
-    except OSError:
-        source_hash = ""
-
-    if unit.raw_entry is not None:
-        flags_hash = compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+    # ── Wave: the upfront decision is authoritative ──
+    # decide_units ran BEFORE the loop: a save that lands after the
+    # decision is a change (the row stores the decision's hashes, not
+    # ones read at write time), and the sibling rule needs every
+    # answer upfront.  A CHANGED verdict skips the local tiers — a
+    # local re-check could undo the sibling rule with its own, later,
+    # read of an unchanged sibling.
+    if pre_decision is not None and not force_refs:
+        _entry_hash = _get_manifest_entry_hash_for_unit(
+            unit, project_root, manifest,
+            hash_cache=hash_cache, header_table=header_table,
+            context_id=context_id,
+        )
+        if pre_decision.unchanged:
+            return (
+                "unchanged", None, None,
+                (pre_decision.hashes[0], pre_decision.hashes[1], _entry_hash),
+            )
+        hashes = (pre_decision.hashes[0], pre_decision.hashes[1], _entry_hash)
     else:
-        flags_hash = ""
+        # ── Tier 2: content-hash check (mtime differs) ──
+        # Compute source hash first — cheap, no libclang.
+        try:
+            source_hash = compute_source_hash(unit.file)
+        except OSError:
+            source_hash = ""
 
-    # Determine manifest entry hash for Tier 2 comparison.
-    # When manifest.json exists, use check_tu_staleness() — fast hash comparison
-    # against stored values.  When not, fall back to source-only hash.
-    manifest_entry_hash = _get_manifest_entry_hash_for_unit(
-        unit,
-        project_root,
-        manifest,
-        hash_cache=hash_cache,
-        header_table=header_table,
-        context_id=context_id,
-    )
+        if unit.raw_entry is not None:
+            flags_hash = compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+        else:
+            flags_hash = ""
 
-    content_hash = compute_tu_content_hash(source_hash, flags_hash, manifest_entry_hash)
-    hashes = (source_hash, flags_hash, manifest_entry_hash)
+        # Determine manifest entry hash for Tier 2 comparison.
+        # When manifest.json exists, use check_tu_staleness() — fast hash comparison
+        # against stored values.  When not, fall back to source-only hash.
+        manifest_entry_hash = _get_manifest_entry_hash_for_unit(
+            unit,
+            project_root,
+            manifest,
+            hash_cache=hash_cache,
+            header_table=header_table,
+            context_id=context_id,
+        )
 
-    if not force_refs and not tu_header_stale and file_path in existing_files:
-        rec = existing_files[file_path]
-        # rec is a FileHashRecord from get_file_hashes() — attribute access
-        if rec.content_hash and rec.content_hash == content_hash:
-            # Content unchanged — just the mtime was bumped by a rebuild.
-            return ("unchanged", None, None, hashes)
+        content_hash = compute_tu_content_hash(source_hash, flags_hash, manifest_entry_hash)
+        hashes = (source_hash, flags_hash, manifest_entry_hash)
+
+        if not force_refs and not tu_header_stale and file_path in existing_files:
+            if manifest is not None:
+                # Wave fusion: the manifest speaks for the listing.  The entry
+                # the runner pre-selected for this (file, context) proves the
+                # unit unchanged only when its flags hash is the flags hash of
+                # THIS listing and neither its source nor any header changed
+                # (:func:`_unchanged_entry`).  A DB content-hash comparison
+                # cannot see a header edit, so with a manifest present the
+                # entry alone decides — no entry proves nothing, and the unit
+                # is parsed.
+                try:
+                    tu_rel = unit.file.resolve().relative_to(project_root).as_posix()
+                except ValueError:
+                    tu_rel = unit.file.resolve().as_posix()
+                entry = manifest.get((tu_rel, context_id)) if isinstance(
+                    next(iter(manifest.keys()), None), tuple
+                ) else manifest.get(tu_rel)
+                if entry is not None and _unchanged_entry(
+                    [entry], source_hash, flags_hash, project_root,
+                    hash_cache=hash_cache, header_table=header_table,
+                ) is not None:
+                    return ("unchanged", None, None, hashes)
+            else:
+                # No manifest: the v2 DB content-hash comparison decides.
+                rec = existing_files[file_path]
+                # rec is a FileHashRecord from get_file_hashes() — attribute access
+                if rec.content_hash and rec.content_hash == content_hash:
+                    # Content unchanged — just the mtime was bumped by a rebuild.
+                    return ("unchanged", None, None, hashes)
 
     # ── Tier 3: libclang parse ──
+    # Wave fusion: the parse itself runs through ``runner._parse_unit`` —
+    # the wave's module-level seam; the save-during and save-after-parse
+    # contracts wrap it.  The M9 certificate cache travels in
+    # :func:`_parse_unit_merged`.
+    from . import runner as _runner_mod
+
+    return _runner_mod._parse_unit(
+        unit, index_refs, skip_files, hashes,
+        config_hash=config_hash, project_root=project_root,
+    )
+
+
+def _parse_unit_merged(
+    unit,
+    index_refs,
+    skip_files: set[str] | None,
+    hashes,
+    config_hash: str = "",
+    project_root=None,
+):
+    """The Tier-3 parse of :func:`_check_and_parse_unit`, as its own step.
+
+    Does NOT write to the database — the caller persists via
+    ``_process_unit(pre_parsed=...)``.  Returns the upstream 4-tuple
+    shape; ``runner._parse_unit`` delegates here.
+    """
     from .symbols import extract_all
 
-    # ── Tier 2.5 (M9): cross-Build certificate reuse ──
-    # When FW_CONTEXT_M9_REUSE=1, consult the process-global certificate
-    # cache BEFORE invoking the expensive libclang parse. On HIT (bucket
-    # key match + closure content re-verification), reuse the cached
-    # ExtractionResult. On MISS, fall through to the normal parse and
-    # cache the result. Default OFF — zero behavior change when disabled.
-    # See `.dsh-control/m9_frontend_reuse/` for the full safety contract.
+    bucket_key = ""
     if m9_reuse_enabled():
         try:
             bucket_key = compute_bucket_key(
                 unit, project_root, skip_files=skip_files, with_refs=index_refs,
             )
         except Exception:
-            bucket_key = ""  # any failure → safe MISS (fall through to parse)
-
-        if bucket_key and not bucket_key.startswith("FORCE_MISS"):
-            cache = get_certificate_cache()
-            cached = cache.get(bucket_key)
-            if cached is not None:
-                # Bucket HIT — re-verify closure content (c4 leg)
-                if verify_closure_content(cached):
-                    # Safe HIT — reuse cached parsed result
-                    t_hit = time.monotonic()
-                    return ("updated", cached.parsed, (t_hit, t_hit), hashes)
-                else:
-                    # c4 rejected — header content changed
-                    cache.record_c4_rejection()
+            bucket_key = ""  # any failure → safe MISS (no caching)
 
     t_parse_start = time.monotonic()
     try:
@@ -879,3 +926,215 @@ def _handle_unchanged(
         "status": "unchanged (content)" if hashes is not None else "unchanged",
         "content_filled": content_filled,
     }
+
+
+@dataclass
+class UnitDecision:
+    """What :func:`decide_units` says about one listing of compile_commands.json.
+
+    *hashes* is ``(source_hash, flags_hash)`` of the listing, for its
+    ``files`` row.  *mtime* is the time of the source file, read BEFORE its
+    hash, thus the two describe the same text or the time is older (0.0
+    when the file is gone).  *unchanged* is True when the index holds what a
+    parse would give, and no parse is necessary.
+    """
+
+    hashes: tuple[str, str]
+    mtime: float
+    unchanged: bool
+
+
+def decide_units(
+    units: list,
+    project_root: Path,
+    existing_files,
+    manifest: dict[str, list[dict]] | None,
+    header_stale_tus: frozenset[str] = frozenset(),
+    *,
+    force: bool,
+    hash_cache: dict[str, str] | None,
+    header_table: dict[str, dict] | None,
+    transient_defines: Collection[str],
+) -> list[UnitDecision]:
+    """Decide for each unit, in order, if it must be parsed again.
+
+    A listing is unchanged when all of these are true:
+
+    * No ``force`` and no ``FW_CONTEXT_FORCE_REFINDEX=1``.
+    * The file is not in *header_stale_tus*.
+    * The index holds a row for the file.
+    * *manifest* holds an entry for the file with the flags hash of THIS
+      listing (see :func:`_unchanged_entry`), and that entry is not stale:
+      the source file and each header have the hash of the entry, and the
+      entry has no ``needs_reparse`` mark.
+    * No other listing of the same file must be parsed.
+
+    No file time takes part.  Before, the first test was "the source file
+    is not newer than the stored time", which did not see a copy with an
+    older time, nor a change of the flags or of a header (the header pass
+    covered the last one).
+
+    The last rule is why all units are decided before the first parse.
+    compile_commands.json can list one file more than once with other
+    flags, and the index holds ONE set of rows for a file: the rows of the
+    listing that the run parsed last.  A run that parsed only the listing
+    whose flags changed left rows that depend on the order of the listings,
+    and a full run gave other rows.  Thus each listing of the file is parsed.
+
+    Args:
+        manifest: ``{file: [entry, ...]}`` from ``manifest.load()``, one
+            entry for each listing of the file in compile_commands.json.
+            ``None`` (no manifest) parses every unit.
+        header_stale_tus: Normalized paths of TUs that include a header
+            whose content changed, or whose entry carries ``needs_reparse``
+            (from ``runner._tus_to_requeue``).
+        hash_cache: Shared ``{resolved path: sha256}`` memo for header
+            hashes, so a header included by many TUs is read once per index
+            run.
+        header_table: The ``headers`` map of the manifest.  An entry holds
+            header paths only, and their hashes are in this map.
+        transient_defines: ``[index] transient_defines``, for the flags hash
+            of the listing.  The manifest entries hold hashes of the same list.
+    """
+    force_all = force or os.environ.get("FW_CONTEXT_FORCE_REFINDEX") == "1"
+    paths: list[str] = []
+    hashes: list[tuple[str, str]] = []
+    mtimes: list[float] = []
+    own: list[bool] = []
+    for unit in units:
+        resolved_tu = unit.file.resolve()
+        file_path = _normalize_file_path(str(resolved_tu), project_root)
+        # The time first, then the hash: a save between the two leaves the
+        # row with an older time than the text, and the staleness check of
+        # the query side then hashes the file again.
+        try:
+            mtime = unit.file.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        # compute_source_hash gives "" for a file it cannot read (a source
+        # that the build lists and the disk lost): no entry holds "".
+        source_hash = compute_source_hash(unit.file)
+        flags_hash = (
+            compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+            if unit.raw_entry is not None else ""
+        )
+        unchanged = False
+        if (
+            not force_all
+            and file_path not in header_stale_tus
+            and file_path in existing_files
+            and manifest is not None
+        ):
+            try:
+                # Windows adjudication: manifest keys are posix.
+                tu_rel = resolved_tu.relative_to(project_root).as_posix()
+            except ValueError:
+                tu_rel = resolved_tu.as_posix()
+            unchanged = _unchanged_entry(
+                manifest.get(tu_rel, ()), source_hash, flags_hash, project_root,
+                hash_cache=hash_cache, header_table=header_table,
+            ) is not None
+        paths.append(file_path)
+        hashes.append((source_hash, flags_hash))
+        mtimes.append(mtime)
+        own.append(unchanged)
+
+    behind = {path for path, unchanged in zip(paths, own, strict=True) if not unchanged}
+    decisions = [
+        UnitDecision(hashes=h, mtime=mtime, unchanged=unchanged and path not in behind)
+        for path, h, mtime, unchanged in zip(paths, hashes, mtimes, own, strict=True)
+    ]
+    siblings = sum(1 for unchanged, d in zip(own, decisions, strict=True) if unchanged and not d.unchanged)
+    if siblings:
+        log.info("%d unit(s) parsed because another listing of the same file changed", siblings)
+    return decisions
+
+
+def _parse_unit(unit, index_refs, skip_files: set[str] | None, hashes: tuple[str, str]):
+    """Parse a unit that :func:`decide_units` did not find unchanged.
+
+    Does NOT write to the database — the caller is responsible for
+    acquiring ``write_lock`` and calling ``_process_unit(pre_parsed=...)``
+    to persist the result.
+
+    Returns:
+        * ``("skipped", None, None, None)`` — parse failed.
+        * ``("updated", parsed, (t_start, t_end), hashes)`` — parsed
+          successfully, ready for ``_process_unit(pre_parsed=parsed)``.
+    """
+    from .symbols import extract_all
+
+    t_parse_start = time.monotonic()
+    try:
+        parsed = extract_all(
+            unit,
+            with_refs=index_refs,
+            return_tu=True,
+            skip_files=skip_files,
+        )
+    except sqlite3.Error:
+        log.error("Fatal DB error parsing %s — stopping indexer", unit.file.name)
+        raise
+    # TranslationUnitLoadError is named next to SAFE_EXCEPT and not inside
+    # it: the class derives straight from Exception, so the tuple
+    # `(ValueError, TypeError, RuntimeError, AttributeError, sqlite3.Error,
+    # OSError)` does not hold it.  Without the name here the exception left
+    # the run, and `ops.py` — which handles the same failure by skipping —
+    # never saw the unit at all.
+    #
+    # Measured on the Mbed project: a branch switch removed two generated zcbor
+    # sources that compile_commands.json still listed, and those two files
+    # out of 881 ended the run at translation unit 39.  The 842 units behind
+    # them were never read.
+    except (*SAFE_EXCEPT, TranslationUnitLoadError) as exc:
+        if is_fatal(exc):
+            raise
+        msg = str(exc)
+        if "unable to open database file" in msg:
+            log.error("Fatal DB error parsing %s: %s — stopping indexer", unit.file.name, exc)
+            raise
+        log.warning("skip TU %s: %s", unit.file.name, exc)
+        return ("skipped", None, None, None)
+    t_parse_end = time.monotonic()
+    return ("updated", parsed, (t_parse_start, t_parse_end), hashes)
+
+
+def _unchanged_entry(
+    entries,
+    source_hash: str,
+    flags_hash: str,
+    project_root: Path,
+    *,
+    hash_cache: dict[str, str] | None,
+    header_table: dict[str, dict] | None,
+) -> dict | None:
+    """Return the manifest entry that proves a listing unchanged, or None.
+
+    *entries* are the entries of one file, one for each listing in
+    compile_commands.json.  The entry of this listing is the one with
+    *flags_hash*: Zephyr compiles ``misc/empty_file.c`` three times in one
+    image with two sets of flags, and the entry of one set says nothing
+    about the other.  Two listings with the same flags have entries that
+    say the same, thus the first one answers.
+
+    *source_hash* is the hash of the source file that the caller read, so
+    that check_tu_staleness does not read the file a second time.
+
+    An empty *flags_hash* (a unit without a compile_commands entry) or an
+    entry without a source hash (a preliminary manifest) proves nothing,
+    and the unit is parsed.
+    """
+    from .manifest import check_tu_staleness, resolve_headers
+
+    if not flags_hash:
+        return None
+    for entry in entries:
+        if entry.get("flags_hash") != flags_hash or not entry.get("source_hash"):
+            continue
+        stale, _ = check_tu_staleness(
+            entry, project_root,
+            hash_cache=hash_cache, headers=resolve_headers(entry, header_table),
+            source_hash=source_hash,
+        )
+        return None if stale else entry
+    return None

@@ -57,6 +57,9 @@ def _cli(args: list[str], cwd: Path, timeout: int = 120) -> subprocess.Completed
         text=True,
         timeout=timeout,
         env=env,
+    
+        encoding="utf-8",
+        errors="replace",
     )
 
 

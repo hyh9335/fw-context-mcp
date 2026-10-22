@@ -207,7 +207,7 @@ def test_e2b_same_dir_rerun_parity(tmp_path, parse_count, _v2_flags):
         _touch(proj2 / "forced.h")
         _run(proj2, pid2, db_path2)
         off_files = _files_row(db_path2, "main.c")
-        assert parse_count["n"] == 1               # legacy baseline
+        assert parse_count["n"] == 0               # wave: the hash decides
         assert not _v2(db_path2).exists()
     finally:
         _flip_v2_flag(True)
@@ -358,8 +358,9 @@ def test_s30_flag_off_control(tmp_path, parse_count, _flag_off):
     t0 = time.monotonic()
     _run(proj, pid, db_path)
     wall = time.monotonic() - t0
-    # legacy baseline: one re-parse (manifest appears between the runs →
-    # Tier-1 tuple mismatch), then the tiers stabilize from run 3 on
-    assert parse_count["n"] == 1
+    # Wave decision contract: the hash decides — a touch that changes no
+    # content re-parses nothing (the v2-era re-parse came from the
+    # manifest-appearance Tier-1 tuple artifact the wave removed).
+    assert parse_count["n"] == 0
     assert wall < 5.0
     assert not _v2(db_path).exists()               # no admission rows exist

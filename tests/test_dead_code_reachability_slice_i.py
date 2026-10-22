@@ -488,19 +488,19 @@ def test_t07_tc07_08_dead_scc_removed_by_gc(tmp_path):
          "-ffreestanding", "-nostdlibinc",
          "-ffunction-sections", "-fdata-sections",
          "-c", "dead.c", "-o", "dead.o"],
-        cwd=str(fix), capture_output=True, text=True, errors="replace",
+        cwd=str(fix), capture_output=True, text=True,         encoding="utf-8", errors="replace",
     )
     assert comp.returncode == 0, f"clang compile failed: {comp.stderr[-800:]}"
     link = subprocess.run(
         [lld, "dead.o", "-o", "dead.elf", "--entry=_start",
          "--gc-sections", "--print-gc-sections", "-Map=dead.map",
          "-T", "keep.ld", "-nostdlib", "--noinhibit-exec"],
-        cwd=str(fix), capture_output=True, text=True, errors="replace",
+        cwd=str(fix), capture_output=True, text=True,         encoding="utf-8", errors="replace",
     )
     assert link.returncode == 0 and elf.exists(), (
         f"ld.lld gc link failed: {link.stderr[-800:]}")
     nm_out = subprocess.run(
-        [nm, "dead.elf"], cwd=str(fix), capture_output=True, text=True, errors="replace",
+        [nm, "dead.elf"], cwd=str(fix), capture_output=True, text=True,         encoding="utf-8", errors="replace",
     )
 
     gc_log = link.stdout + link.stderr

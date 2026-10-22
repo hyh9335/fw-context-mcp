@@ -52,6 +52,9 @@ def _cli(args: list[str], cwd: Path, timeout: int = 240) -> subprocess.Completed
     return subprocess.run(
         [sys.executable, "-m", "fw_context_mcp.cli"] + args,
         cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env,
+    
+        encoding="utf-8",
+        errors="replace",
     )
 
 
