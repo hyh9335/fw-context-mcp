@@ -325,6 +325,7 @@ def _recheck(name: str, project_root: str | Path | None = None) -> DepCheckResul
         check_disk_space,
         check_libclang_python,
         check_libclang_so,
+        check_obsolete_files,
         check_ollama_chat_model,
         check_ollama_embed_model,
         check_ollama_running,
@@ -359,6 +360,7 @@ def _recheck(name: str, project_root: str | Path | None = None) -> DepCheckResul
         "embed-model": lambda: check_ollama_embed_model(cfg.llm) if cfg else DepCheckResult("embed-model", "skipped", "no config"),
         "db-integrity": lambda: check_db_integrity(project_root),
         "disk-space": lambda: check_disk_space(project_root),
+        "obsolete-files": lambda: check_obsolete_files(project_root),
     }
     fn = _map.get(name)
     if fn is None:

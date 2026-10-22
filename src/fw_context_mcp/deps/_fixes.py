@@ -383,19 +383,6 @@ def fix_config(_result, project_root=None) -> tuple[bool, str]:
     return True, message
 
 
-FIXABLE: dict[str, Any] = {
-    "pysqlite3": fix_pysqlite3,
-    "sqlite-vec": fix_sqlite_vec,
-    "libclang-python": fix_libclang_python,
-    "watchfiles": fix_watchfiles,
-    "tomli-w": fix_tomli_w,
-    "chat-model": fix_chat_model,
-    "embed-model": fix_embed_model,
-    "sqlite-ext": fix_sqlite_ext,
-    "config": fix_config,
-}
-
-
 def run_fix(name: str, result, project_root: str | Path | None = None) -> tuple[bool, str]:
     """Run the fix for *name*. Returns (ok, message).
 
@@ -410,3 +397,58 @@ def run_fix(name: str, result, project_root: str | Path | None = None) -> tuple[
         return fn(result, project_root)
     except Exception as exc:
         return False, str(exc)
+
+
+def fix_clang_resource(_result, _project_root=None) -> tuple[bool, str]:
+    """Unpack the clang compiler headers that ship with fw-context.
+
+    WHY the bundled archive and not the package manager: it needs no network
+    and no administrator rights, and works the same on Linux, macOS and
+    Windows.  Its SHA-256 is checked against ``SOURCE.json``.
+    """
+    from ..indexer._clang_resource import InstallError, install_managed, libclang_major
+
+    major = libclang_major()
+    if major is None:
+        return False, "the libclang version is not known"
+    try:
+        include = install_managed(major)
+    except InstallError as error:
+        return False, str(error)
+    return True, f"clang {major} headers installed in {include}"
+
+
+def fix_obsolete_files(_result, project_root=None) -> tuple[bool, str]:
+    """Remove what an older fw-context wrote and no version uses (``housekeeping.clean``)."""
+    from ..housekeeping import clean
+    from ..utils import resolve_project_root
+
+    try:
+        root: Path | None = resolve_project_root(str(project_root) if project_root else None)
+    except OSError:
+        root = None
+    report = clean(root, quiet=True)
+    removed = f"removed {len(report.lines())} item(s) of an older fw-context"
+    if report.lines():
+        removed += ": " + "; ".join(report.lines())
+    if report.failures:
+        # The message names what went too: doctor shows only "fix failed"
+        # and this text, and a removed key in config.toml needs a commit.
+        failed = "; ".join(f"cannot clean {path}: {reason}" for path, reason in report.failures)
+        return False, f"{removed}; {failed}" if report.lines() else failed
+    return True, removed
+
+
+FIXABLE: dict[str, Any] = {
+    "pysqlite3": fix_pysqlite3,
+    "sqlite-vec": fix_sqlite_vec,
+    "libclang-python": fix_libclang_python,
+    "watchfiles": fix_watchfiles,
+    "tomli-w": fix_tomli_w,
+    "chat-model": fix_chat_model,
+    "embed-model": fix_embed_model,
+    "sqlite-ext": fix_sqlite_ext,
+    "config": fix_config,
+    "clang-resource": fix_clang_resource,
+    "obsolete-files": fix_obsolete_files,
+}

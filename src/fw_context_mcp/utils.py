@@ -22,8 +22,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import shlex
 import shutil
+import socket
 import sqlite3
 import subprocess
 import threading
@@ -907,6 +909,76 @@ def fw_context_home() -> Path:
 
 
 FW_CONTEXT_HOME_ENV = "FW_CONTEXT_HOME"
+
+
+def _owner_tag() -> str:
+    """Return the tag of the PID namespace that this process runs in.
+
+    A PID has a meaning only in its own PID namespace.  A container and its
+    host can share one project directory, and each has its own index lock
+    (the lock is in the home directory), thus the two can build at the same
+    time.  A PID from the container names no process on the host, and a host
+    that deleted each file of a "dead" PID would delete a live file.
+
+    The tag is the host name plus the inode of ``/proc/self/ns/pid``.  The
+    host name alone is not sufficient: ``--uts=host`` gives a container the
+    host name of the host.  The inode alone is not sufficient: the first PID
+    namespace of each Linux machine has the same inode, and two machines can
+    share a project on a network file system.  Where ``/proc`` is not
+    available (macOS), the tag is the host name.
+
+    The tag goes into a file name, thus each character of the host name
+    other than ``[A-Za-z0-9.-]`` becomes ``_``, and an empty host name is
+    ``_``.  :data:`_TMP_OWNER` accepts these characters.
+    """
+    host = re.sub(r"[^A-Za-z0-9.-]", "_", socket.gethostname()) or "_"
+    try:
+        link = os.readlink("/proc/self/ns/pid")
+    except OSError:
+        return host
+    inode = re.sub(r"\D", "", link)
+    return f"{host}-{inode}" if inode else host
+
+
+def owner_token() -> str:
+    """Return ``<pid>@<tag>``, the owner of a file that this process writes.
+
+    See :func:`_owner_tag` for the tag.  :func:`owner_is_dead` reads the
+    token back.
+    """
+    return f"{os.getpid()}@{_owner_tag()}"
+
+
+def owner_is_dead(token: str) -> bool:
+    """Return True when *token* names a process of this PID namespace that stopped.
+
+    Only then is the file of that owner garbage.  A token from a different
+    PID namespace gives False: this process cannot see that PID, thus it
+    cannot know if the owner still runs.  A token that does not parse gives
+    False too, because the file then has an unknown source.
+
+    A process that runs and belongs to a different user (EPERM) is alive.
+    A PID that is too large for ``pid_t`` (OverflowError) names no process,
+    but it did not come from this code, thus the file stays.
+
+    On Windows, signal 0 of ``os.kill`` is ``CTRL_C_EVENT``: the call sends
+    Ctrl+C to the process group of the PID and tests nothing.  The probe
+    there is ``_windows_process_is_gone``.
+    """
+    pid_text, sep, tag = token.partition("@")
+    # isascii first: isdigit() also accepts digits such as "²", which int()
+    # refuses with a ValueError.
+    if not sep or not (pid_text.isascii() and pid_text.isdigit()) or tag != _owner_tag():
+        return False
+    if _ON_WINDOWS:
+        return _windows_process_is_gone(int(pid_text))
+    try:
+        os.kill(int(pid_text), 0)
+    except ProcessLookupError:
+        return True
+    except (OSError, OverflowError):
+        return False
+    return False
 
 
 def write_text_atomic(path: Path, text: str, *, mode: int | None = None) -> None:

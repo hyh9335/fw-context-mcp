@@ -57,7 +57,8 @@ def _index(root: Path, index_dir: Path, database: Path) -> None:
             upsert_build_config(conn, "h", PROJECT_ID, str(database))
     finally:
         conn.close()
-    (root / ".fw-context" / "local.toml").write_text(f'[index]\ndb_dir = "{index_dir}"\n', encoding="utf-8")
+    (root / ".fw-context" / "local.toml").write_text(
+        f'[index]\ndb_dir = "{index_dir.as_posix()}"\n', encoding="utf-8")
 
 
 @pytest.mark.usefixtures("home")
@@ -662,7 +663,7 @@ class TestDatabasesInUse:
         conn.commit()
         conn.close()
         (root / ".fw-context" / "local.toml").write_text(
-            f'[index]\ndb_dir = "{tmp_path / "index"}"\n', encoding="utf-8")
+            f'[index]\ndb_dir = "{(tmp_path / "index").as_posix()}"\n', encoding="utf-8")
 
         assert databases_in_use(root) is None
 

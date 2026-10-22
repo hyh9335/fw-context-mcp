@@ -22,6 +22,7 @@ from typing import Any
 
 from . import DepCheckResult
 from ._instructions import (
+    clang_resource_instructions,
     db_integrity_instructions,
     disk_space_instructions,
     get_platform_info,
@@ -224,37 +225,6 @@ def check_libclang_python() -> DepCheckResult:
                 )
         except ImportError:
             pass  # packaging not installed, skip version check
-        # T09/ADR-007 API-surface check: the wheel must expose the raw
-        # template C exports the instance-discovery pass binds.  A wheel
-        # without them used to pass doctor silently while every
-        # template_usr stayed empty; report degraded bindings loudly.
-        try:
-            from clang import cindex as _cindex
-
-            _lib = _cindex.conf.lib
-            _missing_exports = [
-                name
-                for name in (
-                    "clang_getSpecializedCursorTemplate",
-                    "clang_getTemplateCursorKind",
-                )
-                if not hasattr(_lib, name)
-            ]
-        except Exception as e:  # noqa: BLE001 — probe must never fail doctor
-            _missing_exports = [f"<probe failed: {type(e).__name__}>"]
-        if _missing_exports:
-            return DepCheckResult(
-                name="libclang-python",
-                status="degraded",
-                message=(
-                    f"libclang {ver} lacks the template C API "
-                    f"({', '.join(_missing_exports)}) — template instance "
-                    "discovery disabled"
-                ),
-                fix_cmd=libclang_python_instructions(platform_ctx),
-                instructions=libclang_python_instructions(platform_ctx),
-                critical=True,
-            )
         return DepCheckResult(
             name="libclang-python",
             status="ok",
@@ -328,6 +298,60 @@ def check_libclang_so() -> DepCheckResult:
         fix_cmd=libclang_so_instructions(platform_ctx),
         instructions=libclang_so_instructions(platform_ctx),
         critical=True,
+    )
+
+
+def check_clang_resource() -> DepCheckResult:
+    """Verify that the clang compiler headers of the libclang major version are there.
+
+    WHY a check of its own: the libclang wheel has no compiler headers.
+    Without them a GCC build parses with the headers of GCC, and some of
+    those do not parse in libclang (2574 errors from ``arm_acle.h`` in one
+    STM32 build).  Not critical: the index works, with those errors.
+    """
+    from ..indexer._clang_resource import (
+        bundled_source,
+        find_resource_include,
+        libclang_major,
+        managed_include,
+    )
+
+    major = libclang_major()
+    if major is None:
+        return DepCheckResult(
+            name="clang-resource", status="skipped",
+            message="the libclang version is not known", critical=False,
+        )
+    # unpack=False: a check reports and does not change the machine.
+    found = find_resource_include(major, unpack=False)
+    shipped = managed_include(major)
+    if found is not None and found.source.startswith("managed") and shipped is not None and found.include != shipped:
+        return DepCheckResult(
+            name="clang-resource",
+            status="degraded",
+            message=(
+                f"the headers that ship with this fw-context are not unpacked yet; "
+                f"the parse uses {found.include}, from another fw-context version"
+            ),
+            fix_cmd="fw-context doctor --fix --only clang-resource",
+            instructions="Run `fw-context doctor --fix` to unpack the headers that ship with this version.",
+            critical=False,
+        )
+    if found is not None:
+        return DepCheckResult(
+            name="clang-resource", status="ok",
+            message=f"clang {major} headers: {found.include} ({found.source})", critical=False,
+        )
+    return DepCheckResult(
+        name="clang-resource",
+        status="degraded",
+        message=(
+            f"no clang {major} compiler headers; a GCC build parses with the headers of GCC, "
+            f"and some of them do not parse in libclang"
+        ),
+        fix_cmd="fw-context doctor --fix --only clang-resource" if bundled_source(major) else None,
+        instructions=clang_resource_instructions(get_platform_info(), major, bundled=bundled_source(major) is not None),
+        critical=False,
     )
 
 
@@ -551,6 +575,45 @@ def check_ollama_embed_model(cfg) -> DepCheckResult:
     )
 
 
+def check_obsolete_files(project_root: str | Path | None = None) -> DepCheckResult:
+    """List what an older fw-context wrote and no version uses, see ``housekeeping``.
+
+    The check removes nothing: ``doctor`` and the MCP tool
+    ``check_dependencies`` only read.  ``doctor --fix`` removes the list.
+    Not critical: such a file or key takes space and gives a warning, and
+    no answer changes.
+    """
+    from ..housekeeping import clean
+    from ..utils import resolve_project_root
+
+    try:
+        root: Path | None = resolve_project_root(str(project_root) if project_root else None)
+    except OSError:
+        root = None
+    report = clean(root, dry_run=True, quiet=True)
+    if report.empty and not report.failures:
+        return DepCheckResult(
+            name="obsolete-files", status="ok",
+            message="no file or config key of an older fw-context", critical=False,
+        )
+    parts = []
+    if not report.empty:
+        parts.append(f"{len(report.lines())} item(s) of an older fw-context: " + "; ".join(report.lines()))
+    parts += [f"cannot clean {path}: {reason}" for path, reason in report.failures]
+    # Without an item to remove, the fix cannot do more than this check:
+    # a config that does not parse, a read-only config, or an index that
+    # cannot be read needs the user, thus no fix command.
+    return DepCheckResult(
+        name="obsolete-files",
+        status="degraded",
+        message="; ".join(parts),
+        # --only: a full `doctor --fix` also removes config values and
+        # pulls models.
+        fix_cmd=None if report.empty else "fw-context doctor --fix --only obsolete-files",
+        critical=False,
+    )
+
+
 def check_db_integrity(project_root: str | Path | None = None) -> DepCheckResult:
     """Verify the index database is not corrupt.
 
@@ -722,6 +785,7 @@ CHECK_ORDER: list[tuple[str, Any]] = [
     ("sqlite-vec", check_sqlite_vec),
     ("libclang-python", check_libclang_python),
     ("libclang-so", check_libclang_so),
+    ("clang-resource", check_clang_resource),
     ("watchfiles", check_watchfiles),
     ("tomli-w", check_tomli_w),
     ("config", check_config),
@@ -729,5 +793,6 @@ CHECK_ORDER: list[tuple[str, Any]] = [
     ("chat-model", check_ollama_chat_model),
     ("embed-model", check_ollama_embed_model),
     ("db-integrity", check_db_integrity),
+    ("obsolete-files", check_obsolete_files),
     ("disk-space", check_disk_space),
 ]
