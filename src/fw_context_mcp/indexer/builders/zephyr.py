@@ -195,6 +195,85 @@ class SdkChoice:
 _FINAL_LINKER_SCRIPT = "linker.cmd"
 
 
+class _Domains:
+    """The images of one sysbuild, as ``domains.yaml`` gives them.
+
+    ``directories`` maps each image name to its build directory, relative
+    to the top build directory.  ``default`` is the image that sysbuild
+    names the application: the name of the application directory
+    (``share/sysbuild/cmake/modules/sysbuild_images.cmake`` in Zephyr).
+    """
+
+    default: str
+    directories: dict[str, PurePath]
+
+
+class _InvalidDomains(ValueError):
+    """``domains.yaml`` exists and does not have the form that sysbuild writes."""
+
+
+def _read_domains(out_dir: Path) -> _Domains | None:
+    """Return the images that ``out_dir/domains.yaml`` gives, or None without the file.
+
+    No file means a build without sysbuild (upstream Zephyr, or ``west
+    build --no-sysbuild``): one program.  The paths in the file are
+    absolute, thus each one is made relative to the ``build_dir`` of the
+    file itself: a project that moved keeps the directories of its images.
+    The name of the application image is the name of the application
+    directory, thus a checkout in a directory of another name gives
+    another name.
+
+    Raises ``_InvalidDomains`` for a file that sysbuild did not write in
+    this form.
+    """
+    try:
+        text = (out_dir / _DOMAINS_FILE).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: {exc}") from exc
+    try:
+        # BaseLoader gives every scalar as a string.  safe_load turns an
+        # application directory named `2024` or `yes` into a number or a
+        # bool, and the file then reads as invalid.  Like safe_load, it makes
+        # no Python objects.  The loader is used directly because bandit
+        # flags every call of yaml.load, whichever loader it gets.
+        loader = yaml.BaseLoader(text)
+        try:
+            data = loader.get_single_data()
+        finally:
+            loader.dispose()
+    except yaml.YAMLError as exc:
+        raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: not a mapping")
+    top = data.get("build_dir")
+    default = data.get("default")
+    entries = data.get("domains")
+    if not isinstance(top, str) or not isinstance(default, str) or not isinstance(entries, list):
+        raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: no build_dir, default or domains")
+    directories: dict[str, PurePath] = {}
+    for entry in entries:
+        name = entry.get("name") if isinstance(entry, dict) else None
+        build_dir = entry.get("build_dir") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not isinstance(build_dir, str):
+            raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: a domain without name or build_dir")
+        try:
+            directories[name] = PurePath(build_dir).relative_to(top)
+        except ValueError as exc:
+            raise _InvalidDomains(
+                f"{out_dir / _DOMAINS_FILE}: domain {name!r} is outside {top}"
+            ) from exc
+    if default not in directories:
+        raise _InvalidDomains(f"{out_dir / _DOMAINS_FILE}: the default {default!r} is no domain")
+    return _Domains(default=default, directories=directories)
+
+
+# The flag Zephyr CMake uses to name the two SDK roots.  See
+# _prefix_map_roots() for what each name means.
+_PREFIX_MAP_FLAG = "-fmacro-prefix-map="
+
+
 class ZephyrBuildSystem:
     """Zephyr RTOS build system (``west build``).
 
@@ -286,6 +365,138 @@ class ZephyrBuildSystem:
 
         return target_cc
 
+    def output_compile_commands(self, out_dir: Path, cfg: BuildConfig) -> dict[str, Path]:
+        """Return the database of each image that the build in *out_dir* made.
+
+        A sysbuild names its images in ``domains.yaml``, and each image has
+        its database in its own build directory.  NCS builds with sysbuild
+        also without ``--sysbuild``.  Measured with NCS v3.4.0 on
+        ``hello_world``: ``west build`` gave ``out/hello_world/``, with
+        ``SB_CONFIG_BOOTLOADER_MCUBOOT=y`` also ``out/mcuboot/``, and
+        ``--no-sysbuild`` gave ``out/compile_commands.json``.  The name of an
+        image is the name of its directory, and the application image is
+        named after the application directory, not after ``project()``.
+
+        WHY the file and not the subdirectories: a directory of an image
+        that the build no longer makes stays in ``out/`` until a pristine
+        build.  Measured on one project, ``domains.yaml`` named four images
+        and five subdirectories held a database.
+
+        Without ``domains.yaml`` the build made one program, and its
+        database is ``out/compile_commands.json`` with the key "".  An
+        invalid ``domains.yaml`` gives no database: the build is not
+        complete, and the caller builds again.
+        """
+        try:
+            domains = _read_domains(out_dir)
+        except _InvalidDomains as exc:
+            log.warning("zephyr: %s", exc)
+            return {}
+        if domains is None:
+            single = out_dir / COMPILE_COMMANDS_NAME
+            return {"": single} if single.is_file() else {}
+        found: dict[str, Path] = {}
+        for name, directory in domains.directories.items():
+            database = out_dir / directory / COMPILE_COMMANDS_NAME
+            if database.is_file():
+                found[name] = database
+        return found
+
+    def application_database(self, out_dir: Path) -> Path | None:
+        """Return the database of the default image of a sysbuild in *out_dir*, or None.
+
+        The default image of ``domains.yaml`` is the application.  None
+        without the file: the build made one program, or it is not there.
+        No query reads it: a query names its image.  The checks of
+        ``fw-context index`` read the build that it names.
+        """
+        try:
+            domains = _read_domains(out_dir)
+        except _InvalidDomains:
+            return None
+        if domains is None:
+            return None
+        return out_dir / domains.directories[domains.default] / COMPILE_COMMANDS_NAME
+
+    def build_multi(
+        self, project_root: Path, cfg: BuildConfig, variants: list | None = None,
+    ) -> list[tuple[str, str, Path]]:
+        """Build each variant via sysbuild, return the database of each image.
+
+        Returns a list of ``(variant, image, compile_commands_path)`` — one
+        entry per (variant, image) pair.  Each variant builds into
+        ``.fw-context/build/<variant>/out`` (see ``build_layout``), and the
+        database of each image stays where west writes it,
+        ``out/<image>/compile_commands.json``, beside the ``build.ninja``
+        of that image.
+
+        WHY one database per image: each image is a separate Zephyr CMake
+        project with its own ``compile_commands.json``; the per-(variant,
+        image) file lets ``config_hash`` and the manifest stay per-image.
+
+        *variants* limits the build to those entries of ``cfg.variants``;
+        None builds each of them.  ``fw-context index --variant`` gives the
+        list, and a variant that the user did not ask for must not build.
+
+        Clean is deliberately suppressed — indexing only needs
+        ``compile_commands.json``, so ``--pristine=auto`` (incremental) is used
+        instead of ``--pristine`` (always), keeping re-builds fast.
+        """
+        from ..build import build_variant_config
+
+        if not shutil.which("west"):
+            raise RuntimeError("west is required for Zephyr builds.  Install the Zephyr SDK and west tool.")
+        if not cfg.variants:
+            raise RuntimeError("build_multi() requires [[build.variants]] in config.")
+
+        _, env = self._prepare_ninja_wrapper(project_root)
+        layout = BuildLayout(project_root)
+        layout.ensure_ignored()
+        results: list[tuple[str, str, Path]] = []
+
+        for variant in cfg.variants if variants is None else variants:
+            vcfg = build_variant_config(cfg, variant)
+            if not vcfg.board:
+                raise RuntimeError(
+                    f"variant '{variant.name}' has no board.  Set it in "
+                    f"[[build.variants]] or inherit from [build] board."
+                )
+            board = self._normalize_board(vcfg.board)
+            source_dir = vcfg.source_dir or "."
+            build_dir = layout.out_dir(variant.name)
+
+            cmd: list[str] = [
+                "west", "build", "--sysbuild",
+                "-b", board,
+                "-d", str(build_dir),
+                source_dir,
+                "--pristine=auto",
+                "--",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+                "-DEXTRA_CPPFLAGS=-MMD",
+            ]
+
+            variant_env = {**env, **(vcfg.env or {})}
+            log.info("zephyr build_multi[%s]: %s", variant.name, " ".join(cmd))
+            run_build_command(
+                cmd,
+                cwd=project_root,
+                description=f"west build --sysbuild ({variant.name})",
+                env=variant_env,
+                build_cfg=vcfg,
+            )
+
+            # The application last, as `cli._index._images_of_build` orders
+            # the images of one build: get_active_config gives the newest.
+            application = self.application_database(build_dir)
+            databases = self.output_compile_commands(build_dir, vcfg)
+            for image_name, cc_path in sorted(
+                databases.items(), key=lambda item: (item[1] == application, item[0]),
+            ):
+                results.append((variant.name, image_name, cc_path))
+
+        return results
+
     # ── Multi-variant (sysbuild) ──
 
     @staticmethod
@@ -361,77 +572,7 @@ class ZephyrBuildSystem:
             if sub.is_dir() and (sub / "compile_commands.json").exists()
         ]
 
-    def build_multi(
-        self, project_root: Path, cfg: BuildConfig
-    ) -> list[tuple[str, str, Path]]:
-        """Build all variants × images via sysbuild, return per-image cc paths.
 
-        Returns a list of ``(variant, image, compile_commands_path)`` — one
-        entry per (variant, image) pair, with the per-image compile_commands
-        copied to ``.fw-context/build/compile_commands.<variant>.<image>.json``.
-
-        WHY per-image copies: each image is a separate Zephyr CMake project
-        with its own ``compile_commands.json``; the per-(variant, image) file
-        lets ``config_hash`` and the manifest stay per-image (§5.3.3).
-
-        Clean is deliberately suppressed — indexing only needs
-        ``compile_commands.json``, so ``--pristine=auto`` (incremental) is used
-        instead of ``--pristine`` (always), keeping re-builds fast (§5.8).
-        """
-        from ..build import build_variant_config
-
-        if not shutil.which("west"):
-            raise RuntimeError("west is required for Zephyr builds.  Install the Zephyr SDK and west tool.")
-        if not cfg.variants:
-            raise RuntimeError("build_multi() requires [[build.variants]] in config.")
-
-        _, env = self._prepare_ninja_wrapper(project_root)
-        results: list[tuple[str, str, Path]] = []
-
-        for variant in cfg.variants:
-            vcfg = build_variant_config(cfg, variant)
-            if not vcfg.board:
-                raise RuntimeError(
-                    f"variant '{variant.name}' has no board.  Set it in "
-                    f"[[build.variants]] or inherit from [build] board."
-                )
-            board = self._normalize_board(vcfg.board)
-            source_dir = vcfg.source_dir or "."
-            build_dir = project_root / (vcfg.build_dir or f"build/{variant.name}")
-
-            cmd: list[str] = [
-                "west", "build", "--sysbuild",
-                "-b", board,
-                "-d", str(build_dir),
-                source_dir,
-                "--pristine=auto",
-                "--",
-                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-                "-DEXTRA_CPPFLAGS=-MMD",
-            ]
-
-            variant_env = {**env, **(vcfg.env or {})}
-            log.info("zephyr build_multi[%s]: %s", variant.name, " ".join(cmd))
-            run_build_command(
-                cmd,
-                cwd=project_root,
-                description=f"west build --sysbuild ({variant.name})",
-                env=variant_env,
-                build_cfg=vcfg,
-            )
-
-            for image_name in self._discover_images(build_dir):
-                cc_src = build_dir / image_name / "compile_commands.json"
-                if not cc_src.exists():
-                    continue
-                target = cc_output_path(project_root).with_name(
-                    f"compile_commands.{variant.name}.{image_name}.json"
-                )
-                shutil.copy2(cc_src, target)
-                results.append((variant.name, image_name, target))
-                log.info("Copied %s → %s", cc_src, target)
-
-        return results
 
     def background_build_safe(self, cfg: BuildConfig) -> bool:
         """Safe — ``west build -d <dir>`` puts every artifact there."""

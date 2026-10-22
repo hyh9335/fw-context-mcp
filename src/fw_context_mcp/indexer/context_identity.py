@@ -25,8 +25,11 @@ from __future__ import annotations
 
 import hashlib
 import shlex
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+
+from .config_hash import DEFAULT_TRANSIENT_DEFINES
 
 # The context pre-context code writes rows into; every migrated row and every
 # write path that has no context yet lives here (ADR-005).
@@ -237,6 +240,8 @@ def unit_identity_fields(
     config_hash: str,
     project_root: str | Path,
     entry_index: int = 0,
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> dict[str, Any]:
     """Compute every build_contexts field of one CompilationUnit.
 
@@ -251,6 +256,10 @@ def unit_identity_fields(
     the context came from, not part of the identity (ADR-001 — the identity
     has no positional component, so a reordered compile_commands.json keeps
     every context_id stable).
+
+    ``transient_defines`` is ``[index] transient_defines``: the flags hash
+    inside the identity must drop the same macros the structural hash drops,
+    so the runner passes the layer it loaded.
     """
     raw_entry = getattr(unit, "raw_entry", None)
     argv = raw_argv_of_entry(raw_entry)
@@ -284,5 +293,8 @@ def unit_identity_fields(
         "response_hashes": _SEP.join(resp_hashes),
         "output_name": output_name,
         "defines_json": _SEP.join(define_tokens),
-        "flags_hash": compute_flags_hash(raw_entry) if raw_entry else "",
+        "flags_hash": (
+            compute_flags_hash(raw_entry, transient_defines=transient_defines)
+            if raw_entry else ""
+        ),
     }

@@ -27,11 +27,16 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Collection
 from pathlib import Path
 
 from fw_context_mcp.indexer import context_identity
 from fw_context_mcp.indexer.compile_commands import _DROP_WITH_ARG
-from fw_context_mcp.indexer.config_hash import _TRANSIENT_DROP, compute_flags_hash
+from fw_context_mcp.indexer.config_hash import (
+    DEFAULT_TRANSIENT_DEFINES,
+    _TRANSIENT_DROP,
+    compute_flags_hash,
+)
 from fw_context_mcp.utils import compute_source_hash
 
 log = logging.getLogger(__name__)
@@ -286,6 +291,8 @@ def generate(
     config_hash: str = "",
     scope: list[str] | None = None,
     vendor_patterns: list[str] | None = None,
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> str:
     """Generate ``manifest.json`` from compile_commands + libclang token stream.
 
@@ -332,7 +339,10 @@ def generate(
             "arg_set": _intern_arguments(unit.clang_args, arg_sets),
             "source_hash": source_hash,
             "headers": headers,
-            "flags_hash": compute_flags_hash(unit.raw_entry) if unit.raw_entry else "",
+            "flags_hash": (
+                compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                if unit.raw_entry else ""
+            ),
         }
         entries.append(entry)
 
@@ -361,7 +371,7 @@ def generate(
         # New callers should pass config_hash computed from the normalized
         # compile_commands.json instead.
         project_id = derive_project_id(project_root)
-        config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir)
+        config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir, transient_defines=transient_defines)
 
     # ADR-001: the per-compile-action context id belongs on the entry, so a
     # file built with two flag sets keeps two distinguishable entries.  The
@@ -372,7 +382,8 @@ def generate(
 
     for i, entry in enumerate(entries):
         entry["context_id"] = unit_identity_fields(
-            units[i], config_hash, project_root, entry_index=i
+            units[i], config_hash, project_root, entry_index=i,
+            transient_defines=transient_defines,
         )["context_id"]
 
     manifest["config_hash"] = config_hash
@@ -570,6 +581,8 @@ def compute_structural_hash(
     build_dir_patterns: list[str] | None = None,
     project_id: str = "",
     scope: list[str] | None = None,
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> str:
     """Compute the config_hash from structural build identity — no I/O, no libclang.
 
@@ -584,7 +597,7 @@ def compute_structural_hash(
 
     if not project_id:
         project_id = derive_project_id(project_root)
-    return compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope)
+    return compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, transient_defines=transient_defines)
 
 
 def build_preliminary(
@@ -595,6 +608,8 @@ def build_preliminary(
     build_dir_patterns: list[str] | None = None,
     project_id: str = "",
     scope: list[str] | None = None,
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> str:
     """Build a preliminary ``manifest.json`` from structural data only — no libclang.
 
@@ -619,7 +634,7 @@ def build_preliminary(
     if not project_id:
         project_id = derive_project_id(project_root)
 
-    config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir)
+    config_hash = compute_config_hash(units, project_root, project_id, build_dir_patterns, scope=scope, db_dir=db_dir, transient_defines=transient_defines)
 
     # Build entries for the manifest file
     entries: list[dict] = []
@@ -645,7 +660,8 @@ def build_preliminary(
             # same-file entries are indistinguishable and the first one
             # loses its identity on the first carry-over.
             "context_id": context_identity.unit_identity_fields(
-                unit, config_hash, project_root, entry_index=i
+                unit, config_hash, project_root, entry_index=i,
+                transient_defines=transient_defines,
             )["context_id"],
         })
 
@@ -728,6 +744,8 @@ def compute_config_hash(
     build_dir_patterns: list[str] | None = None,
     scope: list[str] | None = None,
     db_dir: Path | None = None,
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> str:
     """Return SHA-256 of the build's **compilation dialect**.
 
@@ -802,14 +820,11 @@ def compute_config_hash(
     # ``-D`` macros that contain per-build transient values (timestamps,
     # build counter, etc.) — their presence destabilizes the config_hash
     # without changing compilation semantics.  Drop them during normalization.
-    _TRANSIENT_DEFINES: frozenset[str] = frozenset({
-        "MBED_BUILD_TIMESTAMP",  # Mbed OS — Python time.time() float
-        "BUILD_TIMESTAMP",       # generic timestamp
-        "BUILD_TIME",            # generic build time
-        "BUILD_DATE",            # generic build date
-        "BUILD_ID",              # CI build number
-        "BUILD_NUMBER",          # CI build counter
-    })
+    # ``[index] transient_defines`` supplies the names (see
+    # :data:`config_hash.DEFAULT_TRANSIENT_DEFINES` for the default and its
+    # WHY); a caller that does not pass the layer gets the same default, so
+    # the build identity and the per-unit flags never disagree.
+    _TRANSIENT_DEFINES: frozenset[str] = frozenset(transient_defines)
 
     def _is_build_output(arg_value: str) -> bool:
         return any(marker in arg_value for marker in _markers)

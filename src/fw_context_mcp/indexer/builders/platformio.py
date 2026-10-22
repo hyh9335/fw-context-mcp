@@ -80,6 +80,31 @@ class PlatformIOBuildSystem:
     # ── Detection ──
 
     @classmethod
+    def output_compile_commands(self, out_dir: Path, cfg: BuildConfig) -> dict[str, Path]:
+        """Return the database of the environment that the build in *out_dir* built.
+
+        PlatformIO puts the build of an environment into ``<out>/<env>/``,
+        and the script of ``build()`` puts the database there.  A variant
+        names its environment (see ``_environment``).  The build without
+        variants does not name it in the config, but it builds one, and
+        ``build()`` removes the directories of other ones, thus one database
+        is the answer.  Two databases mean an ``out/`` that a build of
+        fw-context did not leave, and no answer is given: the caller then
+        runs the build.
+        """
+        named = cfg.environment or cfg.variant_name
+        if named:
+            single = out_dir / named / COMPILE_COMMANDS_NAME
+            return {"": single} if single.is_file() else {}
+        if not out_dir.is_dir():
+            return {}
+        found = sorted(
+            child / COMPILE_COMMANDS_NAME
+            for child in out_dir.iterdir()
+            if child.is_dir() and (child / COMPILE_COMMANDS_NAME).is_file()
+        )
+        return {"": found[0]} if len(found) == 1 else {}
+
     def detect(cls, project_root: Path) -> bool:
         root = project_root.resolve()
         return any((root / m).exists() for m in _PIO_MARKERS)

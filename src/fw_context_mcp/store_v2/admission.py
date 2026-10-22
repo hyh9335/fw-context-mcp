@@ -46,6 +46,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
+from ..indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
+
 log = logging.getLogger(__name__)
 
 # ── accepted constants (frozen sources, imported not redefined) ─────────────
@@ -286,7 +288,8 @@ def _driver_name(unit) -> str:
 def attempt_fast_reuse(*, unit, config_hash: str, context_id: str,
                        project_root, db_path, world,
                        existing_ctx, manifest=None, hash_cache=None,
-                       header_table=None) -> FastHit | None:
+                       header_table=None,
+                       transient_defines=DEFAULT_TRANSIENT_DEFINES) -> FastHit | None:
     """Run the accepted admission protocol for one TU, pre-parse.
 
     Returns a :class:`FastHit` when the parse-skip is COMMITTED (A8 bind
@@ -300,7 +303,8 @@ def attempt_fast_reuse(*, unit, config_hash: str, context_id: str,
                         context_id=context_id, project_root=project_root,
                         db_path=db_path, world=world,
                         existing_ctx=existing_ctx, manifest=manifest,
-                        hash_cache=hash_cache, header_table=header_table)
+                        hash_cache=hash_cache, header_table=header_table,
+                        transient_defines=transient_defines)
     except Exception as exc:                # pragma: no cover — fail closed
         log.debug("Slice-4A admission failed (full path unaffected): %s",
                   exc, exc_info=True)
@@ -308,7 +312,8 @@ def attempt_fast_reuse(*, unit, config_hash: str, context_id: str,
 
 
 def _attempt(*, unit, config_hash, context_id, project_root, db_path, world,
-             existing_ctx, manifest, hash_cache, header_table) -> FastHit | None:
+             existing_ctx, manifest, hash_cache, header_table,
+             transient_defines=DEFAULT_TRANSIENT_DEFINES) -> FastHit | None:
     from .publish import open_v2_store_for_write
 
     t = {"total": time.monotonic()}
@@ -566,7 +571,7 @@ def _attempt(*, unit, config_hash, context_id, project_root, db_path, world,
         from fw_context_mcp.utils import compute_source_hash
         from fw_context_mcp.indexer._unit_processor import (
             _get_manifest_entry_hash_for_unit)
-        flags_hash = compute_flags_hash(unit.raw_entry)
+        flags_hash = compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
         manifest_entry_hash = _get_manifest_entry_hash_for_unit(
             unit, project_root, manifest, hash_cache=hash_cache,
             header_table=header_table, context_id=context_id)

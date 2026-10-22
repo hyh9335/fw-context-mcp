@@ -19,6 +19,7 @@ recorded value has to describe the CONTENT of the index, which is what the
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,10 +31,12 @@ from fw_context_mcp.indexer.db import (
     upsert_project,
 )
 from fw_context_mcp.indexer.git_context import (
-    branch_moved_since,
     branch_of_description,
-    current_branch,
     get_git_description,
+    head_label,
+    head_moved,
+    head_path,
+    read_head,
 )
 
 
@@ -89,73 +92,86 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-class TestTheCurrentBranch:
-    def test_a_repository_on_a_branch(self, repo):
-        assert current_branch(repo) == "main"
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+class TestTheHeadOfTheTree:
+    """`read_head` gives the text of the file HEAD, for each shape of a checkout."""
+
+    def test_a_branch(self, repo):
+        assert read_head(repo) == "ref: refs/heads/main"
 
     def test_a_detached_head(self, repo):
-        # `git rev-parse --abbrev-ref HEAD` answers "HEAD" here, which is a
-        # position and not a branch name.
-        head = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-        subprocess.run(
-            ["git", "checkout", "-q", head], cwd=repo, check=True,
-            capture_output=True, text=True,
-        )
-        assert current_branch(repo) == ""
+        sha = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "checkout", "-q", sha)
+        assert read_head(repo) == sha
+
+    def test_a_subdirectory_of_the_repository(self, repo):
+        # A project root below the top of the repository reads the same HEAD.
+        sub = repo / "fw"
+        sub.mkdir()
+        assert read_head(sub) == "ref: refs/heads/main"
+
+    def test_a_worktree_reads_its_own_head(self, repo, tmp_path_factory):
+        # In a worktree `.git` is a file, and HEAD lives in the main repository.
+        other = tmp_path_factory.mktemp("wt") / "tree"
+        _git(repo, "worktree", "add", "-q", "-b", "feature", str(other))
+        assert (other / ".git").is_file()
+        assert read_head(other) == "ref: refs/heads/feature"
+        assert read_head(repo) == "ref: refs/heads/main"
 
     def test_a_directory_that_is_not_a_repository(self, tmp_path):
-        assert current_branch(tmp_path / "nowhere") == ""
+        nowhere = tmp_path / "nowhere"
+        nowhere.mkdir()
+        assert head_path(nowhere) is None
+        assert read_head(nowhere) == ""
+
+    def test_the_labels(self):
+        assert head_label("ref: refs/heads/release/4.15.1") == "release/4.15.1"
+        assert head_label("0123456789abcdef0123") == "commit 0123456789ab"
+        assert head_label("") == ""
 
 
 class TestTheDetection:
-    def test_the_same_branch(self, repo):
-        assert branch_moved_since("branch: main", repo) == ("", "")
+    """`head_moved`: the recorded HEAD first, the branch of an older index second."""
 
-    def test_another_branch(self, repo):
-        subprocess.run(
-            ["git", "checkout", "-q", "-b", "release/4.15.1"], cwd=repo,
-            check=True, capture_output=True, text=True,
-        )
-        assert branch_moved_since("branch: main", repo) == ("main", "release/4.15.1")
+    def test_the_same_head(self):
+        assert head_moved("ref: refs/heads/main", "", "ref: refs/heads/main") == ("", "")
+
+    def test_another_branch(self):
+        assert head_moved("ref: refs/heads/main", "", "ref: refs/heads/release/4.15.1") == (
+            "main", "release/4.15.1")
+
+    def test_a_checkout_of_a_tag_is_a_move(self):
+        # The blind spot of the branch name: a tag or a commit detaches HEAD.
+        assert head_moved("ref: refs/heads/main", "branch: main", "a" * 40) == (
+            "main", "commit aaaaaaaaaaaa")
+
+    def test_from_one_commit_to_another(self):
+        assert head_moved("a" * 40, "", "b" * 40) == ("commit aaaaaaaaaaaa", "commit bbbbbbbbbbbb")
+
+    def test_a_tree_without_git_reports_nothing(self):
+        assert head_moved("ref: refs/heads/main", "branch: main", "") == ("", "")
+
+    def test_an_older_index_compares_the_branch(self):
+        # No recorded HEAD: the branch of the description, as before.
+        assert head_moved("", "branch: main, tag: v1", "ref: refs/heads/main") == ("", "")
+        assert head_moved("", "branch: main", "ref: refs/heads/dev") == ("main", "dev")
+
+    def test_an_older_index_does_not_see_a_detached_head(self):
+        assert head_moved("", "branch: main", "a" * 40) == ("", "")
+        assert head_moved("", "tag: v1", "ref: refs/heads/main") == ("", "")
 
     def test_a_new_tag_on_the_same_branch_is_not_a_move(self, repo):
         # The description also carries the last tag, and a release tag moves
-        # no file.  Comparing whole descriptions would ask for a build after
-        # every tag.
-        subprocess.run(
-            ["git", "tag", "v1.0.0"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        )
-        before = "branch: main"
-        after = get_git_description(repo)
-        assert "tag: v1.0.0" in after, "the fixture did not tag"
-        assert before != after
-        assert branch_moved_since(before, repo) == ("", "")
-
-    def test_an_index_with_no_recorded_branch(self, repo):
-        # Nothing to compare against, thus nothing is reported.
-        assert branch_moved_since("", repo) == ("", "")
-        assert branch_moved_since("tag: v1.0.0", repo) == ("", "")
-
-    def test_a_detached_head_reports_nothing(self, repo):
-        head = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-        subprocess.run(
-            ["git", "checkout", "-q", head], cwd=repo, check=True,
-            capture_output=True, text=True,
-        )
-        # A documented blind spot: checking out a tag or a commit leaves no
-        # branch name on either side.  Reporting a move would be a guess,
-        # and the ordinary staleness checks still see the changed files.
-        assert branch_moved_since("branch: main", repo) == ("", "")
-
-    def test_a_project_that_is_not_a_repository(self, tmp_path):
-        assert branch_moved_since("branch: main", tmp_path) == ("", "")
+        # no file, and no HEAD.
+        before = read_head(repo)
+        _git(repo, "tag", "v1.0.0")
+        assert "tag: v1.0.0" in get_git_description(repo), "the fixture did not tag"
+        assert head_moved(before, "branch: main", read_head(repo)) == ("", "")
 
 
 class TestTheDescriptionDescribesTheContent:
@@ -319,13 +335,13 @@ def _switch_to(repo: Path, branch: str) -> None:
 
 
 class TestTheToolAsksForABuild:
-    """`get_active_build` is the mandatory first call, so the reason has to
+    """`get_project_status` is the mandatory first call, so the reason has to
     reach it — twice in this series a wiring mistake survived unit tests."""
 
     def _state(self, root: Path) -> dict:
-        from fw_context_mcp.mcp.handlers.maintenance import get_active_build
+        from fw_context_mcp.mcp.handlers.maintenance import get_project_status
 
-        return get_active_build(project_root=str(root))
+        return get_project_status(project_root=str(root))
 
     def test_the_recorded_branch_is_the_one_the_content_came_from(
         self, indexed_repo
@@ -339,7 +355,7 @@ class TestTheToolAsksForABuild:
         state = self._state(indexed_repo)
         assert not [
             reason for reason in state.get("reindex_reasons", [])
-            if "branch changed" in reason
+            if "checkout changed" in reason
         ], state.get("reindex_reasons")
 
     def test_a_switch_asks_for_index_build(self, indexed_repo):
@@ -356,8 +372,8 @@ class TestTheToolAsksForABuild:
 
         assert state["reindex_needed"] is True
         reasons = state["reindex_reasons"]
-        moved = [r for r in reasons if "branch changed" in r]
-        assert moved, f"no reason names the branch change: {reasons}"
+        moved = [r for r in reasons if "checkout changed" in r]
+        assert moved, f"no reason names the checkout: {reasons}"
         reason = moved[0]
         # The command matters: a plain reindex reuses compile_commands.json,
         # which belongs to the branch the index was built on.
@@ -393,7 +409,7 @@ class TestTheToolAsksForABuild:
         _switch_to(indexed_repo, "release/4.15.1")
         state = self._state(indexed_repo)
         reason = next(
-            r for r in state["reindex_reasons"] if "branch changed" in r
+            r for r in state["reindex_reasons"] if "checkout changed" in r
         )
         assert "background reindex" in reason, reason
         assert "--build" in reason, reason
@@ -411,7 +427,7 @@ class TestTheToolAsksForABuild:
         _switch_to(indexed_repo, "release/4.15.1")
         state = self._state(indexed_repo)
         reason = next(
-            r for r in state["reindex_reasons"] if "branch changed" in r
+            r for r in state["reindex_reasons"] if "checkout changed" in r
         )
         assert "background reindex" not in reason, reason
         assert "run `fw-context index --build`" in reason, reason
@@ -423,19 +439,26 @@ class TestTheToolAsksForABuild:
 class TestThePlanTakesTheBranch:
     """`cli._index._plan_auto_build` is where fw-context decides to build.
 
-    It is also the only path that sets `isolated_build_dir`, and that value
-    is what makes `--build` legal on a `--background` run.  A `--build` from
-    anywhere else fails: measured on a real checkout of the Mbed project, the
-    daemon passing the flag itself produced "error: --build and --background
-    are mutually exclusive" and the run died in under a second.
+    It turns `--build` on for a `--background` run, and only for a backend
+    that may build on its own.  The daemon does not pass the flag itself:
+    measured on a real checkout of the Mbed project, that produced "error:
+    --build and --background are mutually exclusive" and the run died in
+    under a second.
     """
 
     def _project(self, repo: Path, tmp_path: Path, description: str,
                  system: str = "cmake"):
-        """A project with an index that records *description*."""
+        """A project with an index that records *description*.
+
+        compile_commands.json is where a run reads it
+        (``build.checked_compile_commands``); a file elsewhere reads as a
+        missing build, which outranks the branch.
+        """
         import json
 
-        (repo / "compile_commands.json").write_text(
+        cc = repo / ".fw-context" / "build" / "default" / "out" / "compile_commands.json"
+        cc.parent.mkdir(parents=True, exist_ok=True)
+        cc.write_text(
             json.dumps([{
                 "directory": str(repo), "file": "main.c",
                 "arguments": ["cc", "-c", "main.c"],
@@ -452,7 +475,7 @@ class TestThePlanTakesTheBranch:
                 )
                 upsert_build_config(
                     conn, "ch", "0123456789abcdef0123456789abcdef",
-                    str(repo / "compile_commands.json"),
+                    str(cc),
                     description=description,
                     manifest_verification="full",
                 )
@@ -466,7 +489,7 @@ class TestThePlanTakesTheBranch:
             encoding="utf-8",
         )
         (config_dir / "local.toml").write_text(
-            f'[index]\ndb_dir = "{db_dir.parent.as_posix()}"\n', encoding="utf-8"
+            f'[index]\ndb_dir = "{(tmp_path / "index").as_posix()}"\n', encoding="utf-8"
         )
         return db_dir / "index.db"
 
@@ -475,7 +498,7 @@ class TestThePlanTakesTheBranch:
         from fw_context_mcp.config import load as load_config
 
         cfg = load_config(project_root=repo)
-        return _plan_auto_build(repo, db_path, cfg, None)
+        return _plan_auto_build(repo, db_path, cfg, None, background=True)
 
     def test_the_same_branch_plans_no_build(self, repo, tmp_path):
         db_path = self._project(repo, tmp_path, "branch: main")
@@ -488,12 +511,10 @@ class TestThePlanTakesTheBranch:
         db_path = self._project(repo, tmp_path, "branch: main")
         _switch_to(repo, "release/4.15.1")
         keys, config, reason = self._plan(repo, db_path)
-        assert keys == ["branch:release/4.15.1"]
+        assert keys == ["checkout:release/4.15.1"]
         assert config is not None
-        # The value that makes --build legal on a --background run.
-        assert config.isolated_build_dir
-        assert "branch changed from main to release/4.15.1" in reason
-        assert "compile_commands.json belongs to the old branch" in reason
+        assert "checkout changed from main to release/4.15.1" in reason
+        assert "compile_commands.json belongs to the old checkout" in reason
 
     def test_no_index_plans_nothing(self, repo, tmp_path):
         # The project and its config exist; the database does not.  Without
@@ -512,36 +533,16 @@ class TestThePlanTakesTheBranch:
         keys, config, reason = self._plan(repo, db_path)
         assert (keys, config, reason) == ([], None, "")
 
-    def test_a_recent_failure_for_the_same_branch_blocks(self, repo, tmp_path):
-        # A branch that does not build would otherwise start a build on every
-        # index run.
-        from fw_context_mcp.indexer.autobuild import record_failure
+    def test_an_earlier_failure_does_not_block_the_build(self, repo, tmp_path):
+        # The failed run told the caller through each MCP answer.  The next
+        # run builds again: a repaired branch must not wait for a timer.
+        from fw_context_mcp.indexer.autobuild import record_problem
 
         db_path = self._project(repo, tmp_path, "branch: main")
         _switch_to(repo, "release/4.15.1")
-        record_failure(db_path.parent, ["branch:release/4.15.1"])
-        keys, config, reason = self._plan(repo, db_path)
-        assert (keys, config, reason) == ([], None, "")
-
-    def test_a_failure_for_another_branch_does_not_block(self, repo, tmp_path):
-        from fw_context_mcp.indexer.autobuild import record_failure
-
-        db_path = self._project(repo, tmp_path, "branch: main")
-        _switch_to(repo, "release/4.15.1")
-        record_failure(db_path.parent, ["branch:some/other"])
+        record_problem(db_path.parent, "The last index run failed (exit code 1).")
         keys, _config, _reason = self._plan(repo, db_path)
-        assert keys == ["branch:release/4.15.1"]
-
-    def test_a_source_failure_does_not_block_a_branch_build(self, repo, tmp_path):
-        # One marker file serves both triggers, and `blocked` compares the
-        # list contents, thus they do not interfere.
-        from fw_context_mcp.indexer.autobuild import record_failure
-
-        db_path = self._project(repo, tmp_path, "branch: main")
-        _switch_to(repo, "release/4.15.1")
-        record_failure(db_path.parent, ["src/new_file.c"])
-        keys, _config, _reason = self._plan(repo, db_path)
-        assert keys == ["branch:release/4.15.1"]
+        assert keys == ["checkout:release/4.15.1"]
 
 
 class TestTheDaemonPassesNoBuildFlag:
@@ -866,7 +867,7 @@ class TestEachBuildIsChecked:
         (config_dir / "config.toml").write_text(
             f'[project]\nid = "{pid}"\n[build]\nsystem = "cmake"\n', encoding="utf-8")
         (config_dir / "local.toml").write_text(
-            f'[index]\ndb_dir = "{tmp_path / "index"}"\n', encoding="utf-8")
+            f'[index]\ndb_dir = "{(tmp_path / "index").as_posix()}"\n', encoding="utf-8")
 
         keys, config, reason = _plan_auto_build(
             repo, db_dir / "index.db", load_config(project_root=repo), None, background=True)
@@ -1062,6 +1063,11 @@ class TestTheCacheOfTheHeadPath:
         monkeypatch.chdir("/")
         assert read_head(Path(repo)) == "ref: refs/heads/main"
 
+    # Windows adjudication: ReadDirectoryChangesW holds a handle into .git
+    # while the watchfiles observer of another test is still tearing down,
+    # and rmtree then dies with WinError 5.  The cache-invalidating rmtree
+    # is not the subject here — the head cache is — so POSIX-only.
+    @pytest.mark.skipif(sys.platform == "win32", reason="rmtree of a watched .git: WinError 5")
     def test_a_git_directory_that_went_away_is_asked_again(self, repo):
         import shutil
 

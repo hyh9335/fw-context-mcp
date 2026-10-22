@@ -22,10 +22,11 @@ that trigger unnecessary background reindexes.
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from pathlib import Path
 
 from ..utils import compute_source_hash
-from .config_hash import compute_flags_hash
+from .config_hash import DEFAULT_TRANSIENT_DEFINES, compute_flags_hash
 
 log = logging.getLogger(__name__)
 
@@ -270,6 +271,7 @@ def _update_manifest_after_index(
     scope: list[str] | None = None,
     reparsed_tus: set | None = None,
     unit_context_ids: dict[int, str] | None = None,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ) -> dict | None:
     """Update ``manifest.json`` after an indexing run.
 
@@ -464,7 +466,10 @@ def _update_manifest_after_index(
                     "arg_set": _intern_arguments(unit.clang_args, arg_sets),
                     "source_hash": source_hash,
                     "headers": fold_headers(headers, header_table),
-                    "flags_hash": compute_flags_hash(unit.raw_entry) if unit.raw_entry else "",
+                    "flags_hash": (
+                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                        if unit.raw_entry else ""
+                    ),
                 }
                 if ctx_id is not None:
                     entry["context_id"] = ctx_id
@@ -486,7 +491,10 @@ def _update_manifest_after_index(
                         "arg_set": _intern_arguments(unit.clang_args, arg_sets),
                         "source_hash": source_hash,
                         "headers": headers,
-                        "flags_hash": compute_flags_hash(unit.raw_entry) if unit.raw_entry else "",
+                        "flags_hash": (
+                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                        if unit.raw_entry else ""
+                    ),
                     }
                     if ctx_id is not None:
                         entry["context_id"] = ctx_id
@@ -549,7 +557,10 @@ def _update_manifest_after_index(
                     "arg_set": _intern_arguments(unit.clang_args, arg_sets),
                     "source_hash": source_hash,
                     "headers": [],
-                    "flags_hash": compute_flags_hash(unit.raw_entry) if unit.raw_entry else "",
+                    "flags_hash": (
+                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                        if unit.raw_entry else ""
+                    ),
                 }
                 if ctx_id is not None:
                     entry["context_id"] = ctx_id
@@ -572,7 +583,10 @@ def _update_manifest_after_index(
                     "arg_set": _intern_arguments(unit.clang_args, arg_sets),
                     "source_hash": source_hash,
                     "headers": headers,
-                    "flags_hash": compute_flags_hash(unit.raw_entry) if unit.raw_entry else "",
+                    "flags_hash": (
+                        compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
+                        if unit.raw_entry else ""
+                    ),
                 }
                 if ctx_id is not None:
                     entry["context_id"] = ctx_id

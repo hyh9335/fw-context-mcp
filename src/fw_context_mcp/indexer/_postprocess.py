@@ -84,6 +84,7 @@ from .db import (
     write_lock,
 )
 from .db._chunking import chunked
+from .config_hash import DEFAULT_TRANSIENT_DEFINES
 from .manifest import _is_generated_header
 
 log = logging.getLogger(__name__)
@@ -744,6 +745,7 @@ def _step_update_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
          scope=ctx.get("scope"),
          reparsed_tus=ctx.get("reparsed_tus"),
          unit_context_ids=ctx.get("unit_context_ids"),
+         transient_defines=ctx.get("transient_defines") or DEFAULT_TRANSIENT_DEFINES,
      )
     # Keep whichever manifest is now authoritative so the coverage purge does
     # not have to re-read it.  A no-op run returns None and leaves the
@@ -1455,7 +1457,10 @@ def _step_finalize_manifest(conn: sqlite3.Connection, ctx: dict) -> None:
         upsert_build_config(
             conn, ctx["config_hash"], ctx["project_id"],
             str(ctx["compile_commands"]),
+            # None for both after a checkout that the run did not build:
+            # the recorded tree stays (`runner.run`, `record_git`).
             description=ctx["git_description"],
+            git_head=ctx.get("git_head"),
             manifest_verification=manifest_verification,
             analyze_vendor=int(ctx["analyze_vendor"]),
             variant=ctx.get("variant", ""),
@@ -1524,6 +1529,52 @@ def _cleanup_old_for_pair(
                 log.debug("could not remove %s: %s", artifact.name, exc)
     return deleted
 
+
+def cleanup_retired_builds(
+    conn: sqlite3.Connection,
+    project_id: str,
+    db_dir: Path,
+    variants: set[str],
+    built: set[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """Delete the builds of each ``(variant, image)`` that the project no longer makes.
+
+    Call this only after a run over the WHOLE set of builds of the project,
+    never after a run that ``--variant`` or ``--image`` narrowed: such a run
+    does not know the other builds.
+
+    *variants* is the set of the run, ``{""}`` for a project without
+    variants.  *built* is the pairs that this run built and indexed.  A pair
+    is retired when its variant is not in *variants* (the config or
+    platformio.ini dropped it, or the project changed between one build and
+    variants), or when its variant built in this run and that build made no
+    such image (a sysbuild that stopped making ``app_alt``).  A
+    variant of the set whose build failed in this run keeps its builds: the
+    failure says nothing about the images that it makes.
+
+    WHY: ``resolve_build`` reads the variants of the index, thus a retired
+    variant stayed queryable with old data, and a project that went from
+    two environments to one could not reach its new build without
+    ``variant``.  Returns the retired pairs.
+    """
+    if PidFile.is_active_other(db_dir / "reindex.pause"):
+        return []
+    built_variants = {variant for variant, _ in built}
+    retired: list[tuple[str, str]] = []
+    for row in conn.execute(
+        "SELECT DISTINCT variant, image FROM build_configs WHERE project_id = ? ORDER BY variant, image",
+        (project_id,),
+    ).fetchall():
+        pair = (row["variant"] or "", row["image"] or "")
+        if pair[0] not in variants or (pair[0] in built_variants and pair not in built):
+            retired.append(pair)
+    for variant, image in retired:
+        hashes = conn.execute(
+            "SELECT config_hash FROM build_configs WHERE project_id = ? AND variant = ? AND image = ?",
+            (project_id, variant, image),
+        ).fetchall()
+        _delete_builds(conn, db_dir, [row["config_hash"] for row in hashes])
+    return retired
 
 def cleanup_old_builds_multi(
     conn: sqlite3.Connection,
@@ -1740,7 +1791,9 @@ def _run_postprocess(
     project_patterns_list: list[str],
     project_id: str,
     git_description: str,
+    git_head: str | None = None,
     *,
+    transient_defines=DEFAULT_TRANSIENT_DEFINES,
     asm_paths: set[str] | None = None,
     index_refs: bool,
     index_embeddings: bool,
@@ -1793,6 +1846,8 @@ def _run_postprocess(
         "project_patterns_list": project_patterns_list,
         "project_id": project_id,
         "git_description": git_description,
+        "git_head": git_head,
+        "transient_defines": transient_defines,
         "index_refs": index_refs,
         "index_embeddings": index_embeddings,
         "index_macros_expanded": index_macros_expanded,

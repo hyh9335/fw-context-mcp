@@ -51,8 +51,11 @@ import logging
 import os
 import sqlite3
 import time
+from collections.abc import Collection
 from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
+
+from .config_hash import DEFAULT_TRANSIENT_DEFINES
 
 try:
     from clang.cindex import TranslationUnitLoadError
@@ -206,6 +209,8 @@ def _check_and_parse_unit(
     hash_cache: dict[str, str] | None = None,
     header_table: dict[str, dict] | None = None,
     context_id: str = "",
+    *,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
 ):
     """Check whether *unit* needs re-parsing and parse it if so.
 
@@ -287,7 +292,7 @@ def _check_and_parse_unit(
         source_hash = ""
 
     if unit.raw_entry is not None:
-        flags_hash = compute_flags_hash(unit.raw_entry)
+        flags_hash = compute_flags_hash(unit.raw_entry, transient_defines=transient_defines)
     else:
         flags_hash = ""
 

@@ -66,6 +66,41 @@ class ESPIDFBuildSystem:
 
     # ── Build ──
 
+
+    def output_compile_commands(self, out_dir: Path, cfg: BuildConfig) -> dict[str, Path]:
+        """Return the database of each image that the build in *out_dir* made.
+
+        ``idf.py build`` makes two programs, the application and the
+        second-stage bootloader.  Each has a build directory of its own, with
+        its compile_commands.json, build.ninja and project_description.json:
+        the application in *out_dir*, the bootloader in ``out_dir/bootloader``.
+
+        The image name is the ``project_name`` of the description beside each
+        database: the project name for the application, ``bootloader`` for
+        the bootloader.  WHY that name and not a fixed one: it is the name
+        that the build system gives the program, and the name of its ELF.
+        A database without a description with a name gets no entry, because
+        the build that wrote it is not complete.  The two names cannot be
+        equal: ESP-IDF has a build target ``bootloader``, and a project of
+        that name does not build.
+        """
+        found: dict[str, Path] = {}
+        for build_dir in (out_dir, out_dir / _BOOTLOADER_DIR):
+            cc = build_dir / COMPILE_COMMANDS_NAME
+            name = _description_field(build_dir, "project_name")
+            if name is not None and cc.is_file():
+                found[name] = cc
+        return found
+
+    def application_database(self, out_dir: Path) -> Path:
+        """Return the database of the application, the program that a query without ``image`` is about.
+
+        ``idf.py build`` writes it in *out_dir*, and the database of the
+        bootloader in ``out_dir/bootloader``.
+        """
+        return out_dir / COMPILE_COMMANDS_NAME
+
+    # ── Build dir patterns ──
     def build(self, project_root: Path, cfg: BuildConfig) -> Path:
         """Generate compile_commands.json via ``idf.py build``."""
         idf_py = shutil.which("idf.py")

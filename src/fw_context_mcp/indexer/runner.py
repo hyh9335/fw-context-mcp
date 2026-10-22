@@ -16,6 +16,7 @@ import os
 import sqlite3
 import threading
 import time
+from collections.abc import Collection
 from pathlib import Path
 
 from ..config.settings import derive_project_id
@@ -26,6 +27,7 @@ from ..config.settings import derive_project_id
 from ..exit_codes import (  # noqa: F401 — re-exported
     EXIT_ALREADY_RUNNING,
     EXIT_SUPERSEDED,
+    EXIT_TERMINATED,
 )
 from ..mcp.shared.pid_file import PidFile
 from ..utils import TU_EXTENSIONS
@@ -53,6 +55,7 @@ from ._unit_processor import (
 )
 from .compile_commands import parse as parse_compile_commands
 from .compile_commands import validate_include_files
+from .config_hash import DEFAULT_TRANSIENT_DEFINES
 from .db import (
     drop_fts_triggers,
     get_file_hashes_by_context,
@@ -97,7 +100,23 @@ def _tu_rel(unit, project_root: Path) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 
-class IndexSuperseded(Exception):
+class IndexStopped(Exception):
+    """This run stopped before its end, and it did not fail.
+
+    The base of the two reasons.  A handler that must unwind a stopped run
+    catches this class, and ``exit_code`` gives the status of the process.
+    ``label`` starts the line that the CLI prints for it.
+
+    Deliberately outside :data:`SAFE_EXCEPT` — a handler that swallowed this
+    as "a step failed, carry on" would resume exactly the run this exists to
+    stop.
+    """
+
+    exit_code: int = 1
+    label: str = "Stopped"
+
+
+class IndexSuperseded(IndexStopped):
     """Another process took over the index, so this run gave up.
 
     Not a failure: nothing is wrong with the index, and nothing was written
@@ -105,10 +124,23 @@ class IndexSuperseded(Exception):
     have applied decisions made from a snapshot the other process has since
     invalidated.
 
-    Deliberately outside :data:`SAFE_EXCEPT` — a handler that swallowed this
-    as "a step failed, carry on" would resume exactly the run this exists to
-    stop.  Callers report it as superseded and retry the work from the start.
+    Callers report it as superseded and retry the work from the start.
     """
+
+    exit_code = EXIT_SUPERSEDED
+    label = "Superseded"
+
+
+class IndexTerminated(IndexStopped):
+    """A SIGTERM stopped this run, and no other index run sent it.
+
+    A CI timeout, a ``kill`` or the shutdown of the daemon.  Nothing took
+    the index over, thus the work is not to be retried: somebody wanted it
+    to stop.
+    """
+
+    exit_code = EXIT_TERMINATED
+    label = "Terminated"
 
 
 def raise_if_superseded(db_dir: Path) -> None:
@@ -298,6 +330,8 @@ def run(
     build_env: dict[str, str] | None = None,
     defer_fts: bool = False,
     defer_cleanup: bool = False,
+    transient_defines: Collection[str] = DEFAULT_TRANSIENT_DEFINES,
+    record_git: bool = True,
 ) -> str:
     """Index a project: parse translation units, extract symbols, and store to SQLite.
 
@@ -354,6 +388,9 @@ def run(
     else:
         project_root = project_root.resolve()
 
+    # One set for the whole run: each unit tests each argument against it.
+    transient_defines = frozenset(transient_defines)
+
     # Normalize patterns without % wildcard to match subdirectories.  The
     # vendor set waits for the translation units — see below.
     from .sdk_detect import _build_sdk_excludes, _normalize_patterns
@@ -363,10 +400,14 @@ def run(
     if project_id is None:
         project_id = derive_project_id(project_root)
     name = project_name or project_root.name
-    # Collect git context for build description (branch + last tag).
-    from .git_context import get_git_description
+    # Collect git context for build description (branch + last tag) and
+    # HEAD, at the start: the content comes from the tree of this moment.
+    # ``record_git=False`` records neither: a run that did not build (or a
+    # caller that says so) leaves the recorded tree of the build standing.
+    from .git_context import get_git_description, read_head
 
-    git_description = get_git_description(project_root)
+    git_description: str | None = get_git_description(project_root) if record_git else None
+    git_head: str | None = read_head(project_root) if record_git else None
     # Clean up compile_commands.<hash>.json artifacts left by a previous
     # interrupted run before computing a new config_hash.
     _cleanup_orphaned_cc_artifacts(db_path, project_id)
@@ -454,6 +495,7 @@ def run(
         build_dir_patterns,
         project_id=project_id,
         scope=scope,
+        transient_defines=transient_defines,
     )
     manifest = load_manifest(db_path.parent, expected_hash)
     if manifest is not None:
@@ -467,6 +509,7 @@ def run(
             build_dir_patterns,
             project_id=project_id,
             scope=scope,
+            transient_defines=transient_defines,
         )
         # Reload manifest from disk — build_preliminary may have written a
         # preliminary (empty source_hash) manifest.  The in-memory manifest
@@ -582,7 +625,8 @@ def run(
     if _legacy_compat:
         with transaction(conn, checkpoint=False):
             for i, unit in enumerate(units):
-                fields = unit_identity_fields(unit, config_hash, project_root, entry_index=i)
+                fields = unit_identity_fields(unit, config_hash, project_root, entry_index=i,
+                                              transient_defines=transient_defines)
                 unit_identities[i] = fields
                 upsert_build_context(conn, config_hash, fields["context_id"], **{
                     key: value
@@ -592,7 +636,8 @@ def run(
     else:
         for i, unit in enumerate(units):
             unit_identities[i] = unit_identity_fields(
-                unit, config_hash, project_root, entry_index=i)
+                unit, config_hash, project_root, entry_index=i,
+                transient_defines=transient_defines)
 
     # Staleness records per (path, context_id).  A TU's Tier-1/2 comparison
     # must read the row of ITS context — the path-keyed view would let the
@@ -836,6 +881,7 @@ def run(
                     manifest=manifest_lookup,
                     hash_cache=header_hash_cache,
                     header_table=manifest_header_table,
+                    transient_defines=transient_defines,
                 )
             except Exception:                                # pragma: no cover
                 _s4a_hit = None                              # fail closed
@@ -875,6 +921,7 @@ def run(
             hash_cache=header_hash_cache,
             header_table=manifest_header_table,
             context_id=ctx_id,
+            transient_defines=transient_defines,
         )
 
         # Snapshot the skip set BEFORE folding in this TU's own files.
@@ -1102,6 +1149,8 @@ def run(
             project_patterns_list=project_patterns_list,
             project_id=project_id,
             git_description=git_description,
+            git_head=git_head,
+            transient_defines=transient_defines,
             index_refs=index_refs,
             index_embeddings=index_embeddings,
             index_macros_expanded=index_macros_expanded,

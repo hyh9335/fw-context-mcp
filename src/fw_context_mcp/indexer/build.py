@@ -101,6 +101,14 @@ class BuildConfig:
     # keys with a warning (_drop_selection_keys).
     variants: list[BuildVariant] = field(default_factory=list)
 
+    # ── Name of the variant this config builds ──
+    # build_variant_config sets this, and no user configuration does.  It
+    # selects the output directory of the build,
+    # .fw-context/build/<variant>/out (see build_layout), and a backend that
+    # records a property of its build beside that directory needs it too.
+    # "" is the build with no variants.
+    variant_name: str = ""
+
     # ESP-IDF (optional — auto-detected from environment)
     idf_path: str | None = None  # Path to ESP-IDF install (usually $IDF_PATH)
 
@@ -285,6 +293,10 @@ def build_variant_config(base: BuildConfig, variant: BuildVariant) -> BuildConfi
         merged_env = dict(base.env)
         merged_env.update(variant.env)
         cfg.env = merged_env
+    # The name travels with the effective config: a backend that records a
+    # property of its build beside the per-variant output directory reads it
+    # (PlatformIO names its environment dir with it).
+    cfg.variant_name = variant.name
 
     # Arbitrary [build] overrides, classified by field type.
     for attr, value in variant.overrides.items():
