@@ -356,3 +356,5 @@ def _check_bg_pause(root: Path) -> bool:
     """
     db_path = _db_path(root)
     return PidFile.is_active(db_path.parent / "reindex.pause")
+
+PENDING_MARKER = "reindex.pending"  # wave: pending marker file name

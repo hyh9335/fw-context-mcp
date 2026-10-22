@@ -132,6 +132,7 @@ __all__ = [
     "search_directives_like",
     "search_similar_hybrid",
     "search_similar_vec",
+    "search_similar_vec_all",
     "search_symbols",
     "set_analyze_vendor",
     "set_entry_point",
@@ -195,6 +196,7 @@ from ._embeddings import (
     init_vec_table,
     search_similar_hybrid,
     search_similar_vec,
+    search_similar_vec_all,
     upsert_embeddings,
     upsert_embeddings_vec,
 )

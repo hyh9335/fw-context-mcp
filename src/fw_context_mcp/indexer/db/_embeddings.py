@@ -41,6 +41,8 @@ from fw_context_mcp.indexer.db._symbols import search_symbols
 log = logging.getLogger(__name__)
 
 
+
+VEC_KNN_MAX_K = 4096  # wave: upper bound of one vector KNN scan
 def _vec_to_blob(vec: list[float]) -> bytes:
     """Pack a float vector into a BLOB for storage.
 
@@ -425,3 +427,45 @@ def search_similar_hybrid(
     top = scored[:limit]
     # Embed distance into result dict
     return [dict(r, _similarity=round(float(1.0 - d), 4)) for d, r in top]
+
+
+def search_similar_vec_all(
+    conn: sqlite3.Connection,
+    query_vec: list[float],
+    config_hash: str,
+    threshold: float,
+) -> tuple[list[sqlite3.Row], bool]:
+    """Give every symbol above *threshold*, as far as one KNN query reaches.
+
+    Returns the rows (``symbol_id``, ``distance``, one row per symbol, in
+    distance order) and a flag that is True when the KNN stopped at
+    ``VEC_KNN_MAX_K`` with its last row still above the threshold.  Then
+    more symbols can be above the threshold, and a total of the rows is a
+    lower bound.
+
+    WHY one KNN and not a scan: measured on three indexes of 8 000 to
+    25 000 vectors of 4096 dimensions, the KNN at the maximum k took 85 to
+    150 ms, and a scan with ``vec_distance_cosine`` took 5.6 to 18 s.  At
+    the default threshold of 0.60 no sample reached the cap.
+    """
+    import json
+
+    rows = conn.execute(
+        """SELECT symbol_id, distance
+           FROM vec_symbols
+           WHERE embedding MATCH ?
+             AND config_hash = ?
+             AND k = ?
+           ORDER BY distance""",
+        (json.dumps(query_vec), config_hash, VEC_KNN_MAX_K),
+    ).fetchall()
+    limit_distance = 1.0 - threshold
+    capped = len(rows) == VEC_KNN_MAX_K and rows[-1]["distance"] <= limit_distance
+    seen: set[int] = set()
+    results: list[sqlite3.Row] = []
+    for r in rows:
+        if r["distance"] > limit_distance or r["symbol_id"] in seen:
+            continue
+        seen.add(r["symbol_id"])
+        results.append(r)
+    return results, capped
