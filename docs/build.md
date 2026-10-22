@@ -62,18 +62,109 @@ checks a higher item first:
 The first builder that matches, wins. Set `system` explicitly, to skip
 detection or to force a specific builder.
 
+## Automatic build
+
+A `fw-context index` run without `--build` can start a build on its own.
+
+At the start of each run, fw-context makes sure that the build is there.
+The build is not there when `compile_commands.json` does not exist, or when
+a `directory` of its entries does not exist. The database is in the output
+directory of the build, thus `rm -rf .fw-context/build` removes the two
+together. WHY: fw-context asks the compiler of each unit for its system
+headers in that directory, as the build runs it. Without the build, each
+unit would get wrong system headers and macros.
+
+- A run that you start builds as `--build` does.
+- A background run builds when the backend can build on its own (see
+  below).
+- When fw-context cannot run the build, the run stops with an error and
+  does not index. This is true for STM32CubeIDE and TI CCS, for a
+  `[build] command` in a background run, and for a background run of a
+  backend that compiles in your tree. Run the build yourself (in the IDE,
+  or with `fw-context index --build`), then run `fw-context index`.
+
+A run with an explicit `compile_commands.json`, or a project with
+`[[build.variants]]`, does not do this check. `get_project_status` does
+not do it for such an index either.
+
+A run builds when an index exists and a build can repair something that a
+reindex cannot:
+
+- The build is not there. This applies to a background run.
+- Source files are on disk that `compile_commands.json` does not cover.
+- The tree has a different checkout than the index: another branch, or
+  a detached HEAD at another commit (for example the commit of a tag).
+  For the rules of this comparison, see
+  [`get_project_status`](tools.md#get_project_status).
+
+When a run stops without an index (the build is not there, or the run
+failed), fw-context keeps the reason next to the index. Each answer of a
+query tool of the project then carries it, and `get_project_status` gives
+it as a reason. The next run that ends well with the build there removes it.
+When you build outside of fw-context, `get_project_status` finds the build
+and removes a reason that said it is not there. A failed automatic build
+is not paused: the next background run builds again. The daemon starts
+that run when a C/C++ file changes, and when the checkout changes (another
+branch, a tag, or a commit on a detached HEAD). A commit on the branch
+changes no checkout. A change of a build file only (for
+example `CMakeLists.txt`) starts no run. For the triggers of the background runs, see
+[`fw-context index`](tools.md#fw-context-index).
+
+fw-context starts the build on its own only for a backend that cannot
+damage the output of your own build. Such a backend puts its artifacts into
+the output directory of fw-context, or it compiles nothing:
+
+| Backend | Automatic build | Output directory |
+|---------|-----------------|------------------|
+| Mbed OS | yes | `mbed compile --build <out>` |
+| PlatformIO | yes | `PLATFORMIO_BUILD_DIR=<out>` |
+| Zephyr | yes | `west build -d <out>` |
+| ESP-IDF | yes | `idf.py -B <out>` |
+| Arduino | yes | `arduino-cli compile --build-path <out>` |
+| Generic CMake | yes | `cmake -B <out>` |
+| Keil MDK, IAR EWARM | yes | convert only, no compilation |
+| Manual / bare | yes | the `.d` files go to `<out>/deps` |
+| Makefile | with `make_dry_run = true` (default), or with `out_dir_var` | `make <out_dir_var>=<out>`; a dry run compiles nothing |
+| STM32CubeIDE, TI CCS | never | fw-context cannot build these projects |
+
+A build that you start with `--build` uses the same output directory.
+fw-context writes `.fw-context/build/.gitignore` with the line `*`, thus the
+output stays out of git also in a project that `fw-context init` did not
+set up.
+
+Exceptions:
+
+- PlatformIO: `pio run` installs the `lib_deps` into `.pio/libdeps`, as your
+  build does. That directory holds the source of the libraries, not build
+  output.
+- ESP-IDF: fw-context runs `idf.py set-target` only when the project has
+  no `sdkconfig`. `set-target` renames `<project>/sdkconfig`, and `-B`
+  does not move that file.
+- Makefile: a real `make` (`make_dry_run = false`) needs `out_dir_var`, the
+  variable that names the output directory in your Makefile.
+
 ## Configuration reference
 
 ### General
 
 | Parameter | Type | Default | Systems | Description |
 |-----------|------|---------|---------|-------------|
-| `system` | `str` | (auto-detect) | all | Build system: `mbed-os`, `zephyr`, `platformio`, `esp-idf`, `arduino`, `cmake`, `keil-mdk`, `iar-ewarm`, `makefile`, `bare` |
+| `system` | `str` | (auto-detect) | all | Build system: `mbed-os`, `zephyr`, `platformio`, `esp-idf`, `arduino`, `cmake`, `keil-mdk`, `iar-ewarm`, `makefile`, `bare`, `stm32cubeide`, `ti-ccs` |
 | `clean` | `bool` | `true` | all | Run a clean build before fw-context generates the file. **Recommended.** A clean build ensures a complete `compile_commands.json` file. |
 | `command` | `str` | — | all | A full override for the shell command. Highest priority: fw-context ignores all other settings. |
 | `python` | `str` | (auto-detect) | all | The Python interpreter for pip-based CLI tools, such as `mbed-cli`, `platformio`, `keil2clangd`, or `compiledb`. `fw-context init` detects this automatically, from pyenv, venv, and common install paths. Set this parameter manually when automatic detection fails. |
-| `activate` | `str` | (auto-detect) | all | A shell script that fw-context sources before the build, for example `nordic_minimal_setup.sh` for NCS, or `export.sh` for ESP-IDF. `fw-context init` detects this automatically, from common install paths. Set this parameter manually when automatic detection fails. |
-| `pre_build` | `str` | — | all | A shell command that fw-context runs before the build, the convert step, or the generate step. **Security: use this parameter only in `local.toml` (gitignored). Never use this parameter in a committed `config.toml` file.** |
+| `activate` | `str` | (auto-detect) | all | A shell script that fw-context sources before the build, for example the toolchain environment of NCS, or `export.sh` for ESP-IDF. `fw-context init` detects this automatically. Set this parameter manually when automatic detection fails. |
+| `pre_build` | `str` | — | all | A shell command that fw-context runs before the build, the convert step, or the generate step. Put it in `config.toml` when the whole team uses it, or in `local.toml` when it is specific to your machine. |
+
+The build process does not get an inherited `BASH_ENV`. fw-context removes
+it from the build environment, because `bash -c` reads that file before
+the command, and `activate` runs through `bash -c`. If a build needs
+`BASH_ENV`, set it in `[build] env`. fw-context applies a configured value
+after the removal.
+
+`[build] env` applies to every command that the build runs: the builder
+commands, the `pre_build` hook, and the `command` override. `activate`
+applies to the builder commands only.
 
 ### Mbed OS
 
@@ -359,6 +450,15 @@ clean = false
 `idf_path` is optional when `idf.py` is on `$PATH`.  Set it here for
 non-standard installations.
 
+fw-context reads the linker scripts from the link of the application in
+`build.ninja`. `project_description.json` names the ELF of the
+application. fw-context reads the two files in the directory that holds
+`compile_commands.json`. After a build of fw-context, this directory is
+`.fw-context/build/<variant>/out/`. The link names each script with `-T` and no directory, and
+the `-L` options give the directories that hold the scripts. When
+fw-context cannot read a link input, the index keeps the memory map that
+it has.
+
 ### 9. IAR EWARM with pre-build hook
 
 ```toml
@@ -386,8 +486,11 @@ clean = true
 ```
 
 This is the generic CMake builder. This builder runs
-`cmake -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. This builder
-works for any CMake project that is not Zephyr or ESP-IDF.
+`cmake -B <out> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja`, and then
+`cmake --build <out>`. `<out>` is `.fw-context/build/<variant>/out`.
+`cmake_generator` gives the `-G` option. Without it, the builder gives no
+`-G`, and CMake uses its default generator. This builder works for any
+CMake project that is not Zephyr or ESP-IDF.
 
 ### 11. Shell override — bear wrapping a custom build
 
@@ -427,15 +530,34 @@ bear -- /path/to/python -m mbed compile -t GCC_ARM -m TARGET ...
 The Nordic nRF Connect SDK, and ESP-IDF in a similar way, needs a toolchain
 setup script. fw-context must source this script before `west build`.
 
+`fw-context init` finds the environment in this order:
+
+1. An `activate` that the config already holds. A new run of
+   `fw-context init` shows it and keeps it by default.
+2. The Zephyr SDK of the current environment: the `environment-setup-*`
+   script of `ZEPHYR_SDK_INSTALL_DIR`.
+3. The nRF Connect SDK versions that `nrfutil sdk-manager list` gives. You
+   select the version, and `fw-context init` writes
+   `.fw-context/ncs-env.sh` from `nrfutil sdk-manager toolchain env` and
+   `ZEPHYR_BASE`.
+4. `zephyr-env.sh` in the directory that `west config zephyr.base` names,
+   or `~/zephyr-sdk-*/environment-setup-*`.
+5. When it finds nothing, `fw-context init` asks for the path of the
+   script.
+
+When detection fails, or you use another setup script, set it in
+`.fw-context/local.toml` (gitignored, machine-specific):
+
 ```toml
-# In .fw-context/local.toml (gitignored, machine-specific)
 [build]
-activate = "/home/user/ncs_tools/nordic_minimal_setup.sh"
+activate = "/home/user/ncs-v3.2.3-env.sh"
 ```
 
-`fw-context init` detects this automatically, from paths such as
-`~/ncs_tools/nordic_minimal_setup.sh`, `west config zephyr.base`, and
-`~/zephyr-sdk-*/environment-setup-*`.
+For the nRF Connect SDK, `nrfutil` writes such a script:
+
+```bash
+nrfutil sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh > ~/ncs-v3.2.3-env.sh
+```
 
 When you set `activate`, the builder wraps the command:
 ```
@@ -604,14 +726,31 @@ python = "/home/user/.pyenv/versions/3.11.8/bin/python"
 
 ### `west: command not found` (Zephyr/NCS)
 
-Zephyr builds need an active toolchain environment. `fw-context init`
-detects common setup scripts automatically: `~/ncs_tools/nordic_minimal_setup.sh`,
-`west config zephyr.base`, and `~/zephyr-sdk-*/environment-setup-*`.
+Zephyr builds need an active toolchain environment. `fw-context init` finds the environment in this order:
+
+1. An `activate` that the config already holds. A new run of
+   `fw-context init` shows it and keeps it by default.
+2. The Zephyr SDK of the current environment: the `environment-setup-*`
+   script of `ZEPHYR_SDK_INSTALL_DIR`.
+3. The nRF Connect SDK versions that `nrfutil sdk-manager list` gives. You
+   select the version, and `fw-context init` writes
+   `.fw-context/ncs-env.sh` from `nrfutil sdk-manager toolchain env` and
+   `ZEPHYR_BASE`.
+4. `zephyr-env.sh` in the directory that `west config zephyr.base` names,
+   or `~/zephyr-sdk-*/environment-setup-*`.
+5. When it finds nothing, `fw-context init` asks for the path of the
+   script.
 
 If detection fails, set the activation script manually in `.fw-context/local.toml`:
 ```toml
 [build]
-activate = "/home/user/ncs_tools/nordic_minimal_setup.sh"
+activate = "/home/user/ncs-v3.2.3-env.sh"
+```
+
+For the nRF Connect SDK, `nrfutil` writes such a script:
+
+```bash
+nrfutil sdk-manager toolchain env --ncs-version v3.2.3 --as-script sh > ~/ncs-v3.2.3-env.sh
 ```
 
 ### Pre-build hook security warning

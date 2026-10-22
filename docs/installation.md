@@ -69,7 +69,7 @@ cd ~/.fw-context/src && make install
 
 **File watcher (auto-reindex on save):**
 
-The MCP server starts a background watcher daemon automatically. This daemon reindexes an edited source file within 500 ms after you save the file. This daemon regenerates the LLM analysis after 60 s of inactivity. You do not need separate configuration.
+The MCP server starts a background watcher daemon automatically. When you save a C/C++ file, this daemon waits 2 s for more changes. Then it starts `fw-context index --background`, which updates the index. A change of the checkout (another branch, a tag, or a commit on a detached HEAD) also starts such a run. You do not need separate configuration.
 
 ## Configure your project
 
@@ -165,11 +165,14 @@ xcode-select --install   # ships clang as part of Command Line Tools
 
 `fw-context` runs `west build -b <board>`. `fw-context` enables `CMAKE_EXPORT_COMPILE_COMMANDS=ON` automatically.
 
-> **Nordic NCS users:** `fw-context init` detects the NCS toolchain setup script
-> automatically, at `~/ncs_tools/nordic_minimal_setup.sh`. `fw-context init`
-> writes this script path to `.fw-context/local.toml`, as `activate`. For plain
-> Zephyr, `fw-context init` checks `west config zephyr.base` and
-> `~/zephyr-sdk-*/` for the environment setup script.
+> **Nordic NCS users:** `fw-context init` lists the NCS versions that
+> `nrfutil sdk-manager list` gives, and you select one. It then writes an
+> activation script for that toolchain, `.fw-context/ncs-env.sh`, from
+> `nrfutil sdk-manager toolchain env` and `ZEPHYR_BASE`, and writes its path
+> to `.fw-context/local.toml`, as `activate`. For plain Zephyr,
+> `fw-context init` uses `ZEPHYR_SDK_INSTALL_DIR`, `west config zephyr.base`
+> (`zephyr-env.sh`) or `~/zephyr-sdk-*/` (`environment-setup-*`).
+> See [Build Configuration](build.md#west-command-not-found-zephyrncs).
 
 ### PlatformIO
 
@@ -237,7 +240,9 @@ the libclang token stream. This build system does not need `.d` files.
 | **cmake** | Build + compile_commands.json | `sudo pacman -S cmake` / `sudo apt install cmake` / `sudo dnf install cmake` / `brew install cmake` |
 
 Use this build system for any CMake project that is not Zephyr or ESP-IDF.
-`fw-context` runs `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build build`.
+`fw-context` runs `cmake -B <out> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build <out>`.
+`<out>` is `.fw-context/build/<variant>/out`. With `[build] cmake_generator`,
+the configure step also gets `-G <generator>`.
 
 ### Makefile
 
@@ -322,9 +327,34 @@ fw-context status
 
 ## Ollama (optional)
 
-Ollama powers natural-language search and symbol explanations.
-**Ollama is optional.** Set `enabled = false` in `[llm]`. Then the AI
-assistant processes the results with its own model.
+**The core index does not need Ollama.** Symbols, full-text search, the
+call graph, and source retrieval come from libclang and SQLite only.
+
+With the default configuration, Ollama does three jobs:
+
+| Job | Used by | Without Ollama |
+|-----|---------|----------------|
+| Vector embeddings (`[index] index_embeddings = true`, default) | `semantic_search`, the re-rank step of `smart_search` | `fw-context index` logs the error, stores no vectors, and marks the build `"partial"`. The status tools then ask the LLM to tell you. `semantic_search` falls back to `search_code`, with a `warning`. When you use no embedding model and no LLM, set `[llm] enabled = false`. |
+| Symbol analysis (`[llm] analyze_symbols = true`, default) | `explain_symbol`, symbol descriptions in search results | `fw-context index` logs a warning and skips the analysis. |
+| Search query generation | `smart_search` | `smart_search` uses FTS5 only. |
+
+Alternatives:
+
+- **Chat on another server.** Set `[llm] chat_api_base` to an
+  OpenAI-compatible API. Symbol analysis and query generation then use that
+  API. The embeddings still use the local Ollama.
+- **Embeddings without Ollama.** Install the `st` extra
+  (`pip install "fw-context-mcp[st]"`) and set `embed_model` to a
+  sentence-transformers model, for example `"BAAI/bge-small-en-v1.5"`.
+  `fw-context index` then stores the vectors without Ollama, and
+  `semantic_search` embeds the query locally too.
+- **No LLM.** Set `enabled = false` in `[llm]`. The LLM-calling tools then
+  return raw prompts, and the AI assistant processes the results with its
+  own model. `fw-context index` then skips the embeddings and the symbol
+  analysis. This is also true for a sentence-transformers `embed_model`.
+- **Embeddings without the analysis.** Set `[llm] analyze_symbols = false`.
+  `fw-context index` then stores the embeddings and skips the symbol
+  analysis. `[index] index_embeddings = false` skips only the embeddings.
 
 ### Install Ollama
 
@@ -427,13 +457,29 @@ fw-context quickstart              # alias for `init --quick`
 **Provisioning:** `fw-context init` now does more than AI-tool setup. It
 runs these steps, in order:
 
-1. Generate the project ID and register the project globally.
-2. Audit the dependencies, and auto-fix what it can (missing pip packages).
-   Model pulls (`ollama pull`) never run here.
-3. Detect the build system and generate `compile_commands.json` when the
-   project is buildable.
-4. Register the AI tools (steps skipped by `--quick`).
-5. Print a checklist of the remaining manual steps.
+1. Audit the dependencies, and auto-fix what it can (missing pip packages).
+   Model pulls (`ollama pull`) never run here. `--skip-doctor` skips this
+   step. This step comes first, because the next steps write config files.
+2. Detect the build system and its parameters (for example the board).
+3. Generate the project ID when the config has none, and register the
+   project in the global project registry.
+4. Detect the build environment of this machine (`python`, `activate`,
+   `idf_path`), and write it to `local.toml`.
+5. Create a missing config file from its template, and add the missing
+   keys to an existing one: the global config, `.fw-context/config.toml`
+   and `.fw-context/local.toml`.
+6. Generate `compile_commands.json` when the project is buildable.
+   `--skip-build` skips this step, and so does a project of several variants.
+7. Register the AI tools (skipped by `--quick`).
+8. Update `.gitignore`, and install the skills and the agents (the two
+   skipped by `--quick`).
+9. Configure the LLM backend (the LLM step, see
+   [Configuration](configuration.md#how-config-works)). In a pipe, or with
+   `--non-interactive`, this step writes nothing.
+10. Save the detected embedding model one time to the global config. This
+    step writes nothing when a config file sets `[llm] embed_model`, or
+    when the LLM is off.
+11. Print a checklist of the remaining manual steps.
 
 When build-system detection fails, `fw-context init` asks for the missing
 value interactively (build system, board, FQBN, and so on). In a pipe, or

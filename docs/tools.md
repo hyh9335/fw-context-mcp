@@ -39,8 +39,8 @@ fw-context index --no-embeddings
 # Skip LLM symbol analysis
 fw-context index --no-analyze
 
-# Custom source roots
-fw-context index --source-roots src lib drivers
+# Custom vendor and project directories
+fw-context index --vendor-paths sdk third_party --project-paths src lib
 ```
 
 | Option | Default | Description |
@@ -49,18 +49,163 @@ fw-context index --source-roots src lib drivers
 | `--project DIR` | `.` | Project root directory |
 | `--build` | off | Force a clean build and regenerate `compile_commands.json` |
 | `--no-clean` | off | With `--build`: skip the clean step, and do an incremental build |
-| `--source-roots DIR…` | auto-detected | Directories to index symbols from |
+| `--vendor-paths DIR…` | `[index] vendor_paths` | Vendor and SDK directories, added to the directories that the build system detects. The option replaces `[index] vendor_paths`. A `[[build.variants]]` entry adds its own directories to it. |
+| `--project-paths DIR…` | `[index] project_paths` | Project directories. They win over each vendor pattern. The option replaces `[index] project_paths`. A `[[build.variants]]` entry adds its own directories to it. |
 | `--name NAME` | directory name | Project name override |
 | `--no-refs` | off | Skip cross-reference / call graph indexing |
-| `--no-embeddings` | off | Skip embedding generation |
-| `--no-analyze` | off | Skip LLM symbol analysis |
-| `--analyze` | on | Force LLM symbol analysis (negates --no-analyze) |
-| `--force` | off | Force re-index of all files, embeddings, LLM analysis, overrides, PageRank, and hotspot cache (bypasses mtime checks) |
+| `--embeddings` | `[index] index_embeddings` (`true`) | Generate symbol embeddings |
+| `--no-embeddings` | off | Skip embedding generation. Wins over `--embeddings`. |
+| `--analyze` | `[llm] analyze_symbols` (`true`) | Generate the LLM symbol analysis (summary, inputs, outputs) |
+| `--no-analyze` | off | Skip LLM symbol analysis. Wins over `--analyze`. |
+| `--analyze-vendor` | `[llm] analyze_vendor` (`false`) | Also analyze the vendor and SDK code |
+| `--no-analyze-vendor` | off | Skip the analysis of the vendor and SDK code. Wins over `--analyze-vendor` and the config. |
+| `--background` | off | The mode of the file-watcher daemon. The run does not rebuild a stale `compile_commands.json`, does not repair it, and prunes no registry rows. It builds only when the backend can build on its own. |
+| `--force` | off | Force re-index of all files, embeddings, LLM analysis, overrides, PageRank, and hotspot cache (skips the hash checks) |
 | `--variant NAME` | all variants | Restrict indexing to one build variant (name from `[[build.variants]]`) |
 | `--variants A,B` | all variants | Comma-separated list of build variants to index |
 | `--image NAME` | all images | Restrict indexing to one sysbuild image |
 | `--exclude-image NAME` | none | Exclude a sysbuild image from indexing (repeatable) |
 | `-v` | off | Verbose progress output |
+
+**Automatic build:**
+
+Without `--build`, a run can build by itself.
+
+A run that you start builds as `--build` does when the build is not there:
+`compile_commands.json` does not exist, or a `directory` of its entries does
+not exist. fw-context asks the compiler of each unit in that directory.
+When fw-context cannot run the build (STM32CubeIDE, TI CCS, a
+`[build] command` in a background run, or a background run of a backend
+that compiles in your tree), the run stops with an error and does not
+index. A run with an explicit `compile_commands.json`, or a project with
+`[[build.variants]]`, does not do this check.
+
+A run also builds when an index exists and one of these conditions is true:
+
+- The build is not there (a background run).
+- A source file on disk is not in `compile_commands.json`. Such a file has
+  no translation unit, thus a reindex skips it.
+- The tree has a different checkout than the index: another branch, or
+  a detached HEAD at another commit (for example the commit of a tag).
+  `compile_commands.json` belongs to the old checkout. For the rules of
+  this comparison, see [`get_project_status`](#get_project_status).
+
+The run builds only when the backend can build on its own (see
+[Build Configuration](build.md#automatic-build)). Each build, this one and
+one that you start, goes to `.fw-context/build/<variant>/out`, or
+`.fw-context/build/default/out` for a project without variants.
+`--build` and `--background` are mutually exclusive, except for this
+automatic build.
+
+When a run stops without an index (the build is not there, or the run
+failed), fw-context writes the reason to `build_problem.json` next to the
+index. Each answer of a query tool of the project gives the state
+`"failed"` with that text (see [The state of the index](#the-state-of-the-index)).
+`get_project_status` gives it as a reason, with the status
+`reindex_needed`. The next run that ends well with the build there removes
+the file. `get_project_status` removes a reason that said the build is not
+there when it finds the build again. A failed automatic build is not
+paused: the next background run builds again.
+
+#### The state of the index
+
+When the index of the build of a query is not current, each answer of a
+query tool says so. The maintenance tools do not:
+`get_project_status` and `get_build_info` give `reindex_state` of each
+build, from the full check of the build.
+
+- A dict gets `index_state` and `index_warning`. For `"failed"` it also
+  gets `build_warning`, the text of the failed run.
+- A list gets a leading row `{"warning": …, "index_state": …}`.
+- No `index_state` means that the quick checks of the query found no
+  reason. They can miss a changed header, a changed file that the answer
+  does not name, or a new source file when the answer is not empty.
+  `get_project_status` does the full check.
+
+| `index_state` | When | What the caller does |
+|---|---|---|
+| `"reindexing"` | The index is not current, and an index run is active. | Waits, and repeats the call or `get_project_status` after about 30 s. Uses the old answer only when the user says so. |
+| `"pending"` | The index is not current, and the watcher scheduled an index run. | The same as `"reindexing"`. |
+| `"failed"` | The index is not current, and the last index run failed. | Gives the text to the user: it names the command. |
+| `"not_scheduled"` | The index is not current, and no index run updates it. | Tells the user to run `fw-context index` (`--build` after a checkout, and for a new source file that fw-context does not build in the background). Where fw-context does not do that build (a database of the user, a build in an IDE, or a build system that fw-context does not know), the warning tells the user to make `compile_commands.json` outside of fw-context, then to run `fw-context index`. The warning and `get_project_status` name the same action. When the query cannot read the config, the warning names no command and sends you to `get_project_status`. |
+
+An index run that is active or scheduled wins over `"failed"`: during the
+run that repairs a failed run, the command of the failed run starts a
+second run of the same work.
+
+A query checks only what costs no scan: the checkout, a changed
+`compile_commands.json`, the schema, the row format, an index without
+full header tracking, and the files that the answer names. While an index
+run is active or scheduled, and these checks find no reason, it also
+compares the hash of each file of its build: the state then tells whether
+the run changes this build. A build that the run does not change stays
+current. Changed headers, a changed file that the answer does not name
+while no run is active or scheduled, and a new source file in an answer
+that is not empty are in the status tools only (`get_project_status`,
+`get_build_info`).
+
+**When another index run is in progress:**
+
+Only one index run can own a project's index at a time. A manual run takes
+the index before it builds anything, so a refused run never cleans the build
+directory or rewrites `compile_commands.json`. This holds for a single build
+and for `[[build.variants]]`.
+
+- **A background run** (the file-watcher daemon starts these): a manual run
+  always takes over. It sends `SIGTERM`, and the background run stops with
+  exit code 75 (superseded); the daemon retries it later. A run that does
+  not stop within 10 seconds gets `SIGKILL`.
+- **Another foreground run**: the new run is refused with exit code 69, and
+  the message names the PID of that run. Add `--takeover` to terminate it
+  the same way and index anyway.
+- **A `--background` run** never takes over from another run.
+
+Before it sends `SIGTERM`, the run that takes over writes
+`reindex.takeover` in the index directory, with its own PID and the PID of
+the run that it stops. Thus the stopped run knows why it stopped:
+
+| Cause of the `SIGTERM` | Exit code | Message | Daemon retries |
+|---|---|---|---|
+| Another index run takes over | 75 | `Superseded: …` | Yes |
+| Anything else (a CI timeout, `kill`, the shutdown of the daemon) | 143 | `Terminated: …` | No |
+
+A run that already released the index when the `SIGTERM` of a takeover
+arrives ignores that signal. The other run only wanted the index, and it
+already has it.
+
+Each build runs in its own process group. When a run stops, it stops the
+whole group, the compilers of `make -j`, `bear` and `pio` included, before
+the other run builds in the same directory. A run that `SIGKILL` stops
+cannot do that. It records its build group in `reindex.build`, and the next
+run that owns the index stops that group first.
+
+The build is not in the session of the terminal, thus it does not get the
+`SIGHUP` of a closed terminal. The index run gets it, and stops as with a
+foreign `SIGTERM`: `Terminated`, exit code 143, and the build group stops
+too.
+
+**The global registry:**
+
+`fw-context index` and `fw-context init` write this project into the global
+registry at `~/.fw-context/projects.db`. Then they remove the rows that
+nothing on disk confirms. The registry only grew before this, and two rows
+of one name make the `project="<name>"` tool selector fail with an
+ambiguity error.
+
+A row stays when one of these conditions is true:
+
+- An index database of that project ID is in the index directory.
+- The project root holds a `.fw-context/config.toml` that declares that
+  same project ID.
+
+The command names each row that it removes, up to five names. To keep the
+rows, use `--no-prune`. A live project can look stale: this happens when
+its filesystem is not mounted, and its index is not in the default index
+directory. If such a row goes, the next `init` or `index` of that project
+writes it again.
+
+A `--background` run removes no row. The file-watcher daemon starts those
+runs, no flag can reach them, and their output goes to `reindex.log`.
 
 For a multi-variant project, `fw-context index --build` builds and indexes
 every variant. Use `--variant`, `--variants`, `--image`, or
@@ -87,19 +232,44 @@ fw-context search "uart_init"
 fw-context search "spi transfer" --limit 10
 fw-context search "ble_*"                # prefix wildcard
 fw-context search '"i2c read"'           # exact phrase
+fw-context search "uart_init" --variant nrf52840-dev --image app
 ```
+
+The search reads ONE build, as each MCP query does. On a project of
+several builds, give `--variant` and `--image` of one build. A search
+without them, or with the options of no build, gets an error that lists
+each build with its options, and the command returns 1. A variant that
+the config declares and the index does not hold gets the command that
+indexes it.
+`fw-context status` lists the builds. A project of one build needs no
+option.
 
 ### `fw-context status`
 
-Show index freshness and statistics.
+Show the state of the index, and of each build of the project.
 
 ```bash
 $ fw-context status
 Project : /home/user/firmware
-Symbols : 8586  files=952
-Indexed : 2026-06-05 09:35:18
-DB      : ~/.fw-context/index/a1b2c3d4/index.db
+Status  : reindex_needed
+          1 of 2 builds are not up to date — nrf52840-dev/app: not_scheduled. Read reindex_reasons for the action, and builds for each build.
+Builds  : 2
+  nrf52840-dev/app      reindex_needed (not_scheduled)  symbols=29 464  files=896  indexed=2026-10-07 23:23:56
+      compile_commands.json changed after the last index run. Run `fw-context index`.
+  nrf52840-dev/mcuboot  ready                           symbols=14 329  files=778  indexed=2026-10-07 23:00:25
 ```
+
+The command prints what the MCP tool
+[`get_project_status`](#get_project_status) gives: the status and the
+message of the project, then one line for each build with its status, the
+state of the index run (`reindex_state`) when the build is not current,
+its counts, and its reasons. A build without a variant name and an image
+name shows as `(no name)`. A variant that the config declares and the index
+does not hold gets the command that indexes it. A project that is not
+initialized, that has no index, or whose config file cannot be used
+(`config_error`) gets the message and the command returns 1. A value of a
+config file that fw-context did not use gives a warning in the log on
+stderr, as in each other command, and the exit code does not change.
 
 ### `fw-context list`
 
@@ -107,9 +277,20 @@ List all indexed projects.
 
 ```bash
 $ fw-context list
-my-zephyr-app   /home/user/zephyr-app     symbols=12430  files=1502  indexed=2026-06-05 09:35:18
-my-platformio-app /home/user/pio-app      symbols=8586   files=952   indexed=2026-06-04 16:20:45
+PROJECT     PATH                    BUILDS  SYMBOLS  FILES  INDEXED
+zephyr-app  /home/user/zephyr-app        7        -      -  2026-10-08 00:18:04
+pio-app *   /home/user/pio-app           1    8 586    952  2026-10-04 16:20:45
 ```
+
+The table shows what the MCP tool [`list_projects`](#list_projects)
+gives. A project of several builds shows no counts (`-`): a file that two
+builds compile is in the index of each, thus a sum counts it two times.
+`fw-context status` gives the counts of each build. `*` marks a project
+whose schema or row format is old, or whose compile_commands.json of a
+build changed. `fw-context status` gives each reason, also a checkout, a
+failed run and modified files. `INDEXED` is the time of the newest build.
+`fw-context list -v` adds a line below each project with the path of its
+index database (`db=…`).
 
 ### `fw-context db`
 
@@ -125,22 +306,31 @@ fw-context db cleanup                # remove orphaned compile_commands artifact
 
 #### `fw-context db list`
 
-List all builds for a project, with per-build statistics. The active build
-shows with a `*` marker.
+List all rows of builds for a project, with per-row statistics. Each row
+shows its label (`variant/image`, or `(no name)`), its state and its
+description:
+
+- `queried`, with a `*` marker: the row that the queries of its build
+  read, the newest completed row of that `(variant, image)` pair.
+- `indexing`: a row that an index run writes, or that a stopped run left.
+- `older row`: an older row of a pair, which an interrupted run left.
+
+The row shows the first 12 characters of its `config_hash`.
+`fw-context db list -v` shows the full hash of 64 characters.
 
 ```bash
 $ fw-context db list
 Project: my-zephyr-app  path=/home/user/zephyr-app
 
-*a1b2c3d4e5f6  main: add UART driver
-  First indexed:  2026-06-01 12:00:00      Last indexed:    2026-06-05 09:35:18
-  Symbols:        12,430                   Files:           1,502  Refs:    8,900
+*a1b2c3d4e5f6  nrf52840-dev/app  queried  branch: main
+  First indexed:   2026-10-07 23:00:31     Last indexed:   2026-10-07 23:23:56
+  Symbols:         29,464                  Files:          896  Refs:    81,203
 
-7f8e9d0c1b2a  feature/spi: WIP SPI rewrite
-  First indexed:  2026-06-03 14:22:10      Last indexed:    2026-06-04 18:10:05
-  Symbols:        12,318                   Files:           1,498  Refs:    8,756
+*7f8e9d0c1b2a  nrf52840-dev/mcuboot  queried  branch: main
+  First indexed:   2026-10-07 22:50:12     Last indexed:   2026-10-07 23:00:25
+  Symbols:         14,329                  Files:          778  Refs:    40,117
 
-* = active build (a1b2c3d4e5f6...)
+* = the row that the queries of its build read
 ```
 
 #### `fw-context db stats`
@@ -152,31 +342,36 @@ and more.
 ```bash
 $ fw-context db stats a1b2c3d4e5f6
 Build:          a1b2c3d4e5f6...
-  Description:  main: add UART driver
-  First indexed: 2026-06-01 12:00:00
-  Last indexed: 2026-06-05 09:35:18
+  Label:        nrf52840-dev/app
+  Board:        nrf52840dk/nrf52840
+  Description:  branch: main
+  First indexed: 2026-10-07 23:00:31
+  Last indexed: 2026-10-07 23:23:56
   ...
 
 Symbols by kind:
-  function                  5 212
-  method                    3 108
-  class                       482
+  function                   9874
+  macro                      7012
+  variable                   4203
   ...
-  TOTAL                    12 430
-  Definitions (is_definition=1): 8 450
+  ---                         ---
+  TOTAL                     29464
+  Definitions (is_definition=1): 18950
 
-LLM analysis:   8 450 / 8 450 definitions analyzed
-  Coverage:     100%
-  Unanalyzed:   0
-Embeddings:     12 430 symbols with embeddings
-Files:          1 502
-References:     8 900
-Macros:         1 234
+LLM analysis (project): 2980/2980 analyzed
+LLM analysis (vendor):  0/5470 analyzed
+  Skipped:        0 project, 0 vendor
+  analyze_vendor: False
+  Complete:       True
+Embeddings:     29464 symbols with embeddings
+Files:          896
+References:     81203
+Macros:         7012
 Indirect calls: 156
 FP assignments: 89
 Overrides:      42
 Hotspot cache:  20
-PageRank cov:   12 430 / 12 430 symbols
+PageRank cov:   29464 / 29464 symbols
 ```
 
 #### `fw-context db delete`
@@ -191,8 +386,12 @@ fw-context db delete --all              # delete the entire index
 fw-context db delete --all -y           # delete all without confirmation
 ```
 
-You cannot delete the active build without `--force`. You cannot delete
-the only build: use `--all` instead.
+You cannot delete a row that the queries of its build read (`queried` in
+`fw-context db list`) without `--force`. The queries of that build then
+read an older row of the build, or no row. You cannot delete an
+`indexing` row without `--force`: a run that still writes it writes it
+again when it ends, without the data of the delete. You cannot delete the
+only build that the queries read: use `--all` instead.
 
 #### `fw-context db cleanup`
 
@@ -221,18 +420,47 @@ fw-context init --skip-doctor           # skip the dependency audit
 fw-context init --skip-build            # skip compile_commands.json generation
 fw-context init --non-interactive       # disable prompts (CI/pipe)
 fw-context init --name NAME             # project name in the global registry
+fw-context init --no-prune              # keep the stale global-registry rows
+fw-context init --scope global          # write the global instruction files
+fw-context init --instructions-only     # write the instructions, skip MCP registration
 ```
+
+`--scope {all,global,project}` selects the instruction files, the skills
+and the agents that `fw-context init` writes. The default is `project`:
+only the files of the current project. `global` writes only the files in
+your home directory, and `all` writes the two. Without `--tool`, the scope
+also selects the AI tools: `global` takes the tools that fw-context
+detects on the machine, `project` and `all` also take the tools that the
+project uses.
+
+`--instructions-only` writes the instructions, and does not register the
+MCP server.
 
 `fw-context init` runs these steps, in order:
 
-1. **Project ID** — generate the ID and register the project globally.
-2. **Dependencies** — audit and auto-fix fixable issues, such as missing
+1. **Dependencies** — audit and auto-fix fixable issues, such as missing
    pip packages. Model pulls (`ollama pull`) never run in this step.
-3. **Build** — detect the build system and generate
-   `compile_commands.json` when the project is buildable.
-4. **AI tools** — register the MCP server and inject instructions, skills,
-   and agents.
-5. **Checklist** — print the remaining manual steps, grouped by category.
+   `fw-context init` never removes a config value: only
+   `fw-context doctor --fix --only config`, or a full
+   `fw-context doctor --fix`, does that. `--skip-doctor` skips this step.
+2. **Build system** — detect the build system and its parameters, or ask
+   for a missing value (see the interactive fallback below).
+3. **Project ID** — generate the ID, and register the project in the
+   global registry.
+4. **Build environment** — detect the environment that the build needs on
+   this machine, and write it to `.fw-context/local.toml`.
+5. **Config files** — create the global config, `.fw-context/config.toml`
+   and `.fw-context/local.toml` from their templates, or add the options
+   that a file does not have.
+6. **Build** — generate `compile_commands.json` when the project is
+   buildable. A project of several variants builds with
+   `fw-context index --build`.
+7. **AI tools** — register the MCP server and inject the instructions.
+8. **Project files** — add the `.gitignore` entries, and install the
+   skills and the agents.
+9. **LLM** — configure the LLM backend (see the LLM step below).
+10. **Embedding model** — detect the embedding model, and save it one time.
+11. **Checklist** — print the remaining manual steps, grouped by category.
 
 **Interactive fallback.** When build-system detection fails (no project
 markers, no board, no FQBN), `fw-context init` asks for the missing value.
@@ -240,17 +468,51 @@ Each prompt has a default; press Enter to accept it. The answers are
 written to `.fw-context/config.toml`. In a pipe, or with
 `--non-interactive`, the missing value goes to the checklist instead.
 
-The command is idempotent. Re-running it asks `Change? [y/N]` for each
-configured value, so you can press Enter to keep the current setup.
+The command is idempotent. A second run asks `Change? [y/N]` for each
+value of the build that the project config sets (the build system and its
+parameters), and for an LLM backend that a project file sets. Press Enter
+to keep the current value.
 
-`--quick` skips only step 4 (AI tool registration). It still creates the
-project ID, the config files, the `.gitignore` entries, and runs the
-dependency audit, the build, and the checklist.
+**The LLM step.** The step tells where the LLM backend comes from, and
+then shows a menu. Option 3 sets `[llm] analyze_symbols = false` in
+`.fw-context/local.toml`: the LLM analysis stops, and the embeddings
+stay. The other options depend on the file that sets the backend:
 
-| Tool | ID | Scope |
-|------|----|-------|
-| Claude Code | `claude-code` | global (`~/.claude/`) |
-| OpenCode | `opencode` | global (`~/.config/opencode/`) |
+- Only the global config sets it: option 0 "Use the global settings" is
+  the default (Enter), and writes nothing.
+- `.fw-context/local.toml` sets it: the step asks `Change? [y/N]`. When
+  the global config also sets it, option 0 after `y` removes the `[llm]`
+  backend keys from `.fw-context/local.toml`, and the global settings
+  then apply. Enter keeps the keys.
+- `.fw-context/config.toml` sets it: the step asks `Change? [y/N]`, and
+  the menu has no option 0.
+- No file sets it: Enter skips the step.
+
+In non-interactive mode, the LLM step writes nothing. When only the global
+config sets the backend, the step prints the settings. When no file sets
+it, the step prints how to configure it.
+
+**The embedding model.** When no config file sets `[llm] embed_model`,
+fw-context detects the model from the hardware. Step 10 saves that name
+one time to the global config, thus a later detection cannot select a
+different model. Nothing is saved when the LLM is off.
+
+`--quick` skips step 7, and the skills and the agents of step 8. It still
+creates the project ID, the config files, the `.gitignore` entries, and
+runs the dependency audit, the build, and the checklist.
+
+| Tool | ID | MCP registration (global) | Instructions, `--scope project` | Instructions, `--scope global` |
+|------|----|---------------------------|---------------------------------|--------------------------------|
+| Claude Code | `claude-code` | `claude mcp add --scope user` | `CLAUDE.md` | `~/.claude/CLAUDE.md` |
+| OpenCode | `opencode` | `~/.config/opencode/opencode.json` | `AGENTS.md` | `~/.config/opencode/rules/fw-context.md` |
+| Kilo Code | `kilocode` | `~/.config/kilo/kilo.json` | `AGENTS.md` | `~/.kilo/rules/fw-context.md` |
+| Codex | `codex` | `codex mcp add` | `.codex/rules/fw-context.md` | `~/.codex/rules/fw-context.md` |
+| Cursor | `cursor` | `~/.cursor/mcp.json` | `.cursor/rules/fw-context.mdc` | `~/.cursor/rules/fw-context.mdc` |
+
+The MCP registration is global for each tool, and does not change with
+`--scope`. Kilo Code inherits from OpenCode: when fw-context detects
+OpenCode, it skips Kilo Code. Only `--tool kilocode --force` sets up Kilo
+Code then.
 
 ### `fw-context quickstart`
 
@@ -300,10 +562,15 @@ Export the symbol index as portable JSON.
 fw-context export                     # stdout
 fw-context export -o index.json       # file
 fw-context export --no-refs           # symbols only
+fw-context export --variant nrf52840-dev --image app -o app.json
 ```
 
 The format is `fw-context-export/1`. This format is suitable for sharing
 between machines, for debugging, or as input to other tools.
+
+An export holds ONE build. `--variant` and `--image` select it as in
+`fw-context search`. The JSON names the build: `config_hash`, `variant`,
+`image` and `board`.
 
 ### `fw-context analyze`
 
@@ -315,7 +582,16 @@ the analysis for all symbols.
 ```bash
 fw-context analyze                        # analyze current project
 fw-context analyze --project /path        # specific project
+fw-context analyze --variant nrf52840-dev --image app   # one build
 ```
+
+Without `--variant` and `--image`, the command analyzes each build of the
+project, and prints one line for each build. The analysis is
+content-addressed, thus a symbol that one build already analyzed is not
+sent to the model again. With the options of one build, it analyzes only
+that build. Options that name no build get the error of
+`fw-context search`, and the command returns 1. The command does not
+change the time of the index run of a build.
 
 fw-context generates the analysis for each function or method. fw-context
 uses the full function body (through the libclang extent) and the callee
@@ -448,31 +724,106 @@ more time.
 
 ### `fw-context doctor`
 
-Audit the installation: check dependencies, file permissions, database
-integrity, and configuration. This command reports issues, and can
-attempt automatic repairs.
+Audit the installation: check dependencies, database integrity, disk
+space, and configuration. This command reports issues, and can attempt
+automatic repairs.
 
 ```bash
 fw-context doctor                    # audit, report issues
 fw-context doctor --fix              # audit and attempt repair
 fw-context doctor --json             # machine-readable JSON output
 fw-context doctor --project /path    # audit specific project
+fw-context doctor --only clang-resource,disk-space   # run only these checks
+fw-context doctor --fix --only config                # repair only the config files
 ```
 
-`fw-context doctor` checks:
+`--only NAMES` takes a comma-separated list of the check names below. An
+unknown name stops the command with exit code 2. `--fix --only <names>`
+without `config` does not repair the config files.
 
-- The Python version and required packages
-- The `tomli-w` package, which writes the config files
-- The Ollama installation and model availability
-- The libclang shared library and its version
-- The SQLite version and FTS5 support
-- Index database integrity and schema compatibility
-- Configuration file syntax and key validity
-- File permissions for the index directory and config files
+`fw-context doctor` runs these checks, in this order:
+
+- `pysqlite3` — the `pysqlite3` package is installed, and the `sqlite3`
+  redirect of fw-context is active.
+- `sqlite-ext` — SQLite can load extensions (`enable_load_extension()`).
+- `sqlite-vec` — the `sqlite-vec` extension loads into SQLite.
+- `libclang-python` — the clang Python bindings are installed, version
+  18.1.1 or later.
+- `libclang-so` — fw-context finds the native libclang shared library,
+  and the library loads.
+- `clang-resource` — the clang compiler headers of the libclang major
+  version are there. Not critical: without them, some GCC headers do not
+  parse, and the index holds the errors.
+- `watchfiles` — the `watchfiles` package is installed. The background
+  file watcher needs it.
+- `tomli-w` — the `tomli-w` package is installed. `fw-context init` needs
+  it to write the config files.
+- `config` — the config files load (see below).
+- `ollama` — the Ollama server answers. `skipped` when the LLM is off.
+- `chat-model` — the chat model is installed on the Ollama server of the
+  chat calls. `skipped` when an OpenAI-compatible API runs the chat model.
+- `embed-model` — the embedding model is installed on the Ollama server.
+- `db-integrity` — `PRAGMA quick_check` of the index database. When it
+  finds damage, the check runs `PRAGMA integrity_check`.
+- `obsolete-files` — the files, directories and config keys of an older
+  fw-context. `--fix` removes them.
+- `disk-space` — the free space on the disk of the index. Less than
+  512 MB makes the check `degraded`, less than 128 MB makes it an error.
+
+The check `config` names a config file that cannot be read, or that is
+not UTF-8 or not valid TOML. It also lists each value that fw-context
+cannot use: a value of the wrong type, a section that is not a table, a
+variant without a name, a URL that is not valid. See
+[A config file that fw-context cannot use](configuration.md#a-config-file-that-fw-context-cannot-use).
+`--fix` removes each such value. Then the value of a lower file, or the
+default, applies. Use `--fix --only config` to do only this fix: a full
+`--fix` can also pull a missing model. The checks that read the config
+(Ollama, the models, the database and the disk) are `skipped` while the
+config does not load. After `--fix` repairs the config, they run. A value
+that fw-context did not use, because a lower file or the default applies
+(a timeout or a switch, for example), makes the check `degraded` and not
+critical: the other checks run. When `--only` names one of these checks
+and the config does not load, the command also gives the check `config`.
 
 When you run this command with `--fix`, it attempts to repair fixable
 issues automatically. The command reports issues that it cannot fix, and
 tells you how to fix them manually.
+
+`--fix` pulls a missing model onto the Ollama server that the check
+asks, also when that server is on a different machine:
+
+- The embedding model: the server of `[llm] ollama_url`.
+- The chat model: the Ollama server of the chat calls. This is the server
+  of `ollama_url`, or the Ollama server that `chat_api_base` names. When
+  `chat_api_base` names an OpenAI-compatible API, that API runs the chat
+  model, and the check `chat-model` is `skipped`.
+
+The manual command sets `OLLAMA_HOST`, because the `ollama` CLI reads the
+server from it. It sets it also for the default server, because the
+`OLLAMA_HOST` of your shell can name a different server. For example:
+`OLLAMA_HOST=http://gpu-box:11434 ollama pull qwen2.5-coder:14b`. On
+Windows, the command has the syntax of PowerShell. In `cmd.exe`, first
+run `set OLLAMA_HOST=<url>`, and then `ollama pull <model>`.
+
+### `fw-context cleanup`
+
+Remove the files, directories and config keys that an older fw-context
+wrote and that no release reads now. The list is in
+[Obsolete keys and files](configuration.md#obsolete-keys-and-files).
+`fw-context index` and `fw-context doctor --fix` do the same cleanup, thus
+you need this command only to see the list, or to clean now.
+
+```bash
+fw-context cleanup --dry-run         # show the list, change nothing
+fw-context cleanup                   # remove the items in the list
+fw-context cleanup --project /path   # clean a specific project
+```
+
+The command gives one line for each item. Exit code 1 means that a path
+could not be read or changed.
+
+`fw-context db cleanup` is a different command: it removes the per-build
+files of the index that no build uses.
 
 ### `fw-context watch`
 
@@ -487,8 +838,15 @@ fw-context watch restart --project /path  # specific project
 #### `fw-context watch status`
 
 Show the watcher daemon status for the current project: whether the daemon
-is running, its PID and uptime, the modified file count, and whether a
-background reindex is in progress.
+is running, its PID and uptime, the modified file count of each build, and
+the state of the index:
+
+- `Index:      running`: an index run holds the index, or a `reindex_file`
+  or a `reset_index` writes to it.
+- `Index:      scheduled`: the daemon has work that it did not complete.
+  The work waits for the debounce, for a manual operation, or for the
+  start of the run.
+- `Index:      idle`: no run is active, and the daemon has no work.
 
 ```bash
 $ fw-context watch status
@@ -497,7 +855,8 @@ Path:       /home/user/zephyr-app
 DB dir:     /home/user/.fw-context/index/a1b2c3d4
 Daemon:     running (pid 12345, uptime 3600s)
 Socket:     /home/user/.fw-context/index/a1b2c3d4/daemon.sock (active)
-Modified:   3 file(s)
+Modified:   3 file(s) in build nrf52840-dev/app
+Modified:   0 file(s) in build nrf52840-dev/mcuboot
 Index:      idle
 Last index: [45/45] main.cpp: unchanged
 ```
@@ -531,22 +890,24 @@ fw-context-mcp <version>
 
 ## MCP tools
 
-Your AI assistant calls these tools over JSON-RPC. Each tool opens the
-database, runs its query, and closes the database. These tools use no
-persistent connections.
+Your AI assistant calls these tools over JSON-RPC. The MCP server keeps
+one connection to each index database for the life of the process. A lock
+lets one query at a time use that connection.
 
-All tools accept an optional `project_root` parameter, which defaults to a
-value that fw-context detects automatically from the current working
-directory. Every input block below shows this parameter, but you typically
-omit it, because the automatic detection handles the common case.
+Each tool except `get_project_info` accepts an optional `project_root`
+parameter, which defaults to a value that fw-context detects automatically
+from the current working directory. Every input block below shows this
+parameter, but you typically omit it, because the automatic detection
+handles the common case. `get_project_info` takes only `project_id`.
 
 **A question about a different project.** Every tool answers about one
 project. To ask about a project that is not the project of the current
 directory, give the `project` parameter — the `name` or the `project_id`
 that `list_projects` shows. It is an alternative to `project_root`, which
 takes the root path. Give one of the two, not both. The `project`
-parameter must go on each call, `get_active_build` included, because
-fw-context keeps no session state.
+parameter must go on each call, `get_project_status` included, because
+fw-context keeps no session state. The exception is `get_project_info`,
+which takes no `project` and no `project_root`.
 
 ```
 list_projects   →  {"name": "boot-loader", "project_id": "<32 hex chars>", "root_path": "/…/boot-loader"}
@@ -698,6 +1059,11 @@ Text that belongs to **no** definition is out of reach: `#define`,
 `#include`, `#ifdef`, `extern "C"`, and a comment or declaration at file
 scope. Use `search_content` for those.
 
+**The stored text is ifdef-filtered.** A line of an inactive `#if` branch
+is blank in the stored body, and line numbers do not move. An empty
+result can thus mean that the pattern is only in a dead branch: the build
+of the query does not compile it.
+
 ```
 Input:  {"query": "attach", "project_root?": "/path/to/project", "kind?": "function", "limit?": 20, "project_only?": true}
 Output: [{"name": "setup", "qualified_name": "setup", "kind": "function",
@@ -758,7 +1124,7 @@ Find patterns in **full file content** — the whole file, and not only the
 text that belongs to a definition.
 
 Searches **ifdef-filtered** file text: only the code that actually
-compiles for the current build configuration. fw-context replaces an
+compiles for the build of the query. fw-context replaces an
 inactive `#ifdef` branch with blank lines, and keeps the original line
 numbers.
 
@@ -858,9 +1224,43 @@ conceptual queries ("power consumption" → `get_load_power`) where keywords
 do not match. **When to prefer `search_code`:** known keywords or symbol
 names (`"fram_write"`, `"cbor encode"`).
 
-Results include `_similarity` (cosine similarity score, 0–1) and `_method`
-(`"embedding"` or `"search_code_fallback"`). Source-aware ranking boosts
-project code (1.2×) over vendored SDK paths (0.85×).
+Each symbol holds `name`, `qualified_name`, `kind`, `file`, `line`,
+`is_definition`, `signature`, `docstring`, and `_method` (`"embedding"` or
+`"search_code_fallback"`). An `"embedding"` result also holds
+`_similarity`, the raw cosine similarity. A symbol also holds `summary`,
+`inputs`, and `outputs` when `fw-context index --analyze` wrote them (model
+text, not a fact), and `_rerank_score` when `llm.reranker_model` is set.
+Source-aware ranking multiplies the similarity of project code by 1.2 and
+of all other code by 0.85. The multiplied score sets the order, and
+`_similarity` does not show it. `threshold` applies to the raw cosine
+similarity.
+
+**Pages.** The tool ranks every symbol above `threshold`, as far as one
+KNN query reaches: 4096 vector rows. A symbol of several chunks uses
+several rows. A page is a slice of that order: windows of 200 raw ranks,
+and inside a window the multiplied score, then the symbol id. Thus the
+multiplier moves a symbol only inside its window, and the first page is
+the one that the tool gave before it paged. `total` counts the whole set.
+When the KNN query stops at
+4096 rows and its last row is still above `threshold`, the notice holds
+`total_capped: true`, and `total` is a lower bound. `limit` is the size of
+one page, from 1 to 100. The hint repeats a `threshold` that is not the
+default. The reranker changes the order of the first symbols of a page
+only, and it moves no symbol to another page. A page after the last
+symbol gives one `info` dict that names the total.
+
+**Relevance floor.** When the best raw cosine similarity of all matches is
+below 0.68, the result is the page notice and one dict: a `warning` that
+the matches are likely unrelated, `_fallback_suggestion: "search_code"`,
+`_best_similarity`, and the matches of the page in `_results`.
+
+When the embedding search finds no match above `threshold`, the tool runs
+the lexical fallback below, with a `warning` that suggests a lower
+threshold. When a phase of the search failed, that `warning` gives the
+error of the phase. One dict with `error` means that the query failed.
+When the index of the build is not current, a leading row holds a
+`warning` and `index_state` (see
+[The state of the index](#the-state-of-the-index)).
 
 **Threshold guidance** (mxbai-embed-large):
 - `0.50` — exploratory, more results
@@ -1026,9 +1426,21 @@ Ollama directly. When Ollama is disabled, this tool returns `source` and
 `explain_prompt`, so the AI assistant can answer with its own model.
 
 fw-context generates the analysis during indexing. fw-context uses the
-full function body (through the libclang extent) and the callee names
-from the reference index, as context. When you re-index a file, with
-`reindex_file`, fw-context regenerates the analysis automatically.
+ifdef-filtered body that the index holds and the callee names from the
+reference index, as context. Code in an inactive `#if` branch does not
+reach the model. When every line of a body is inactive, fw-context skips
+the symbol and calls no model, because the build compiles none of its
+code. When you re-index a file with `reindex_file` and
+`with_analysis=True` (the default), fw-context regenerates the analysis
+of the changed symbols.
+
+The on-demand fallback reads a window of `context_lines` around the
+symbol from the disk. That window is not ifdef-filtered.
+
+When the name matches more than one symbol, the result adds
+`ambiguous_warning`, `candidates`, and `candidates_total`, in the same
+shape as `get_source`. When the file changed after the last index run,
+the result adds `stale: true` and a `stale_warning`.
 
 #### `get_symbol_context`
 
@@ -1091,10 +1503,10 @@ constants include `enum_value`.
 
 #### `read_file`
 
-Read a complete source file with ifdef-filtered content — only code that
-actually compiles for the current build configuration. fw-context replaces
-an inactive `#ifdef` branch with blank lines, and keeps the original line
-numbers.
+Read a source file, one page at a time, with ifdef-filtered content —
+only code that actually compiles for the build of the query.
+fw-context replaces an inactive `#ifdef` branch with blank lines, and
+keeps the original line numbers.
 
 ```
 Input:  {"file_path": "src/modem.c", "project_root?": "/path/to/project"}
@@ -1581,39 +1993,22 @@ aggregates the dependency audit, the detected build system, the
 compilation database, the index state, and the LLM backend.
 
 ```
-Input:  {"project_root?": "/path/to/project"}
-Output: {"init_status": "initialized",
-         "deps": [{"name": "libclang-so", "status": "missing",
-                    "action": {"message": "libclang shared library not found.",
-                               "command": "apt install libclang-18-dev"}}],
-         "build_system": "zephyr",
-         "compile_db": {"exists": true, "path": "/path/build/compile_commands.json",
-                        "entry_count": 312},
-         "index": {"status": "reindex_needed", "index_message": "…", …},
-         "llm": {"enabled": true, "ollama_running": true,
-                 "chat_model": "qwen2.5-coder:14b", "embed_model": "qwen3-embedding:8b"}}
-```
-
-Each problem field (`deps[*]`, `compile_db`, `llm`) may carry an `action`
-with a human-readable `message` and an exact shell `command`. Pass both to
-the user without interpretation. The `index` field is the full
-`get_active_build()` result, unchanged; its `index_message` carries the
-action.
-
-This tool is read-only. Use it at session start, to see everything that
-needs fixing before answering the user. Pass `project_root` explicitly
-when the project is not the server's working directory.
-
-#### `check_dependencies`
-
-Run the full dependency audit. Read-only. Returns structured results, one
-entry per check.
-
-```
-Input:  {"project_root?": "/path/to/project"}
-Output: [{"name": "libclang-so", "status": "missing",
-          "message": "…", "fix_cmd": "apt install libclang-18-dev",
-          "instructions": "…", "critical": true}, …]
+Input:  {"project_root?": "/path/to/project", "fast?": true}
+Output: {"project_id": "c3d4…", "project_root": "/path/to/project",
+         "build_system": "zephyr", "schema_version": 84935291, "current_schema": 84935291,
+         "vendor_paths": [], "project_paths": [],
+         "status": "ready", "reindex_needed": false, "reindex_reasons": [], "stale": false,
+         "index_message": "Index is fully up to date (2 builds).",
+         "builds": [
+           {"variant": "nrf52840-dev", "image": "app", "board": "nrf52840dk/nrf52840",
+            "symbol_count": 12430, "file_count": 1502, "indexed_at": "2026-06-05 09:35:18",
+            "status": "ready", "reindex_state": null, "reindex_needed": false, "stale": false,
+            "modified_files_count": 0, "header_affected_tus": 0, "reasons": []},
+           {"variant": "nrf52840-dev", "image": "mcuboot", "board": "nrf52840dk/nrf52840",
+            "symbol_count": 3120, "file_count": 480, "indexed_at": "2026-06-05 09:31:02",
+            "status": "ready", "reindex_state": null, "reindex_needed": false, "stale": false,
+            "modified_files_count": 0, "header_affected_tus": 0, "reasons": []}],
+         "bg_reindex_running": false, "vec_available": true}
 ```
 
 Read `status`, `fix_cmd`, and `instructions` per issue. A `status` of
@@ -1646,35 +2041,251 @@ Output: {"config_hash": "a1b2…", "project_id": "c3d4…", "project_root": "/pa
 
 **Read-only.** This tool has no side effects, and does not spawn background
 tasks. The server startup thread and the file watcher manage the
-background reindex. `bg_reindex_running` and `reindex_progress` report
-whether a background reindex is active, and its last log line.
+background reindex. `bg_reindex_running` reports whether an index run is
+active, or the watcher has work that it did not complete. Only while a
+run is active, `reindex_progress` holds the newest
+progress or error line that fw-context wrote for that run. fw-context
+skips the output of the build tools in the same log.
+
+**`vec_available`** is `true` when the `sqlite-vec` extension loads into
+SQLite in this server process. When it is `false`, `vec_error` (a string)
+holds the reason. `vec_error` is not there when the extension loads.
+
+**`builds`** lists every build of the index, one entry for each
+`(variant, image)` pair: `{variant, image, board, symbol_count,
+file_count, indexed_at, status, reindex_state, reindex_needed, stale,
+modified_files_count, header_affected_tus, reasons}`. A build whose
+manifest is not `"full"` also holds `manifest_verification`. The list shows
+what fw-context has indexed, not what the config declares. On a project
+of more than one build, fw-context selects no build: each query tool must
+get the arguments of one build, as the error lists them (`variant`,
+`image`, or the two). Select the build from the task, and ask the user
+when the task does not identify one.
+
+**`reindex_state`** of a build has the values of `index_state` (see
+[The state of the index](#the-state-of-the-index)), and `null` when the
+index of the build is current. Read it for the build that the task needs:
+one build can be current while an index run updates another. The state of
+a build counts each reason of the build, the modified files, the stale
+headers, and an index without full header tracking.
+
+**`declared_not_indexed`** is present when `[[build.variants]]` declares
+a variant that the index does not hold. Each entry is `{variant,
+command}`, and `command` is `fw-context index --build --variant <name>`.
+No query reaches such a variant until you run the command.
+
+**One build or several builds.** A project of one build also gets the
+fields of that build at the top level: `status`, `reindex_state`,
+`reindex_needed`, `reindex_reasons`, `stale`, `indexed_at`,
+`first_indexed_at`, `symbol_count`, `file_count`, `reference_count`,
+`modified_files_count`, `header_affected_tus`, `manifest_verification`,
+`analysis`, and `description`. A project of several builds gets
+`status`, `reindex_needed`, `reindex_reasons`, and `stale` of the project
+at the top level, and no `reindex_state`. It gets no sums, because a file
+that two images compile is in the index of each. The counts of each build
+are in `builds`. `reference_count`, `analysis`, `description`, and
+`first_indexed_at` of one build are in `get_build_info`.
 
 **`status` field (use for decision-making):**
 
 | Status | Meaning | What to do |
 |--------|---------|------------|
 | ``"ready"`` | Fully up to date, no issues | Continue normally |
-| ``"reindexing"`` | Background reindex in progress | Index is still usable — continue normally |
-| ``"reindex_needed"`` | compile_commands.json changed or schema mismatch | Queries still work, but schedule ``fw-context index`` |
-| ``"no_index"`` | No build config indexed | Run ``fw-context index`` |
+| ``"reindexing"`` | Background reindex in progress or scheduled, or the next index run builds a new source file without a command | Queries work — read `reindex_state` of the build before you continue |
+| ``"reindex_needed"`` | A structural cause — see `reindex_reasons` below | Queries still work, but read `reindex_reasons` for the command |
+| ``"no_index"`` | Initialized, but `index.db` does not exist | Run ``fw-context index`` |
 | ``"not_initialized"`` | ``fw-context init`` was not run | Run ``fw-context init`` |
-| ``"error"`` | DB corruption or access error | Use other tools |
+| ``"config_error"`` | A config file cannot be read, is not UTF-8 or not valid TOML, a section is not a table, a key that selects the data or where data goes has a value of the wrong type, or a URL is not valid. `config_file` names it | Tell the operator the file and the problem. Do not run ``fw-context init`` or ``fw-context index``: they cannot repair the file. When the message names ``fw-context doctor --fix --only config``, that command removes each value that cannot be used. Run it, or correct the file, only with the approval of the operator |
 
-`modified_files_count` is 0 with the default `fast=true`. With
-`fast=false`, fw-context does a fresh stat scan of every indexed file. This
-tool does not use the 30-second count cache — only the watcher daemon uses
-it. `header_affected_tus` reports how many translation units have stale
-header dependencies. This count is non-zero when headers changed since the
-last index with `manifest_verification: "full"`. fw-context reports
-`header_affected_tus` in both modes, but `fast=true` reads it from the
-cache.
+A project of several builds gets the worst status of its builds:
+`"reindex_needed"`, then `"reindexing"`, then `"ready"`.
+
+A failure sets no `status`. On a database that holds no build config,
+the result is a dict that holds only `error`. Read that key first. A
+database that fw-context cannot read (damage, no access) makes the call
+fail with the error of SQLite. The message of the check `db-integrity`
+of [`check_dependencies`](#check_dependencies) tells if it is damaged.
+
+`"reindex_needed"` outranks `"reindexing"`: the answers of this moment
+come from the last finished run. When the `reindex_state` of a build is
+`"reindexing"` or `"pending"`, `index_message` starts with the advice to
+wait for the index run that is running or scheduled, instead of naming a
+command.
+
+**`reindex_reasons`** names each cause of `"reindex_needed"`:
+
+- The last index run failed. The reason is the text that this run wrote,
+  and it names the command that repairs the cause.
+- The build is not there, for example after you removed the build
+  output. The reason names the command: `fw-context index --build`, or,
+  when fw-context cannot run the build of the project, a build outside of
+  fw-context and then `fw-context index`.
+- Schema mismatch (`schema_mismatch: <old> < <new>`). The reason names
+  the command.
+- An index that an older version wrote, and that lacks the columns of this
+  version (`schema_mismatch: an older version wrote this index; it lacks
+  the columns …`). No tool reads a build of such an index. The status
+  tools give this reason with the action: wait for an index run that is
+  in progress or scheduled, else run `fw-context index`. When the last
+  run failed before it could add the columns, the text of that failure
+  comes first, with its repair, and `reindex_state` is `"failed"`.
+  `list_projects` gives the fact as the `error` of that database.
+  `reindex_file` gives the same text as its `error`. Each query gives the
+  fact as its `error`, and names `get_project_status` for the action.
+  When the daemon starts, it starts the index run that adds the columns.
+- Older row format (`row_format_mismatch: <old> != <new> — <effect>`).
+  The stored text has an older meaning. For example, an index written
+  before `fw-context-rows/1` keeps every inactive `#if` branch, thus
+  answers can hold dead code. The reason names the command.
+- compile_commands.json changed after the last index run. Or it does not
+  exist, and the check of the build above does not cover it, for example
+  the file of a build variant. The reason names the command.
+- A source file on disk is missing from compile_commands.json, and
+  fw-context will not build it by itself. The reason says why, and it
+  names the command.
+- The tree has another checkout than the index (`checkout changed:
+  indexed at '<old>', now at '<new>'`). A checkout is a branch, or a
+  detached HEAD at a commit. The reason names a detached HEAD as
+  `commit <sha>`, also when a tag names that commit.
+
+A missing source file, a missing compile_commands.json and a changed
+checkout need a build, because only a build regenerates
+compile_commands.json. The reason names the build:
+
+- `fw-context index --build` for a build that fw-context can run.
+- For a database that `[index] compile_commands` names: make that file
+  again, then run `fw-context index`. fw-context does not build it.
+- For a build that fw-context cannot run (a build in an IDE, or a build
+  system that fw-context does not know): build the project outside of
+  fw-context, then run `fw-context index`.
+
+A new source file that fw-context builds in the background needs only
+the next index run. A schema mismatch, an older row format, and a
+changed compile_commands.json need `fw-context index`. Read the reason
+text: it names the command. The `index_state` of a query names the same
+action (`autobuild.build_advice`).
+
+When an index run is in progress or scheduled, some reasons tell you to
+wait for that run: a missing build, a missing source file that
+fw-context does not build by itself, a changed or missing
+compile_commands.json, a schema mismatch, an older row format, and a
+changed checkout. This is also true for a database that
+`[index] compile_commands` names: you can make the file again during the
+run, and run `fw-context index` after it. The command of
+such a reason is often the command that runs. For example, a run with
+`--build` removes the database of the build before the build writes it
+again. The reason still names the command, for the case that the reason
+stays after the run.
+
+On a project of several builds, a reason that every build gives comes one
+time, without a label, for example an old schema or a failed build. Each
+other reason starts with the label of its build:
+
+- `build <variant>/<image>: <reason>` for a build with the two names.
+- `build <image>: <reason>` for a build without a variant name.
+- `build <variant>: <reason>` for a build without an image name.
+- `build (no name): <reason>` for a build without the two names.
+
+The `reasons` of each entry in `builds` hold the reasons of that build.
+fw-context reads the marker of the last index run and finds the new
+source files one time for the project. For the two, it uses the build
+that `fw-context index` checks. fw-context reads HEAD of the tree one
+time, and compares it with the HEAD that each build recorded:
+
+- fw-context compares the commit of a detached HEAD, not a tag. Two
+  tags of one commit are one checkout. A branch and a detached HEAD at
+  the commit of that branch are two checkouts.
+- A commit on a branch does not change the checkout.
+- `git commit`, also with `--amend`, on a detached HEAD does not change
+  the checkout when the reflog of HEAD shows only such commits after the
+  recorded HEAD. Each other move of a detached HEAD changes the
+  checkout, for example `git cherry-pick`, `git merge` or `git revert`.
+- During a rebase of a branch, the checkout is the branch that the
+  rebase updates. A rebase of a detached HEAD changes the checkout.
+- A run that does not build keeps the recorded HEAD of a build that
+  fw-context makes. Thus the reason stays until a run builds again.
+- An index of an older version recorded no HEAD. Then fw-context
+  compares the branch in the description of the build, and does not
+  compare a detached HEAD.
+
+One reason does not set `"reindex_needed"`: a new source file that is
+missing from compile_commands.json, when fw-context will build it by
+itself. That reason is in `reindex_reasons` while `reindex_needed` is
+`false` and `status` is `"reindexing"`.
+
+**`client_restart_required`.** This server process does not run the code
+that it must run. Two causes set the field:
+
+- The index holds a NEWER row format than this server process reads.
+- The operator installed a different fw-context after the LLM client
+  started this server process. This cause needs no index, thus it shows
+  also with `status` `"not_initialized"`, `"no_index"` and
+  `"config_error"`.
+
+The result then holds `client_restart_required: true` and
+`client_restart_reason`, which names each cause that applies, and
+`index_message` opens with it. `status` does not change, and every query
+keeps working. Do NOT reindex: the indexer writes the same new format
+again. Tell the user to restart the LLM client (Claude Code, opencode, or
+the client in use). The MCP server is a child process of that client.
+
+**`update_notice`.** PyPI has a newer fw-context than the installed one.
+The field is not a status. Tell the user one time, and do not upgrade
+fw-context yourself: the user knows the tool that installed it. The
+server asks PyPI in a background thread at server start. After a request
+that succeeded, it asks again only after 24 hours. A request that failed
+writes nothing, thus the next server start tries again. The tool reads
+only the stored answer, thus it never waits for the network. An editable install gets no `update_notice`. To stop the
+check, see [`[updates]`](configuration.md#updates--release-check).
+
+**`config_warnings`.** A list, one line for each value of a config file
+that fw-context did not use: `<file>: <problem>`. The value of a lower
+file, or the default of the key, applies, and every tool keeps working.
+The field is not a status. Tell the user each line. With the approval of
+the user, `fw-context doctor --fix --only config` removes the values. See
+[A config file that fw-context cannot use](configuration.md#a-config-file-that-fw-context-cannot-use).
+
+`modified_files_count` counts the files whose content no longer matches
+the index. Both modes count it. `fast` controls only the header check:
+`fast=true` (the default) reuses the cached manifest hashes, and
+`fast=false` recomputes them, which is much slower.
+`header_affected_tus` reports how many source files have stale header
+dependencies. A file that `compile_commands.json` lists more than once
+counts once. This count is non-zero when headers changed since the
+last index with `manifest_verification: "full"` or `"partial"`.
 
 `manifest_verification` is `"full"` when `manifest.json` is available. In
 that case, fw-context tracks header staleness with SHA-256 hashes that
-fw-context collects during indexing. `manifest_verification` is `"none"`
-when no manifest exists. In that case, fw-context cannot detect header
-changes. Run `fw-context index --build` to regenerate the index with full
-dependency tracking.
+fw-context collects during indexing. The two other values:
+
+- `"partial"`: the last index run wrote `manifest.json`, but its
+  embeddings are not complete: the embedding model was not reachable (for
+  example Ollama does not run), or batches of the model failed. The
+  symbols, the references and the header tracking are complete, thus the
+  build is current, and no query answer carries a state for it. Only
+  `semantic_search` and `smart_search` can miss symbols. The `_warning`
+  of the status tools asks you to tell the user, and names the repair:
+  `fw-context doctor --fix`, which does a check of each dependency and
+  installs a missing embedding model, and then `fw-context index`.
+  `fw-context doctor --fix` also installs the other missing dependencies,
+  for example the chat model. `fw-context index` does not install the
+  model, because `[llm] auto_pull` is `false` by default. `fw-context index` prints the cause in its log. A failed full-text index is not
+  `"partial"`: it stops the run, and the marker of the failed run names
+  the error.
+- `"none"`: no manifest exists.
+
+For `"none"`, the build is not current: fw-context cannot find a changed
+header in the index, and the result holds a `_warning`:
+
+- While an index run is in progress or scheduled, the `_warning` tells
+  you to wait for it.
+- When no index run is in progress or scheduled, and `reindex_needed`
+  is `false`, it tells you to ask the user to run `fw-context index`.
+  That run writes the index again with full header tracking.
+- When `reindex_needed` is `true`, the `_warning` tells you to give the
+  user the command that `reindex_reasons` names. Each reason names its
+  command, and some need more than a plain run, for example a build or a
+  repair. The run of that command also writes full header tracking.
 
 `analysis` splits LLM-analysis coverage by project vs vendor symbols so
 the reader can tell intentionally-skipped vendor symbols apart from
@@ -1691,8 +2302,38 @@ project symbols that still need analysis:
   symbol is analyzed or skipped (and, when `analyze_vendor` is true, every
   vendor symbol too).
 
-`complete` and the `"N unanalyzed symbols"` entry in `reindex_reasons` come
-from one query. `complete` is `true` exactly when that entry is absent.
+`index_message` also gives the analysis coverage, split into project and
+vendor symbols. An unanalyzed symbol is not a reindex reason. When the
+config asks for the analysis (`[llm] enabled` and `analyze_symbols`) and
+symbols wait for it, `index_message` says how many, and names
+`fw-context index`: each index run analyzes the symbols that wait, and
+an analyzed symbol does not go to the model again. Run it only with the
+approval of the user, because the LLM can need hours. The analysis needs
+a running LLM: when the number does not go down after the run, call
+`check_ollama`. During an index run, or when another action of the
+message needs an index run (a reindex reason, a degraded index), the
+message says that the run does the analysis. When the config turns the
+analysis off, or a newer row format needs a restart of the client, the
+message gives no advice. The vendor symbols count when `[llm]
+analyze_vendor` of the config is true, as for the run.
+
+A project of several builds gives no `analysis` field and no coverage in
+`index_message`. When symbols wait for the analysis, its `index_message`
+names each build with its number, for example `Symbols wait for the LLM
+analysis in 2 of 7 builds (board-a/app: 6, board-a/mcuboot: 2)`, and
+the same action. The message gives no sum, because a file that two
+builds compile is in the index of each build.
+
+`index_message` also names the definitions that have no embedding, when
+the config asks for embeddings (`[llm] enabled` and `[index]
+index_embeddings`) and an embedding step wrote to the build before. The
+search by meaning (`semantic_search`, `smart_search`) does not find these
+definitions. A re-parse with `reindex_file(with_analysis=False)`
+leaves them, and the stamp of the last index run does not show it. The
+action is `fw-context index`, and the run in progress, or the run of a
+reason, does the embeddings too. A project of several builds names each
+build with its number, as for the analysis. A build with the stamp
+`partial` gets no such text: its `_warning` names the repair.
 
 When `analyze_vendor` is `false`, vendor symbols are skipped by design —
 a large unanalyzed vendor count is normal, not a defect.
@@ -1703,8 +2344,13 @@ directly. In UTC+2, a file that fw-context indexed correctly looks 2 hours
 newer than `indexed_at`. To find modified files, use `modified_files_count`
 with `fast=false`.
 
-**Multi-variant output.** For a project with `[[build.variants]]`, the
-result adds these fields:
+For a project that is not initialized, the result holds only `status`,
+`project_root`, and `index_message`. When no index exists, the result
+also holds `project_id`. For `"config_error"`, it also holds
+`config_file`. The two version fields (`client_restart_*` for an
+upgrade, and `update_notice`) can come with each result.
+[`config_warnings`](#get_project_status) can come with each result that
+has a status other than `"config_error"`.
 
 - `multi` — `true` for a multi-variant project
 - `variants` — a list of `{name, description, board}`
@@ -1715,10 +2361,89 @@ result adds these fields:
 
 #### `list_variants`
 
-List every indexed build, with its `(variant, image, board)` identity.
-This tool shows what fw-context actually indexed, not what the config
-declares. Each `builds` entry is one `(variant, image)` build, with its
-own `config_hash` and symbol count.
+```
+Input:  {"project_root?": "/path/to/project", "variant?": "nrf52840-dev", "image?": "app", "fast?": true}
+Output: {"variant": "nrf52840-dev", "image": "app", "board": "nrf52840dk/nrf52840",
+         "config_hash": "a1b2…", "project_id": "c3d4…", "project_root": "/path/to/project",
+         "build_system": "zephyr", "compile_commands": "/path/.fw-context/build/nrf52840-dev/out/app/compile_commands.json",
+         "indexed_at": "2026-06-05 09:35:18", "first_indexed_at": "2026-06-01 11:02:44",
+         "symbol_count": 12430, "file_count": 1502,
+         "reference_count": 8900, "modified_files_count": 0,
+         "header_affected_tus": 0, "manifest_verification": "full",
+         "analysis": {"model": "qwen2.5-coder:14b", "analyze_vendor": false,
+                      "project": {"analyzed": 8450, "skipped": 6, "total": 8570},
+                      "vendor": {"analyzed": 0, "skipped": 0, "total": 42330},
+                      "complete": false},
+         "description": "branch: main",
+         "vendor_paths": [], "project_paths": [], "effective_vendor_patterns": ["zephyr/%", …],
+         "status": "ready", "reindex_state": null, "reindex_needed": false, "reindex_reasons": [], "stale": false,
+         "index_message": "Index is fully up to date (12430 symbols) | LLM analysis: project 8450/8570 (vendor skipped — analyze_vendor=false)",
+         "entry_point": "__start",
+         "memory": [{"name": "FLASH", "attributes": "rx", "origin": "0x0", "length": "0x100000",
+                     "origin_value": 0, "length_value": 1048576,
+                     "file_path": "build/zephyr/linker.cmd", "line": 12}, …],
+         "defines": {"__ZEPHYR__": "1", …}, "defines_varying": 4,
+         "bg_reindex_running": false, "vec_available": true}
+```
+
+**Read-only, with the same two exceptions as `get_project_status`.** When
+the tool finds a build there again after the last index run said that it
+is not there, it removes that marker. It also removes a `reindex.pid` or a
+`reindex.pending` of a process that no longer runs. The tool takes the selector of the query
+tools. On a project of more than one build, give the arguments of one
+build, as the error lists them: `variant`, `image`, or the two.
+`get_project_status` lists the names of each build in `builds`. Without
+them, the result is an `error` that lists the builds (see
+[A project of several builds](#mcp-tools)). A project of one build needs
+no selector.
+
+The health fields (`status`, `reindex_state`, `reindex_needed`, `reindex_reasons`,
+`index_message`, `modified_files_count`, and the others) have the meaning
+that [`get_project_status`](#get_project_status) gives them, for this
+build only. When the index of this build holds a NEWER row format than
+this server process reads, the result also holds
+`client_restart_required` and `client_restart_reason`, as in
+`get_project_status`. `update_notice`, and a restart after an upgrade of
+fw-context, are only in `get_project_status`. A refusal of the selector, or an
+index with no build config, gives a dict that holds only `error`. A
+database that fw-context cannot read makes the call fail, as in
+`get_project_status`. A project that is not initialized, that has no
+index, or whose config file cannot be used gets the answer of
+`get_project_status` without the version fields: only `status`,
+`project_root`, `index_message`, and, when no index exists,
+`project_id`, or for `"config_error"`, `config_file`. `config_warnings`
+comes as in `get_project_status`.
+
+`config_hash` identifies the build in the index. `compile_commands` is
+the `compile_commands.json` that the index run read for this build.
+
+`effective_vendor_patterns` holds the SQL LIKE patterns that this build
+really used to mark vendor code. `vendor_paths` and `project_paths` hold
+what the config asks for. The list is empty when the manifest cannot be
+read.
+
+**Build facts.** `entry_point` is the `ENTRY()` of the linker script of
+the build. `memory` lists the `MEMORY` regions of that script:
+`{name, attributes, origin, length, origin_value, length_value,
+file_path, line}`. `origin` and `length` are the expression that the
+script writes. `origin_value` and `length_value` are numbers, or `null`
+for an expression that names a symbol. A name that the link command
+defines with `--defsym` counts as a number. The end of a region is
+`origin_value + length_value`. An empty value means "not recorded", never
+"no memory". A build system such as Keil or IAR records no linker script.
+A PlatformIO project records its link only in `fw-context index --build`,
+thus an empty value there means that no build recorded the link yet.
+`defines` holds the `-D` flags that every translation unit of the build
+carries with one value. `defines_varying` counts the names that are left
+out because they are not on every unit or have different values. Thus a
+name that is not in `defines` is not defined, or is not defined in every
+unit. To get the memory map of each build, call `get_build_info` one time
+for each build.
+
+#### `check_dependencies`
+
+Run the dependency audit of the installation. Read-only, and it creates
+no file. Returns one entry for each check.
 
 ```
 Input:  {"project_root?": "/path/to/project"}
@@ -1731,24 +2456,111 @@ Output: {"multi": true, "builds": [
             "manifest_verification": "full"}]}
 ```
 
-For a single-project index, this tool returns one `builds` entry, with an
-empty `variant` and an empty `image`. Use `get_active_build` for the
-human-readable variant and image discovery.
+Call it when `get_project_status` or another tool reports a problem of
+the installation, or before the first `fw-context init`. It is not a call
+for each session, because it runs every check of the installation.
+
+Each entry holds `name`, `status`, `critical`, and `message`. An entry
+that has a repair also holds `action`: a `message` for a human, and the
+shell `command` that repairs it. Give both to the user without
+interpretation. A `fw-context doctor` command holds `--project <root>`:
+the shell of the user can be in a different directory. A `status` of `"skipped"` means that a prerequisite is
+missing. For example, the audit skips `libclang-so` when
+`libclang-python` is absent. A skipped check is not a failure.
+
+In a project that is not initialized, only the checks that need no
+project config run: the Python packages and libclang. The Ollama, model,
+database, and build checks need the config. This tool is the MCP wrapper
+for `fw-context doctor` without `--fix`, and it repairs nothing.
 
 #### `reindex_file`
 
 Re-index a single file after editing.
 
 ```
-Input:  {"file_path": "/abs/path/to/src/main.c", "project_root?": "/path/to/project"}
-Output: {"file": "/abs/path/to/src/main.c", "translation_units": 1,
-         "symbols_updated": 28, "elapsed_s": 2.5}
+Input:  {"file_path": "/abs/path/to/src/main.c", "project_root?": "/path/to/project",
+         "variant?": "a", "image?": "app", "with_analysis?": true}
+Output (no selector, the builds a, b and c, and c does not compile the file):
+        {"file": "/abs/path/to/src/main.c", "translation_units": 2,
+         "symbols_updated": 56, "elapsed_s": 5.1,
+         "builds": [{"variant": "a", "image": "", "translation_units": 1,
+                     "symbols_updated": 28, "elapsed_s": 2.5},
+                    {"variant": "b", "image": "", "translation_units": 1,
+                     "symbols_updated": 28, "elapsed_s": 2.4}],
+         "builds_without_file": ["c"]}
 ```
 
-**Limitation:** The file must appear in `compile_commands.json`. fw-context
-re-indexes a header through the translation unit that includes the
-header. When multiple translation units include a single header, you
-might need a full `fw-context index` run for completeness.
+Without `variant` and `image`, the tool re-parses the file in each build
+of the project that compiles it. An edit changes the file on disk for each
+build of the tree, thus each build must read it again. `builds` holds the
+result of each build that compiles the file, and `builds_without_file`
+names the builds that do not. With the arguments of one build, as
+`get_project_status` lists them, the tool re-parses only that build. A
+selector that names no build gets the `error` of each query tool: the
+list of the builds, or, for a variant that the config declares and the
+index does not hold, the command that indexes it.
+
+When one build compiles the file, the top level holds the full result of
+that build, as before. When several builds do, the top level holds:
+
+- The sums of the builds that did not fail, and `elapsed_s` of the whole
+  call.
+- `skipped_count`, the sum of the units that did not parse.
+- `warning` only when each of those builds has it.
+- `failed_builds`, the label of each build whose entry holds `error`.
+
+The top level holds `error` only when no build compiles the file, or the
+update failed in each build that it tried. In the second case it also
+holds `failed_builds`, and, when each build gives the same `action`, that
+`action`.
+
+Optional keys of a result are present only when they apply. They are
+absent otherwise, never `null`:
+
+- `skipped_tus` and `skipped_count` — translation units that failed to
+  parse.
+- `warning` — a header went through one translation unit.
+- `analysis_updated` and `embeddings_updated` — counts for the whole
+  build, not only for this file.
+- `analysis_warning`, `overrides_warning`, `pagerank_warning`,
+  `embedding_warning` — a phase failed.
+
+A file that is gone from disk but is still in the index has its records
+removed in each build that holds it. The result is then `{"file": …,
+"symbols_removed": 28, "action": "deleted", "builds": [{"variant": …,
+"image": …, "symbols_removed": 28, "action": "deleted"}]}`. For a deleted
+file, `builds_without_file` names the builds that do not hold it. On
+failure, the dict holds `error`, and can also hold `skipped_tus` or
+`action`.
+
+When reference indexing is on (`[index] index_refs`), the tool rebuilds
+the method override relationships, the PageRank scores and the hotspot
+cache of each build that it re-parses. It does this with and without
+`with_analysis`. When `with_analysis=True` (the default) and the LLM is on
+(`[llm] enabled`), it also regenerates the LLM symbol analysis and the
+embeddings of the symbols that the re-parse inserted, also the symbols of
+the headers that the unit includes. The analysis also needs `[llm]
+analyze_symbols`. The two need a model, thus this is slower. Set
+`with_analysis=False` for a fast update. The symbols then wait for the
+analysis and the embeddings, and `get_project_status` names them with
+`fw-context index` as the action. The background reindex does not use
+this tool: the daemon starts `fw-context index --background`.
+
+The call runs in a thread of the server and sends a notice each 5 s. It
+holds the lock of the query tools: another query waits 5 s, then gets
+"server busy". After 300 s the call returns an `error`, and a part of the
+work can continue or fail. Call `get_project_status` for the state of
+each build, and repeat the call for a build that is not current. The
+answer holds no `index_state`. This tool requires an existing index.
+
+**Limitation:** A source file must appear in `compile_commands.json`.
+compile_commands.json lists no headers, thus fw-context re-parses a header
+through ONE translation unit that includes it, from the manifest: the unit
+with the lowest path in sort order, in each build. The result then
+holds a `warning` ("Header re-indexed via one TU…"). Other units can include the header
+with other `#define` values and still hold stale symbols. Run a full
+`fw-context index` for full accuracy. A file that no unit builds or
+includes gives an `error`.
 
 #### `reset_index`
 
@@ -1758,6 +2570,22 @@ Delete the index. Always run a dry run first, then pass `confirm: true`.
 Input:  {"project_root?": "/path/to/project", "confirm": false}     → {"action": "dry_run", "symbol_count": 8586, …}
 Input:  {"project_root?": "/path/to/project", "confirm": true}      → {"action": "deleted", "message": "…"}
 ```
+
+The dry run gives the counts of the whole database, because the reset
+deletes all of it. `build_count` counts the completed builds of the
+project, as `get_project_status` lists them. `symbol_count` counts every
+symbol row in the database: also the rows of a build that an index run
+writes now, and the rows of an older build that an interrupted run left.
+`indexed_at` is the time of the newest build. The three fields are
+present only when fw-context can read a build config. A `warning` key
+means that the database is corrupt: the integrity check or a read of the
+database failed, thus fw-context counts nothing and the three fields are
+absent. The reset can delete a corrupt database.
+
+The delete removes the database with its `-wal`, `-shm`, and `-journal`
+files. It also removes the automatic-build markers `build_problem.json` and
+`excluded_sources.json` next to the database, because they describe the
+index that is gone.
 
 #### `list_projects`
 
@@ -1818,6 +2646,34 @@ Output: {"status": "ok", "ollama_running": true, "ollama_enabled": true,
 
 Returns `status: "disabled"` when `[llm] enabled = false`. In that case,
 this tool needs no Ollama.
+
+`chat_api` says whether an external chat API replaces Ollama for chat,
+and which model it names. When it is configured, `chat_api` also holds
+`endpoint` and `format`, and a `compliance_warning` for a host that is not
+local.
+
+`check_ollama` looks for the chat model on the Ollama server of the chat
+calls: the server of `ollama_url`, or the Ollama server that
+`chat_api_base` names. When `chat_api_base` names an OpenAI-compatible
+API, that API runs the chat model, and an Ollama server does not have to
+hold it. When the server of `ollama_url` does not answer, `check_ollama`
+does not look for the chat model; `fw-context doctor` does.
+
+`status: "model_missing"` has a `message` that names the command for each
+missing model. The command sets `OLLAMA_HOST` to the server of the check,
+in the syntax of PowerShell on Windows and of a POSIX shell on other
+systems. `status: "error"` also means that the Ollama server of
+`chat_api_base` gives no model list.
+
+`embedding_backend` is `"ollama"` for an Ollama embedding model, and
+`"local"` for a sentence-transformers or `ft://` model. A local model needs
+no Ollama: it counts as installed, and with chat on an external API the
+status is `"ok"` even when Ollama does not run. `"embedding_unavailable"`
+thus means an Ollama embedding model and an Ollama that fw-context cannot
+use. `"not_configured"` and `"embedding_unavailable"` come when Ollama does
+not run, and also when `ollama_url` names a server that is not Ollama, for
+example a proxy that gives its own page or an HTTP error. `message` names
+the cause and the repair.
 
 Note: `explain_symbol`, with pre-computed analysis (the default), returns
 instantly, and does not require Ollama at query time. `num_ctx` is 16384
@@ -1975,11 +2831,38 @@ Phase 5: Deduplicate + format
 
 ### Staleness recovery on query
 
-`search_code`, `lookup_symbol`, and `semantic_search` detect a stale file
-in their results, when the on-disk `mtime` is greater than the stored
-`mtime`. When fw-context finds a stale file, these tools append a warning
-to the response. The server's background reindex subprocess picks up the
-work, so no query has to wait for the reindex to finish. The file watcher
+The query tools check each file that their result names against the
+index. The content decides: fw-context compares the hash of the file on
+disk with `files.source_hash`. A `git checkout`, `pull`, or `stash pop`
+that only changes the `mtime` thus gives no warning. Only for a row with
+no stored hash does the `mtime` decide.
+
+These tools do the check: `search_code`, `search_bodies`,
+`search_content`, `lookup_symbol`, `find_variables`, `get_file_map`, the
+call-graph tools, and the class-analysis tools. The result shape decides
+where the warning goes:
+
+- A list gets a leading `{"warning": …}` record.
+- A dict gets `stale_warning` and `stale: true`.
+
+An empty result names no file, thus it gets its own message. It says that
+indexed files changed after the last index run, thus the empty result is
+not proof that the code does not exist. When source files are not in
+`compile_commands.json`, the message says so instead. It names no
+command, because the command depends on the build system: `index_state`
+and `get_project_status` name it.
+
+`get_source` and `get_symbol_context` add `source_origin`: `"index"` or
+`"disk"`. When the file changed and the symbol did not move, the body
+comes from the disk, with every `#ifdef` branch. When an edit moved the
+symbol, the tool gives the indexed body with `stale: true`, because the
+stored line number no longer points at the symbol. `explain_symbol` and
+`read_file` also set `stale` and `stale_warning` when the file changed.
+
+The search tools start the watcher daemon in the background when they find
+a changed file, or an empty result with a source file that
+`compile_commands.json` does not cover, so no query has to wait for a
+reindex. The file watcher
 independently handles a recently edited file within 500 ms after the
 save, so a stale result is rare in practice.
 
