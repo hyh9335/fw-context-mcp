@@ -11,7 +11,9 @@ from fw_context_mcp.config.settings import (
     _from_dict,
     derive_project_id,
     load,
+    transient_defines_problems,
 )
+from fw_context_mcp.indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
 
 
 class TestDeepMerge:
@@ -158,7 +160,9 @@ class TestLocalConfig:
         path = _ensure_project_local_config(tmpdir)
         assert path.exists()
         assert path.name == "local.toml"
-        content = path.read_text()
+        # The template is UTF-8 (an em dash in the header); a Windows locale
+        # whose ANSI code page is not UTF-8 must read it as UTF-8 explicitly.
+        content = path.read_text(encoding="utf-8")
         assert "[llm]" in content
         assert "db_dir" in content
 
@@ -172,10 +176,15 @@ class TestLocalConfig:
 
     def test_load_with_local_toml(self, tmpdir, monkeypatch):
         """load() reads local.toml as the 4th layer."""
-        # Point global config to a temp file that doesn't exist yet
+        import fw_context_mcp.config.settings as settings
+
         fake_home = tmpdir / "fake-home"
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: fake_home)
+        # The fake home does not move _GLOBAL_CONFIG_PATH, which the module
+        # computes at import.  Point it to a temp file that does not exist
+        # yet, thus load() creates it there and not in the real home.
+        monkeypatch.setattr(settings, "_GLOBAL_CONFIG_PATH", Path(fake_home) / "global.toml")
 
         # Create project config (shared)
         proj_dir = tmpdir / "project"

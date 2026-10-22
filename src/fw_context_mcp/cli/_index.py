@@ -1070,6 +1070,7 @@ def _build_run_kwargs(
         ),
         purge_max_missing_percent=cfg.index.purge_max_missing_percent,
         build_system=cfg.build.system or detect_build_system(project_root),
+        transient_defines=cfg.index.transient_defines,
     )
 
 

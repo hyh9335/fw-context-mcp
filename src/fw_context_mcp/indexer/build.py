@@ -95,9 +95,10 @@ class BuildConfig:
     build_dir: str | None = None  # build output dir override (default "build")
 
     # Multi-variant build configuration (opt-in).  When empty, every builder
-    # produces a single compile_commands.json (variant='' image='' board='').
-    default_variant: str | None = None  # name of default variant (fail-closed queries)
-    default_image: str | None = None  # name of default image within default_variant
+    # produces a single compile_commands.json (variant='' image='').
+    # ``default_variant``/``default_image`` retired 2026-10 (v0.35): a query
+    # names its build, and fw-context selects none — the loader drops the
+    # keys with a warning (_drop_selection_keys).
     variants: list[BuildVariant] = field(default_factory=list)
 
     # ESP-IDF (optional — auto-detected from environment)

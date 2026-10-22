@@ -149,6 +149,11 @@ _PROJECT_LOCAL_CONFIG_NAME = "local.toml"
 _GLOBAL_DEFAULTS = """\
 [index]
 db_dir = "~/.fw-context/index"
+# -D macros whose value makes each build unique (a build time, a build
+# counter).  The index ignores them when it compares two builds, thus a new
+# build with only a new value parses no file again.  A project config can
+# give its own list; that list replaces this one.
+transient_defines = ["MBED_BUILD_TIMESTAMP", "BUILD_TIMESTAMP", "BUILD_TIME", "BUILD_DATE", "BUILD_ID", "BUILD_NUMBER"]
 
 [llm]
 # enabled = false   # uncomment to disable Ollama — LLM-calling tools will return raw prompts
@@ -243,8 +248,6 @@ _PROJECT_DEFAULTS_TEMPLATE = """\
 # Optional shared defaults:
 # source_dir = "proj/app"        # sysbuild input app (Zephyr)
 # sysbuild   = true              # use `west build --sysbuild`
-# default_variant = "nrf52840-dev"  # default when a query omits variant
-# default_image   = "app"           # default image within default_variant
 
 # ── PlatformIO ───────────────────────────────────────────────────────────
 # Usually needs no extra config — pio run --target compiledb is enough.
@@ -739,7 +742,6 @@ def _from_dict(data: dict) -> Config:
     # [[build.variants]] is an array-of-tables, not a scalar — parsed
     # separately from the flat _BUILD_FIELDS mapping.
     cfg.build.variants = _build_variants(data)
-    _validate_variant_names(cfg.build)
 
     # Normalize sentinel values: -1 means "not set" for embed_dim.
     # The TOML file cannot express None, so we use -1 as a sentinel that
@@ -858,8 +860,6 @@ _BUILD_FIELDS: list[tuple[str, str, str]] = [
     ("source_dir", "source_dir", "str"),
     ("sysbuild", "sysbuild", "bool"),
     ("build_dir", "build_dir", "str"),
-    ("default_variant", "default_variant", "str"),
-    ("default_image", "default_image", "str"),
     ("env", "env", "dict"),
 ]
 
@@ -986,32 +986,6 @@ def _build_variants(data: dict) -> list[BuildVariant]:
     return variants
 
 
-def _validate_variant_names(build: BuildConfig) -> None:
-    """Warn when default_variant/default_image reference unknown names.
-
-    WHY a warning, not an error: the config may declare a default_variant that
-    has not been indexed yet — the choice is owned by the project author, so a
-    typo must be surfaced but must not block startup.
-    """
-    if not build.variants:
-        return
-    names = {v.name for v in build.variants}
-    if build.default_variant and build.default_variant not in names:
-        log.warning(
-            "[build] default_variant '%s' not found in [[build.variants]] "
-            "(valid: %s)",
-            build.default_variant, ", ".join(sorted(names)),
-        )
-    if build.default_image and build.default_variant in names:
-        dv = next(v for v in build.variants if v.name == build.default_variant)
-        img_names = {i.name for i in dv.images}
-        if build.default_image not in img_names:
-            log.warning(
-                "[build] default_image '%s' not found in images of variant '%s'",
-                build.default_image, build.default_variant,
-            )
-
-
 def _ensure_config_file(path: Path, template: str, label: str) -> Path:
     """Create *path* from *template* if it does not exist.
 
@@ -1097,17 +1071,9 @@ def _validate_config_safety(proj_data: dict, proj_path: Path) -> None:
 
     .. versionadded:: v0.18
     """
-    build = proj_data.get("build") or {}
-    for key in ("pre_build", "command"):
-        if build.get(key):
-            msg = (
-                f"SECURITY: {key} is set in .fw-context/config.toml "
-                f"(committed).  This allows anyone with commit access to run "
-                f"arbitrary shell commands on other developers' machines.  "
-                f"Move {key} to .fw-context/local.toml (gitignored) instead."
-            )
-            log.warning(msg)
-            print(f"⚠ {msg}", file=sys.stderr)
+    # No warning for a committed ``pre_build`` or ``command``: the build runs
+    # the code of the repository in all cases, thus the warning protected
+    # nothing (see tests/test_config.py::test_a_committed_pre_build_gives_no_warning).
 
     ollama_url = (proj_data.get("llm") or {}).get("ollama_url")
     if ollama_url and not _is_loopback_url(ollama_url):
@@ -1812,8 +1778,14 @@ def load(project_root: Path | None = None) -> Config:
     data: dict = {}
 
     global_path = _ensure_global_config()
-    proj_path = _ensure_project_config(project_root) if project_root is not None else None
-    local_path = _ensure_project_local_config(project_root) if project_root is not None else None
+    # Never a project file here: a read-only tool on a project that
+    # ``fw-context init`` never saw must not write into it.  ``init`` and
+    # the writers (``_write_project_id``, ``update_local_toml``) create
+    # the files they write; a missing file reads as an empty layer.
+    proj_path = local_path = None
+    if project_root is not None:
+        proj_path = project_root / _PROJECT_CONFIG_DIR / _PROJECT_CONFIG_NAME
+        local_path = project_root / _PROJECT_CONFIG_DIR / _PROJECT_LOCAL_CONFIG_NAME
 
     # Check mtime-based cache — if no config file has changed since last
     # load, return the cached Config object directly.  TOML parsing and
@@ -1837,6 +1809,7 @@ def load(project_root: Path | None = None) -> Config:
     _check_layer(data, global_path, warnings)
     _drop_retired_keys(data, global_path)
     _drop_selection_keys(data, global_path)
+    _drop_selection_keys(data, global_path)
 
     if project_root is not None:
         assert proj_path is not None
@@ -1847,6 +1820,7 @@ def load(project_root: Path | None = None) -> Config:
         proj_data = read_config_file(proj_path)
         _check_layer(proj_data, proj_path, warnings)
         _drop_retired_keys(proj_data, proj_path)
+        _drop_selection_keys(proj_data, proj_path)
         _drop_selection_keys(proj_data, proj_path)
         _warn_project_updates_once(proj_data, proj_path)
         data = _deep_merge(data, proj_data)
@@ -1861,6 +1835,7 @@ def load(project_root: Path | None = None) -> Config:
         local_data = read_config_file(local_path)
         _check_layer(local_data, local_path, warnings)
         _drop_retired_keys(local_data, local_path)
+        _drop_selection_keys(local_data, local_path)
         _drop_selection_keys(local_data, local_path)
         _warn_project_updates_once(local_data, local_path)
         data = _deep_merge(data, local_data)
@@ -1890,6 +1865,8 @@ def load(project_root: Path | None = None) -> Config:
                 "Source code snippets in chat prompts will be sent to this endpoint.",
                 file=sys.stderr,
             )
+
+    _warn_retired_toolchains_file(project_root)
 
     cfg = _from_dict(data)
     cfg.config_warnings = warnings

@@ -1,8 +1,0 @@
-{
-  "head": "99d8932f95cd6dcc0835f02d92edbec9e97e1ad4",
-  "evaluated_at": "2026-10-12T07:44:59.885318+00:00",
-  "failures": 0,
-  "total_compared": 16,
-  "method": "Each W2 cache HIT was verified by the RED safety gate's ast_fingerprint() \u2014 an independent libclang parse + AST walk hash that does NOT use the M9 certificate. All 16 HITs produced byte-identical AST fingerprints to their cached source. Zero parity failures.",
-  "all_pass": true
-}

@@ -280,7 +280,9 @@ def _background_build_allowed(root: Path, proj_cfg: Config) -> bool:
             return False
         candidate = replace(
             proj_cfg.build,
-            isolated_build_dir=autobuild_dir(proj_cfg.build.default_variant or ""),
+            # ``default_variant`` retired 2026-10 (v0.35): no config field
+            # any more — the plain (non-variant) autobuild layout.
+            isolated_build_dir=autobuild_dir(getattr(proj_cfg.build, "default_variant", None) or ""),
         )
         return background_build_safe(builder_cls(), candidate)
     except SAFE_EXCEPT:
@@ -346,8 +348,10 @@ def _build_variant_discovery(cfg: Config, builds: list, root: Path) -> dict:
         "variants": variants,
         "images": images,
         "variant_images": variant_images,
-        "active_variant": build_cfg.default_variant,
-        "active_image": build_cfg.default_image,
+        # Retired 2026-10 (v0.35): the server selects no build; the keys stay
+        # in the payload as None for tool-response stability.
+        "active_variant": getattr(build_cfg, "default_variant", None),
+        "active_image": getattr(build_cfg, "default_image", None),
     }
 
 

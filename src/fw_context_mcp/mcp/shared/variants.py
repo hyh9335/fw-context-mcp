@@ -460,16 +460,14 @@ def resolve_scopes(
         return scopes, False, None
 
     # ── Multi-variant: fail-closed on variant ──
+    # No default any more (v0.35 retired ``[build] default_variant``): the
+    # caller names the build, or gets the refusal that lists the names.
     if not variant:
-        if build_cfg.default_variant:
-            variant = build_cfg.default_variant
-        else:
-            name_list = [v.name for v in build_cfg.variants]
-            return [], True, (
-                f"Project has {len(name_list)} build variant(s). Specify ``variant`` "
-                f"(one of: {', '.join(name_list)}) or set [build] default_variant in "
-                f"config.toml. Call get_active_build() for the variants/images table."
-            )
+        name_list = [v.name for v in build_cfg.variants]
+        return [], True, (
+            f"Project has {len(name_list)} build variant(s). Specify ``variant`` "
+            f"(one of: {', '.join(name_list)}). Call get_active_build() for the variants/images table."
+        )
 
     if variant == "*":
         rows = get_builds_for_scope(conn, project_id, "*")
