@@ -48,11 +48,6 @@ def _check_server_ready(project_root: Path | None = None) -> Path:
     global _project_ready_cache
     now = time.monotonic()
 
-    from fw_context_mcp.mcp.shared import context as _ctx
-
-    if _ctx._server_init_error is not None:
-        raise RuntimeError(_ctx._server_init_error)
-
     root = resolve_project_root(project_root)
     if root is None:
         msg = (
@@ -103,7 +98,14 @@ def _db_path(project_root: Path | None) -> Path:
     """Resolve the database path for a project root."""
     root = _check_server_ready(project_root)
     cfg = config.load(root)
-    assert cfg.project.id is not None
+    # An error and not an assert: the config can lose its ID after the
+    # check above (the user removes it), and a caller such as the daemon
+    # handles this error and continues.  A damaged config.toml raises
+    # ConfigError in `config.load`.  An empty ID is not an ID, as in
+    # `_check_server_ready`: it puts the database in the directory of all
+    # indexes, not of this project.
+    if not cfg.project.id:
+        raise ProjectNotInitializedError(root)
     return _index_db_path(cfg)
 
 
@@ -111,7 +113,7 @@ def _resolve_context(project_root: str | Path | None, *, skip_ready_check: bool 
     """Resolve all context: (db_path, config, project_id, root).
 
     When *skip_ready_check* is True, skips the server-ready validation
-    (caller handles the missing-index case itself, e.g. ``reindex_file_impl``).
+    (caller handles the missing-index case itself, e.g. ``reindex_file``).
     """
     if skip_ready_check:
         root = resolve_project_root(str(project_root) if project_root else None)

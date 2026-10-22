@@ -16,7 +16,7 @@ Package layout follows a strict architecture:
   search, call graph, inheritance, variables).  Each defines plain
   functions — no ``@mcp.tool()`` decorator — so they are testable
   without FastMCP wiring.
-``mcp/shared/`` — cross-cutting concerns: database connection pooling,
+``mcp/shared/`` — cross-cutting concerns: one query executor per database,
   stale detection, PID file coordination, brace matching for body
   extraction, readiness checks, and fallback search paths.
 

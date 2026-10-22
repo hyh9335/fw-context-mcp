@@ -240,25 +240,26 @@ def _confirm(question: str, *, default: bool = True) -> bool:
     return answer in ("y", "yes")
 
 
-def _llm_configured(project_root: Path) -> bool:
-    """Return True when local.toml has an explicit (uncommented) LLM key."""
-    import re
+# The name of each config layer, as the LLM step of init gives it.
+_LAYER_FILES = {
+    "global": "the global config",
+    "project": ".fw-context/config.toml",
+    "local": ".fw-context/local.toml",
+}
 
-    local = project_root / ".fw-context" / "local.toml"
-    if not local.exists():
-        return False
-    in_llm = False
-    for line in local.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if s == "[llm]":
-            in_llm = True
-            continue
-        if in_llm and s.startswith("["):
-            in_llm = False
-            continue
-        if in_llm and re.match(r"^(model|chat_api_base|embed_model|enabled)\s*=", s):
-            return True
-    return False
+
+def _llm_layers(project_root: Path) -> list[str]:
+    """Return the config layers that select the LLM backend, in merge order.
+
+    A layer selects the backend when it sets a key of ``LLM_BACKEND_KEYS``.
+    Before, init read only ``local.toml``, thus a project that used a
+    complete ``[llm]`` table of the global config got "LLM: not
+    configured", and the menu gave no way to keep the global settings.
+    """
+    from ..config.settings import llm_key_sources
+
+    found = set(llm_key_sources(project_root).values())
+    return [layer for layer in _LAYER_FILES if layer in found]
 
 
 def _llm_summary(cfg) -> str:
@@ -278,83 +279,219 @@ def _llm_summary(cfg) -> str:
 def prompt_llm_config(project_root: Path, cfg, *, non_interactive: bool) -> None:
     """Configure the LLM backend interactively.  Idempotent.
 
-    Non-interactive mode prints manual-edit instructions (when unconfigured)
-    and returns.  Interactive mode shows the current config (when present)
-    with a "Change? [y/N]" prompt, otherwise runs the Local Ollama / Cloud
-    API / Disable menu.
+    The step tells where the backend comes from: the project
+    (``config.toml`` or ``local.toml``), the global config, or nowhere.
+
+    * The project selects the backend: a "Change? [y/N]" prompt, with the
+      file named.  On "y", the menu.
+    * Only the global config selects it: the menu, with option 0 "Use the
+      global settings" as the default (Enter), which writes nothing.
+    * Nothing selects it: the menu, and Enter skips the step.
+
+    In a project that selects the backend in ``local.toml`` and not in
+    ``config.toml``, option 0 removes the keys of ``LLM_BACKEND_KEYS``
+    from ``local.toml``, and the global settings then apply.  Enter keeps
+    the settings there: a removal must be a choice.  Option 0 is not given
+    when ``config.toml`` selects the backend: init writes only
+    ``local.toml``, and a committed setting applies to each user.
+
+    Non-interactive mode writes nothing.  It prints where the settings come
+    from, or the manual-edit instructions when nothing selects the backend.
     """
-    configured = _llm_configured(project_root)
+    layers = _llm_layers(project_root)
+    project_layers = [layer for layer in layers if layer != "global"]
+    from_global = "global" in layers
+    use_global_offered = from_global and "project" not in project_layers
 
     if non_interactive:
-        if not configured:
+        if not project_layers and from_global:
+            print(f"  LLM: {_llm_summary(cfg)} (from the global config)")
+        elif not project_layers:
             print("  LLM: not configured")
             print("    Configure it by running `fw-context init` interactively,")
             print("    or edit .fw-context/local.toml manually (see template).")
         return
 
-    if configured and not confirm_change("LLM", _llm_summary(cfg)):
-        return
-
-    print(f"  LLM: {'re-configure' if configured else 'not configured'}")
+    if project_layers:
+        where = " and ".join(_LAYER_FILES[layer] for layer in project_layers)
+        if not confirm_change("LLM", f"{_llm_summary(cfg)} (set in {where})"):
+            return
+        print("  LLM: re-configure")
+    elif from_global:
+        print(f"  LLM: {_llm_summary(cfg)} (from the global config)")
+    else:
+        print("  LLM: not configured")
     print("  fw-context can use an LLM for symbol analysis and smart search.")
     print("  How would you like to configure it?\n")
+    if use_global_offered and "local" in project_layers:
+        print("    0. Use the global settings (removes the [llm] backend keys of .fw-context/local.toml)")
+    elif use_global_offered:
+        print("    0. Use the global settings — Enter")
     print("    1. Local Ollama (recommended for offline use)")
     print("    2. Cloud API (DeepSeek, OpenAI, LiteLLM, ...)")
-    print("    3. Disable LLM analysis (embedding still works)")
+    print("    3. Disable the LLM analysis (the embeddings stay)")
     choice = _input("  > ")
 
-    if choice == "1":
+    if use_global_offered and (choice == "0" or (choice == "" and not project_layers)):
+        _use_global_llm(
+            project_root, remove_local="local" in project_layers, old_embed_model=cfg.llm.embed_model,
+        )
+    elif choice == "1":
         _prompt_ollama_setup(project_root, cfg)
     elif choice == "2":
         _prompt_cloud_setup(project_root)
     elif choice == "3":
-        from ..llm.configure import configure_llm_core
-
-        configure_llm_core(project_root, {"enabled": False})
-        print("  [ok] LLM disabled — embedding still works")
+        _disable_llm_analysis(project_root, cfg)
     else:
         print("  [skip] LLM configuration skipped")
 
 
+def _disable_llm_analysis(project_root: Path, cfg) -> None:
+    """Turn off the LLM analysis of the project, and keep the embeddings (option 3 of the menu).
+
+    Writes ``[llm] analyze_symbols = false`` to ``local.toml``.  WHY not
+    ``enabled = false``, as before: that also turns off the embeddings and
+    the chat of ``smart_search``, but the menu said "embedding still
+    works".  WHY no test call (``configure_llm_core``): the option needs
+    no chat model, and a test of the chat model failed on a machine
+    without one, and put the old settings back.
+    """
+    from ..config.settings import ConfigError, _update_local_toml
+
+    try:
+        _update_local_toml(project_root, {"analyze_symbols": False})
+    except (ConfigError, OSError) as exc:
+        print(f"  [warn] .fw-context/local.toml cannot be changed ({exc}). Nothing was changed.")
+        return
+    print("  [ok] LLM analysis off ([llm] analyze_symbols = false) — the embeddings stay")
+    if not cfg.llm.enabled:
+        print("  [note] The LLM is off ([llm] enabled = false): the embeddings need enabled = true")
+
+
+def _use_global_llm(project_root: Path, *, remove_local: bool, old_embed_model: str) -> None:
+    """Let the global LLM settings apply to the project (option 0 of the menu).
+
+    *remove_local*: remove the keys of ``LLM_BACKEND_KEYS`` from
+    ``local.toml``.  Else nothing is written: no project file selects the
+    backend.  No test call: the global settings are the ones that the
+    other projects use, and ``fw-context doctor`` does the check.
+    *old_embed_model* is the model that applied before: a note tells the
+    user when the removal changes it.
+    """
+    from ..config.settings import LLM_BACKEND_KEYS, ConfigError, _update_local_toml, llm_key_sources
+
+    if not remove_local:
+        print("  [ok] LLM: the global settings apply")
+        return
+    from ..config import load
+
+    local = project_root / ".fw-context" / "local.toml"
+    try:
+        previous = local.read_bytes()
+        _update_local_toml(project_root, {}, clear_keys=list(LLM_BACKEND_KEYS))
+        # The editor finds only the line "[llm]".  For another form of the
+        # table (`[llm]  # note`, an inline table) it removed nothing, and
+        # the step said "[ok]".  Thus read the file again.
+        left = sorted(key for key, layer in llm_key_sources(project_root).items() if layer == "local")
+    except (ConfigError, OSError) as exc:
+        print(f"  [warn] .fw-context/local.toml cannot be changed ({exc}). Nothing was changed.")
+        return
+    if left:
+        try:
+            # Only when the editor removed a part: an unchanged file is
+            # not written again.  Atomic, as the edit itself.
+            if local.read_bytes() != previous:
+                from ..config._toml_editor import _atomic_write
+
+                _atomic_write(local.resolve(), previous.decode("utf-8"))
+        except OSError as exc:
+            print(
+                f"  [warn] init cannot remove {', '.join(left)} from .fw-context/local.toml, and cannot "
+                f"write its old text back ({exc}). Read the file before the next command."
+            )
+            return
+        print(
+            f"  [warn] init cannot remove {', '.join(left)} from .fw-context/local.toml: its [llm] table "
+            "has a form that init does not edit. Nothing was changed. Remove the keys yourself."
+        )
+        return
+    print("  [ok] LLM: removed the [llm] backend keys of .fw-context/local.toml — the global settings apply")
+    # A different model gives vectors of a different meaning, and often of
+    # a different dimension: the next index run embeds each definition
+    # again.  The user must know that before the run, not after it.
+    try:
+        new_embed_model = load(project_root).llm.embed_model
+    except ConfigError:
+        return
+    if old_embed_model and new_embed_model and new_embed_model != old_embed_model:
+        print(
+            f"  [note] The embedding model changes from {old_embed_model} to {new_embed_model}: "
+            "the next index run embeds each definition again"
+        )
+
+
 def _prompt_ollama_setup(project_root: Path, cfg) -> None:
-    """Interactive local-Ollama setup: recommend models, pull with consent."""
+    """Interactive local-Ollama setup: recommend models, pull with consent.
+
+    The default of each prompt is the model that a config file sets now,
+    else the recommendation.  WHY: before, the defaults were always the
+    recommendation, thus Enter replaced a model of the global config, for
+    example a larger chat model, with the recommended one.  Not a model
+    that Ollama does not serve: the chat model of a cloud API
+    (``chat_api_base``), or an embedding model of sentence-transformers or
+    ``ft://``.  The step would offer to pull it from Ollama.
+    """
+    from ..config.settings import llm_key_sources
     from ..llm.auto_model import _gpu_available
     from ..llm.configure import configure_llm_core
+    from ..llm.embedder_factory import uses_ollama
     from ..llm.ollama import check_setup
 
     gpu = _gpu_available()
-    chat_default = _DEFAULT_CHAT_MODEL
-    embed_default = "qwen3-embedding:8b" if gpu else "qwen3-embedding:0.6b"
+    chat_recommended = _DEFAULT_CHAT_MODEL
+    embed_recommended = "qwen3-embedding:8b" if gpu else "qwen3-embedding:0.6b"
+    sources = llm_key_sources(project_root)
+    chat_from_config = "model" in sources and cfg.llm.model and not cfg.llm.chat_api_base
+    chat_default = cfg.llm.model if chat_from_config else chat_recommended
+    embed_from_config = "embed_model" in sources and cfg.llm.embed_model and uses_ollama(cfg.llm)
+    embed_default = cfg.llm.embed_model if embed_from_config else embed_recommended
 
     result = check_setup(cfg.llm)
     status = result.get("status")
-    # not_configured / embedding_unavailable also mean Ollama is down — only
-    # "ok" and "model_missing" imply a reachable server.
-    if status in ("error", "not_configured", "embedding_unavailable"):
-        print(f"  [warn] Ollama not reachable: {result.get('message', '')}")
+    # `ollama_running`, not the status: "ok" also comes for a setup that
+    # needs no Ollama (chat on an API, local embeddings), and it then said
+    # "Ollama running" for a server that does not run.
+    if not result.get("ollama_running"):
+        print(f"  [warn] Ollama cannot be used: {result.get('message') or 'no Ollama server at ' + cfg.llm.ollama_url}")
     else:
         print(f"  [ok] Ollama running at {cfg.llm.ollama_url}")
         installed = result.get("installed_models")
         if installed:
             print(f"  Installed models: {', '.join(installed)}")
-        if status == "model_missing":
-            print(f"  [info] {result.get('message', '')}")
+        # "error" with a running server: the Ollama server of chat_api_base
+        # gives no model list.  Its message also names a missing embedding
+        # model.
+        if status in ("model_missing", "error") and result.get("message"):
+            print(f"  [info] {result['message']}")
 
     print(f"  Hardware: {'NVIDIA GPU detected' if gpu else 'CPU only (no GPU detected)'}")
     print("  Recommended:")
-    print(f"    chat:      {chat_default} (fixed default)")
-    print(f"    embedding: {embed_default}")
+    print(f"    chat:      {chat_recommended} (fixed default)")
+    print(f"    embedding: {embed_recommended}")
+    if (chat_default, embed_default) != (chat_recommended, embed_recommended):
+        print(f"  Current config: chat {chat_default}, embedding {embed_default} — Enter keeps them")
 
     chat = prompt_text("Chat model", default=chat_default) or chat_default
     embed = prompt_text("Embedding model", default=embed_default) or embed_default
 
     from ..deps._fixes import _ollama_pull
 
+    # The server of the config: the checks ask it for the two models.
     if _confirm(f"Pull {chat} now? (multi-GB)"):
-        ok, msg = _ollama_pull(chat)
+        ok, msg = _ollama_pull(chat, cfg.llm.ollama_url)
         print(f"  [{'ok' if ok else 'warn'}] {msg}")
     if _confirm(f"Pull {embed} now? (multi-GB)"):
-        ok, msg = _ollama_pull(embed)
+        ok, msg = _ollama_pull(embed, cfg.llm.ollama_url)
         print(f"  [{'ok' if ok else 'warn'}] {msg}")
 
     res = configure_llm_core(
@@ -364,20 +501,28 @@ def _prompt_ollama_setup(project_root: Path, cfg) -> None:
         # configured cloud endpoint, otherwise chat keeps routing externally.
         clear_keys=["chat_api_base", "chat_api_key", "chat_api_format"],
     )
+    # An error means that no new setting is saved (see the cloud setup).
     if res.get("status") != "ok":
         print(f"  [warn] {res.get('message', 'LLM test call failed')}")
+        return
     print(f"  [ok] LLM configured: ollama + {chat} + {embed}")
     print("  [ok] Saved to .fw-context/local.toml")
 
 
 def _prompt_cloud_setup(project_root: Path) -> None:
     """Interactive cloud-API setup: URL, key, model."""
-    from ..config.settings import _is_loopback_url
+    from ..config.settings import _is_loopback_url, url_problem
     from ..llm.configure import configure_llm_core
 
     url = prompt_text("API URL") or ""
     if not url:
         print("  [skip] Cloud API setup skipped")
+        return
+    # Before `_is_loopback_url`: it raised ValueError for "http://[::1",
+    # and init stopped with a traceback.
+    problem = url_problem(url)
+    if problem is not None:
+        print(f"  [warn] {url} is not a valid URL ({problem}). Cloud API setup skipped")
         return
     key = prompt_text("API key") or ""
     model = prompt_text("Model", default="deepseek-chat") or "deepseek-chat"
@@ -389,7 +534,14 @@ def _prompt_cloud_setup(project_root: Path) -> None:
     updates: dict[str, object] = {"enabled": True, "chat_api_base": url, "model": model}
     if key:
         updates["chat_api_key"] = key
-    configure_llm_core(project_root, updates, chat_api_base=url)
+    res = configure_llm_core(project_root, updates, chat_api_base=url)
+    # An error means that no new setting is saved: the core puts the old
+    # settings back, or the write itself failed.  Before, "[ok] Saved" came
+    # after an error too, and named a setting that was not in the file.
+    # When the core cannot put the old settings back, its message says so.
+    if res.get("status") != "ok":
+        print(f"  [warn] {res.get('message', 'Cloud API setup failed')}")
+        return
     print(f"  [ok] LLM configured: cloud API {model} @ {url}")
     print("  [ok] Saved to .fw-context/local.toml")
 
