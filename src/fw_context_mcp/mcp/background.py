@@ -33,6 +33,11 @@ Key design decisions:
 from __future__ import annotations
 
 import logging
+import sys
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
 import os
 import re
 import subprocess
@@ -358,3 +363,79 @@ def _check_bg_pause(root: Path) -> bool:
     return PidFile.is_active(db_path.parent / "reindex.pause")
 
 PENDING_MARKER = "reindex.pending"  # wave: pending marker file name
+
+
+PENDING_MARKER = "reindex.pending"
+
+
+def _is_bg_reindex_running(root: Path) -> bool:
+    """Check whether any index process is running for *root*.
+
+    Checks two signals:
+
+    1. ``<db_dir>/<project_id>/reindex.pid`` — each ``fw-context index``
+       run writes it when it holds the index lock
+       (``cli._index._claim_index``), the run that the daemon started
+       included, and removes it when it releases the lock.  A stale file
+       (PID not alive) is cleaned up.
+    2. ``<db_dir>/write.lock`` — held during write operations
+       (``reindex_file``, ``reset_index``, index write phases).
+
+    If either signal is active, another index process is active — skip
+    launching a duplicate.
+
+    Note: ``watcher.lock`` is NOT checked here — the persistent daemon
+    holds it for its entire lifetime, even when idle (just watching for
+    file changes).  Checking it was a false positive that made every
+    ``get_project_status`` call report "reindexing" when the daemon was
+    merely running.
+    """
+    db_path = _db_path(root)
+    if not db_path.exists():
+        return False
+
+    def _lock_held(lock_file: Path) -> bool:
+        try:
+            lock_fd = os.open(lock_file, os.O_CREAT | os.O_RDWR)
+        except OSError:
+            return False
+        if fcntl is None:  # Windows: no flock; marker-based state only
+            os.close(lock_fd)
+            return False
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(lock_fd)
+            return True
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+        return False
+
+    # 1. Index PID file — daemon subprocess or standalone fw-context index
+    reindex_pid_file = db_path.parent / "reindex.pid"
+    if PidFile.is_active(reindex_pid_file):
+        return True
+
+    # 2. General write lock — held during reindex_file, reset_index, etc.
+    if _lock_held(db_path.parent / "write.lock"):
+        return True
+
+    return False
+
+
+def read_reindex_state(root: Path) -> str | None:
+    """Return ``"reindexing"`` while an index run is active, ``"pending"`` while the daemon has work that is not complete, else None.
+
+    WHY the two: an LLM that waits for a reindex must know that one comes.
+    The daemon keeps its work as a flag in its memory, thus before this
+    marker no other process saw a change that waited for the debounce or
+    for a manual operation, and the answers said "run fw-context index"
+    while the daemon was about to run it.  A run that holds the index
+    makes "reindexing", also when the marker is there.
+    """
+    if _is_bg_reindex_running(root):
+        return "reindexing"
+    db_path = _db_path(root)
+    if PidFile.is_active(db_path.parent / PENDING_MARKER):
+        return "pending"
+    return None

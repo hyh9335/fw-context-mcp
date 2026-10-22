@@ -286,6 +286,7 @@ def upsert_build_config(
     image: str | None = None,
     board: str | None = None,
     row_format: str | None = None,
+    git_head: str | None = None,
 ) -> None:
     """Insert or update a build configuration record.
 
@@ -330,7 +331,8 @@ def upsert_build_config(
             ``get_active_config`` then matched no row for a build that names
             a variant — every tool called with an explicit variant failed on
             an index that is fully present.
-        image: Sysbuild image name (``''`` for non-sysbuild builds).
+        image: The image name, the program of a build of several programs
+            (``''`` for a build of one program).
             ``None`` keeps the stored value, as with ``variant``.
         row_format: Which meaning the stored text of this build carries —
             pass ``CURRENT_ROW_FORMAT``.  ``None`` keeps whatever the row
@@ -349,6 +351,17 @@ def upsert_build_config(
         board: Concrete board string per-(variant, image) — captures per-image
             board overrides.  ``None`` keeps the stored value, as with
             ``variant``.
+        git_head: The text of the file HEAD of the tree that the content
+            came from (``git_context.read_head``).  ``None`` keeps the
+            stored value, for the reason that ``description`` gives.
+
+            WHY the column is outside the fingerprint of the schema
+            (``_ensure_column``, not ``_MIGRATION_ADD_COLUMNS``): a new
+            column in the fingerprint reports each existing index as an
+            index of an older schema, and asks for a full reindex of each
+            project.  An index without the value compares the branch of
+            ``description``, as before, until its next run
+            (``git_context.head_moved``).
 
     Returns:
         None.
@@ -410,7 +423,12 @@ def upsert_build_config(
                row_format = excluded.row_format""",
         (config_hash, project_id, compile_commands_path, embedding_dim, manifest_verification, description, analyze_vendor, variant, image, board, row_format),
     )
-
+    if git_head is not None:
+        _ensure_column(conn, "build_configs", "git_head", "TEXT")
+        conn.execute(
+            "UPDATE build_configs SET git_head = ? WHERE config_hash = ?",
+            (git_head, config_hash),
+        )
 
 def set_analyze_vendor(conn: sqlite3.Connection, config_hash: str, analyze_vendor: bool) -> None:
     """Record whether the LLM analysis of the build *config_hash* covers vendor code.

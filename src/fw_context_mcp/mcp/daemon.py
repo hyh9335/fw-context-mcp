@@ -89,7 +89,12 @@ from ..platform import (
 )
 from ..utils import HEADER_EXTENSIONS, TU_EXTENSIONS
 from .shared.pid_file import PidFile
+from .background import PENDING_MARKER
 
+_SUPERSEDED_RUNS_MAX = 3
+
+
+_HELD_POLL_S = 2.0  # How often the loop looks if the other process released the index
 log = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -310,7 +315,7 @@ def _write_marker_text(path: Path, identity: ProcessIdentity) -> None:
 async def _watch_changes(
     project_root: Path,
     build_patterns: list[str],
-    pending: asyncio.Event,
+    pending: _PendingWork,
     shutdown: asyncio.Event,
     dlog: logging.LoggerAdapter,
 ) -> None:
@@ -371,6 +376,55 @@ async def _stop_watcher(task: asyncio.Task) -> None:
 
 
 # ── Reindex loop ─────────────────────────────────────────────────────────────
+
+
+class _PendingWork(asyncio.Event):
+    """The flag of the work that the daemon has, and the marker that shows it to the other processes.
+
+    The marker ``reindex.pending`` holds the PID of the daemon
+    (``background.read_reindex_state`` reads it).  It means "the daemon has
+    work that is not done".  :meth:`set` writes it.  Three places remove
+    it:
+
+    - The reindex loop, at the end of a turn that leaves no work
+      (:meth:`hide_if_done`), also a turn that gives the work up.
+    - ``_cleanup_daemon``, when the daemon stops.
+    - ``daemon_main``, when the daemon starts: a daemon that a SIGKILL
+      stopped leaves its marker, and its PID can come back.
+
+    WHY the marker stays while a run works: the run owns ``reindex.pid``
+    only from the moment that it holds the index lock until it releases
+    it.  The start of the subprocess comes before, and the outcome of the
+    run, which can be "do it again", comes after.  A marker that went away
+    at the start of the run left these times without a state, and the
+    answers of that time said "run fw-context index" for work that came.
+    While the run owns ``reindex.pid``, the reader gives "reindexing"
+    first.
+
+    WHY :meth:`set` writes the marker, and not the loop: the loop takes the
+    flag only on its next turn.  A change during a run was invisible until
+    that turn, measured at 1.4 s.
+    """
+
+    def __init__(self, db_dir: Path) -> None:
+        super().__init__()
+        self.marker = PidFile(db_dir / PENDING_MARKER)
+
+    def set(self) -> None:
+        super().set()
+        self.show()
+
+    def show(self) -> None:
+        """Write the marker.  A failed write costs the state only, thus the work still runs."""
+        try:
+            self.marker.write()
+        except OSError as exc:
+            log.warning("Cannot write %s: %s", self.marker.path, exc)
+
+    def hide_if_done(self) -> None:
+        """Remove the marker when no change came after the last clear of the flag."""
+        if not self.is_set():
+            self.marker.unlink_if_ours()
 
 
 async def _reindex_loop(
@@ -528,6 +582,8 @@ async def _index_is_free(
 
 
 async def _setup_unix_socket(db_dir: Path, on_ping) -> tuple[asyncio.Server, Path]:
+    if sys.platform == 'win32':  # no Unix-socket ping server on Windows
+        return None, db_dir / 'fw-context.sock'
     """Create and bind the Unix domain socket for daemon pings.
 
     *on_ping* is called (no arguments) each time a valid ping arrives.

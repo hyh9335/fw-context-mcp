@@ -328,3 +328,5 @@ def build_missing_reason(compile_commands: Path) -> str:
         return ""
     more = f" and {len(missing) - 1} more" if len(missing) > 1 else ""
     return f"the build directory {missing[0]}{more} of {compile_commands} does not exist"
+
+PROBLEM_MARKER = "build_problem.json"  # wave: build problem marker file
