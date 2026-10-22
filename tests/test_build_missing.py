@@ -173,7 +173,8 @@ def _project(root: Path, index_dir: Path, cc: Path, system: str = "cmake") -> Pa
     config_dir.mkdir(exist_ok=True)
     (config_dir / "config.toml").write_text(
         f'[project]\nid = "{PROJECT_ID}"\n[build]\nsystem = "{system}"\n', encoding="utf-8")
-    (config_dir / "local.toml").write_text(f'[index]\ndb_dir = "{index_dir}"\n', encoding="utf-8")
+    (config_dir / "local.toml").write_text(
+        f'[index]\ndb_dir = "{index_dir.as_posix()}"\n', encoding="utf-8")
     return db_dir / "index.db"
 
 

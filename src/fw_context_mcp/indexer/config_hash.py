@@ -20,6 +20,15 @@ from .compile_commands import _DROP_WITH_ARG, expand_response_file
 # Arguments that vary per-build but don't affect compilation semantics
 _TRANSIENT_DROP = frozenset({"-MD", "-MP", "-MMD", "-MG"})
 
+DEFAULT_TRANSIENT_DEFINES: tuple[str, ...] = (
+    "MBED_BUILD_TIMESTAMP",
+    "BUILD_TIMESTAMP",
+    "BUILD_TIME",
+    "BUILD_DATE",
+    "BUILD_ID",
+    "BUILD_NUMBER",
+)
+
 
 def _normalize_entry(entry: dict) -> dict:
     """Normalize a single compile_commands.json entry for stable hashing.

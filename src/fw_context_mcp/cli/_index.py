@@ -64,6 +64,9 @@ def _plan_auto_build(
     db_path: Path,
     cfg,
     detected_system: str | None,
+    *,
+    background: bool,
+    args: argparse.Namespace | None = None,
 ) -> tuple[list[str], BuildConfig | None, str]:
     """Return ``(the keys of this build, its config, a line to log)``.
 
@@ -71,98 +74,107 @@ def _plan_auto_build(
     list is non-empty only when all of these hold:
 
     1. An index exists.  Without one there is nothing to compare against.
-    2. Something a build can repair and a reindex cannot.  Two such things,
-       and either is enough:
+    2. Something a build can repair and a reindex cannot.  Three such
+       things, and each one is enough:
 
+       * The build is gone: compile_commands.json or a ``directory`` of its
+         entries does not exist (``autobuild.build_missing_reason``).  Only
+         for a *background* run: a run of the user builds as ``--build``
+         does (``_build_if_missing`` and the default path of
+         ``_resolve_compile_commands``).
        * Source files sit on disk that compile_commands.json does not cover.
          Such a file has no translation unit, so a reindex skips it.
-       * The tree is on a different branch than the index.
-         compile_commands.json is a build artifact of the branch it was
-         generated on and carries that branch's file list AND its compiler
-         flags.  Measured on the Mbed project, a switch from 4.15.3 to 4.15.1
-         left two generated zcbor sources listed in it and absent from the
-         tree; a reindex reads the same file again.
+       * The tree has a different checkout than a build of the index (a
+         branch, a tag or a commit, ``_checkout_moves``).
+         compile_commands.json is a build artifact of the checkout it was
+         generated on and carries its file list AND its compiler flags.
+         Measured on the Mbed project, a switch from 4.15.3 to 4.15.1 left
+         two generated zcbor sources listed in it and absent from the tree;
+         a reindex reads the same file again.
 
-    3. The backend may build in the background — it isolates its output, or
-       it compiles nothing.  See ``builders.background_build_safe``.
-    4. No recent automatic build failed for the same keys.
+    3. The backend may build in the background — it writes its output into
+       the build tree of fw-context, or it compiles nothing.  See
+       ``builders.background_build_safe``.
 
-    The KEYS are what ``autobuild.blocked`` compares, and they differ by
-    trigger: source paths for the first, ``"branch:<name>"`` for the second.
-    The comparison is on the list contents, thus a record for one trigger
-    does not block the other.
+    The KEYS name the trigger: ``"build-missing"``, the source paths, or
+    ``"checkout:<label>"``.  An earlier failure does not block the build: the
+    run that fails again writes the error for the MCP answers
+    (``autobuild.record_problem``), and that is what makes the user repair
+    it.
 
     Condition 3 is the important one.  The build runs while the user works,
     possibly while an IDE builds the same project, and fw-context cannot
     lock the build of the IDE.
 
-    WHY the config comes back instead of being set on *cfg*: the contract of
-    ``background_build_safe`` says the answer MAY depend on
-    ``cfg.isolated_build_dir`` (protocol.py), thus the question has to be
-    asked with the value the build would really use.  Setting it on *cfg*
-    before asking would leave it behind on every path that then answers "do
-    not build", so the candidate is built with ``replace()`` and the caller
-    applies it only when there is something to do.
+    The config that comes back is ``cfg.build``, the config the build uses.
+    *args* limits the checkout check to the builds that the run indexes
+    (``_checkout_moves``).
     """
     if not db_path.exists():
         return [], None, ""
 
-    from dataclasses import replace
-
-    from ..indexer.builders import background_build_safe, registry
-    from ..indexer.git_context import branch_moved_since
+    from ..indexer.build import checked_compile_commands
+    from ..indexer.build_layout import BuildLayout
     from ..mcp.shared.stale import find_unindexed_sources
 
-    system = cfg.build.system or detected_system
-    builder_cls = registry.get(system) if system else None
-    if builder_cls is None:
+    if not _may_build_in_background(cfg, detected_system):
         return [], None, ""
-    candidate = replace(cfg.build, isolated_build_dir=autobuild_dir())
-    if not background_build_safe(builder_cls(), candidate):
-        return [], None, ""
+    candidate = cfg.build
+    # Where the build goes, for the log line.  A project with variants
+    # builds each of them, each into its own directory.
+    target = BuildLayout(project_root).root if candidate.variants else BuildLayout(project_root).out_dir("")
 
-    from ..config import derive_project_id
-    from ..indexer.db import get_active_config, open_db
+    from ..indexer.db import open_db
 
     conn = open_db(db_path)
     try:
-        active = get_active_config(conn, derive_project_id(project_root))
+        active = _checked_build(conn, project_root, cfg)
         if not active or not active["compile_commands_path"]:
             return [], None, ""
+        # The build is gone as a whole: no file list and no compiler answer
+        # can come from it, thus it outranks the two other reasons.  The
+        # file is the one that this run reads and that the index came from,
+        # as `get_project_status` checks it (`build.checked_compile_commands`).
+        checked = (
+            checked_compile_commands(project_root, cfg, Path(active["compile_commands_path"]))
+            if background else None
+        )
+        missing = autobuild.build_missing_reason(checked) if checked is not None else ""
+        if missing:
+            return ["build-missing"], candidate, (
+                f"{missing} — running a build into {target}"
+            )
         new_sources = find_unindexed_sources(
             conn,
             active["config_hash"],
             project_root,
             Path(active["compile_commands_path"]),
         )
-        recorded = ""
-        if "description" in active.keys():
-            recorded = str(active["description"] or "")
+        moves = _checkout_moves(conn, str(active["project_id"]), project_root, args)
     finally:
         conn.close()
 
-    # The branch first: it makes compile_commands.json wrong as a whole,
+    # The checkout first: it makes compile_commands.json wrong as a whole,
     # while an uncovered source makes it incomplete.  A build repairs both,
-    # so the more complete reason is the one worth logging.
-    indexed_branch, live_branch = branch_moved_since(recorded, project_root)
-    if indexed_branch:
-        keys = [f"branch:{live_branch}"]
-        if autobuild.blocked(db_path.parent, keys):
-            return [], None, ""
-        return keys, candidate, (
-            f"branch changed from {indexed_branch} to {live_branch} — "
-            f"compile_commands.json belongs to the old branch, "
-            f"running a build into {candidate.isolated_build_dir}"
+    # so the more complete reason is the one worth logging.  Each build is
+    # checked: one run builds every build, and a build that the run did not
+    # check kept the old checkout.
+    if moves:
+        _label, indexed, live = moves[0]
+        return [f"checkout:{live}"], candidate, (
+            f"checkout changed from {indexed} to {live} — "
+            f"compile_commands.json belongs to the old checkout, "
+            f"running a build into {target}"
         )
 
-    if not new_sources or autobuild.blocked(db_path.parent, new_sources):
+    if not new_sources:
         return [], None, ""
     listed = ", ".join(new_sources[:3])
     more = f" and {len(new_sources) - 3} more" if len(new_sources) > 3 else ""
     return new_sources, candidate, (
         f"{len(new_sources)} source file(s) are missing from "
         f"compile_commands.json ({listed}{more}) — running a build into "
-        f"{candidate.isolated_build_dir}"
+        f"{target}"
     )
 
 
@@ -1256,7 +1268,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     auto_build_sources: list[str] = []
     if not getattr(args, "build", False):
         auto_build_sources, auto_build_cfg, auto_build_reason = _plan_auto_build(
-            project_root, db_path, cfg, detected_system
+            project_root, db_path, cfg, detected_system, background=bg, args=args
         )
         # The two always arrive together; the second test is what lets the
         # type checker see that, and it costs nothing.
@@ -1336,6 +1348,7 @@ def cmd_index(args: argparse.Namespace) -> int:
     else:
         autobuild.clear_problem(db_path.parent)
 
+    multi = bool(cfg.build.variants)
     if not multi and getattr(args, "build", False):
         _record_still_uncovered(project_root, db_path, cfg)
 

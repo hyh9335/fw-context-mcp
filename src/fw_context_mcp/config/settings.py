@@ -48,6 +48,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ..indexer.build import BuildConfig, BuildImage, BuildVariant
+from ..indexer.config_hash import DEFAULT_TRANSIENT_DEFINES
 from ..utils import fw_context_home
 
 log = logging.getLogger(__name__)
@@ -549,6 +550,7 @@ class IndexConfig:
     rerank_top_k: int = 50
     min_dense_count: int = 3
     max_symbol_body_lines: int = 1000
+    transient_defines: list[str] = field(default_factory=lambda: list(DEFAULT_TRANSIENT_DEFINES))
     purge_max_missing_percent: int = 20
     shadow_v2_enabled: bool = False  # Phase-4 Slice-0 shadow v2 flag (inert by default)
     shadow_v2_db: Path | None = None  # None = M-C default <db_dir>/<project_id>/index-v2.db
@@ -2165,3 +2167,35 @@ def _edit_llm_table(
     from fw_context_mcp.config._toml_editor import _atomic_write
 
     _atomic_write(path.resolve(), new_text)
+
+
+_MACRO_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+def transient_defines_problems(cfg: Config) -> list[str]:
+    """Return the mistakes in ``[index] transient_defines``, one text for each.
+
+    The index run refuses a config with a mistake here, and does not ignore
+    the entry: an entry that never matches lets each build parse every unit
+    again, and the user sees no reason for it.
+
+    Two kinds of mistake:
+
+    * An entry that is not a string, or not the name of a C macro (for
+      example ``-DMBED_BUILD_TIMESTAMP`` or ``NAME=1``).  The list holds names.
+    * The key in a ``[[build.variants]]`` table.  The list applies to the
+      whole project, and the variant table would drop it without a word
+      (``index_overrides`` reads only the vendor and project paths).
+    """
+    problems = [
+        f"[index] transient_defines entry {entry!r} is not a macro name "
+        "(write NAME, not -DNAME or NAME=value)"
+        for entry in cfg.index.transient_defines
+        if not isinstance(entry, str) or not _MACRO_NAME.fullmatch(entry)
+    ]
+    problems.extend(
+        f"[[build.variants]] {variant.name!r} sets transient_defines: "
+        "the list applies to the whole project, set it in [index]"
+        for variant in cfg.build.variants
+        if "transient_defines" in variant.index_overrides
+    )
+    return problems

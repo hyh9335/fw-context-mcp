@@ -26,7 +26,7 @@ from fw_context_mcp.utils import build_env, cc_output_path, ignore_autobuild_dir
 # build system backends before ``detect_build_system()`` is called.
 from . import builders  # noqa: F401 — side-effect import
 from .builders import registry as _builder_registry
-from .build_layout import BuildLayout
+from .build_layout import COMPILE_COMMANDS_NAME, BuildLayout
 from .builders import application_database, output_compile_commands
 
 log = logging.getLogger(__name__)
