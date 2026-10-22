@@ -1155,6 +1155,27 @@ _UPDATES_FIELDS: list[tuple[str, str, str]] = [
 ]
 
 
+@dataclass
+class UpdatesConfig:
+    """The check for a newer fw-context release on PyPI.
+
+    fw-context reads it from the global config only, and ignores it in a
+    project config: the check is a fact about the machine, and the MCP
+    server reads it before it knows a project.  It is thus not a field of
+    :class:`Config`: :func:`load_update_settings` reads it.  See
+    :mod:`fw_context_mcp.version_check`.
+
+    Attributes:
+        check: When ``True`` (default), the MCP server asks PyPI at start
+            (after a request that succeeded, only after 24 hours), and
+            ``get_project_status`` reports a newer release.
+            Set it to ``False`` on a machine without network access, or
+            when no request to PyPI is permitted.
+    """
+
+    check: bool = True
+
+
 _CHECKED_SECTIONS: tuple[tuple[str, list[tuple[str, str, str]]], ...] = (
     ("project", _PROJECT_FIELDS),
     ("build", _BUILD_FIELDS),

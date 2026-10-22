@@ -31,7 +31,7 @@ from pathlib import Path
 
 from ...config import derive_project_id
 from ...indexer.db import get_active_config
-from ...indexer.manifest import load_tu_extensions
+from ...indexer.manifest import _hash_with_cache, load_tu_extensions
 from ...platform import process as _process
 from ...utils import (
     MTIME_TOLERANCE_S,
@@ -311,12 +311,18 @@ def _file_differs(path: str, stored_mtime: float, stored_hash: str = "") -> bool
         return False
 
 
-def _content_differs(path: str, stored_hash: str) -> bool | None:
+def _content_differs(
+    path: str, stored_hash: str, hash_cache: dict[str, str] | None = None
+) -> bool | None:
     """Compare the file at *path* against *stored_hash*.
 
     Returns True when the bytes differ, False when they match, and None when
     the question cannot be answered — no stored hash, or the file cannot be
     read.  The caller then falls back to the timestamp.
+
+    *hash_cache* is the ``{resolved path: sha256}`` memo shared with the
+    header check and the other builds of one status answer; the builds of a
+    project share most files, and one cache hashes each of them once.
 
     This is the only signal that survives git.  ``checkout``, ``pull`` and
     ``stash pop`` rewrite the mtime of every file they touch, without regard
@@ -325,7 +331,7 @@ def _content_differs(path: str, stored_hash: str) -> bool | None:
     """
     if not stored_hash:
         return None
-    current = compute_source_hash(Path(path))
+    current = _hash_with_cache(Path(path), hash_cache)
     if not current:
         return None  # unreadable — compute_source_hash swallows the OSError
     return current != stored_hash
@@ -337,6 +343,7 @@ def _count_modified_files(
     root: Path,
     *,
     use_cache: bool = False,
+    hash_cache: dict[str, str] | None = None,
 ) -> int:
     """Count the indexed files whose content no longer matches the index.
 
@@ -448,7 +455,7 @@ def _count_modified_files(
             file_mtime = os.path.getmtime(key)
             if abs(file_mtime - stored_mtime) <= _MTIME_MATCH_EPS_S:
                 continue
-            differs = _content_differs(key, stored_hash)
+            differs = _content_differs(key, stored_hash, hash_cache)
             if differs is None:
                 # No stored hash: the timestamp is all there is, and only
                 # one direction is readable from it.
@@ -871,6 +878,7 @@ def _check_header_staleness(
     *,
     max_files: int = 200,
     use_cache: bool = True,
+    hash_cache: dict[str, str] | None = None,
 ) -> tuple[int, list[str]]:
     """Count TUs whose header dependencies have changed since indexing.
 
@@ -928,6 +936,7 @@ def _check_header_staleness(
     for entry in manifest.get("entries", [])[:max_files]:
         stale, _ = check_tu_staleness(
             entry, project_root,
+            hash_cache=hash_cache,
             headers=resolve_headers(entry, header_table),
         )
         if stale:

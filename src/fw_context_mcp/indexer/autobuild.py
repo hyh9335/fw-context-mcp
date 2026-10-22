@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -53,6 +54,10 @@ class AutobuildState(Enum):
 
     BACKOFF = "backoff"
     """A build was tried for these files and failed; the caller must act."""
+
+    USER_DATABASE = "user_database"
+    """The index reads a database of the user (``build.user_database``),
+    and no build of fw-context changes it; the user makes it again."""
 
 
 def blocked(db_dir: Path, new_sources: list[str]) -> bool:
@@ -105,19 +110,22 @@ def clear_failure(db_dir: Path) -> None:
         log.debug("could not remove the autobuild failure marker", exc_info=True)
 
 
-def state(builder_cls, build_cfg, db_dir: Path, new_sources: list[str]) -> AutobuildState:
+def state(
+    builder_cls, build_cfg, db_dir: Path | None = None, new_sources: list[str] | None = None
+) -> AutobuildState:
     """Say what will happen to *new_sources* on this project.
 
     *builder_cls* is the class from the registry, or None when no build
     system was detected.  The question goes to the backend with the config
     the build would really use — ``protocol.py`` states that the answer may
-    depend on ``isolated_build_dir``.
+    depend on ``isolated_build_dir``.  A project-level query (no *db_dir*)
+    skips the backoff: the failed-attempt marker belongs to one index store.
     """
     from .builders import background_build_safe
 
     if builder_cls is None or not background_build_safe(builder_cls(), build_cfg):
         return AutobuildState.UNSUPPORTED
-    if blocked(db_dir, new_sources):
+    if db_dir is not None and new_sources is not None and blocked(db_dir, new_sources):
         return AutobuildState.BACKOFF
     return AutobuildState.WILL_BUILD
 
@@ -244,6 +252,7 @@ def clear_excluded(db_dir: Path) -> None:
         log.debug("could not remove the excluded-sources marker", exc_info=True)
 
 
+@dataclass(frozen=True)
 class BuildProblem:
     """The content of the problem marker."""
 

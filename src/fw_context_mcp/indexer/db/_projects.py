@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from ._schema import _ensure_column
+
 __all__ = [
     "ANALYZABLE_KINDS",
     "EMBEDDABLE_KINDS",

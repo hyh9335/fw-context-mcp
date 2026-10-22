@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -36,7 +37,12 @@ from ...config import ConfigError, derive_project_id
 from ...config import load as load_config
 from ...config.settings import Config
 from ...indexer.autobuild import AutobuildState
+from ...indexer.autobuild import build_advice
+from ...indexer.autobuild import clear_problem as clear_build_problem
+from ...indexer.autobuild import project_state as project_autobuild_state
+from ...indexer.autobuild import read_problem as read_build_problem
 from ...indexer.autobuild import state as autobuild_state
+from ...indexer.build import checked_compile_commands, user_database
 from ...indexer.compile_commands import command_line_defines
 from ...indexer.compile_commands import parse as parse_cc
 from ...indexer.db import (
@@ -62,10 +68,42 @@ from ...indexer.db import (
     symbols_without_embedding,
     transaction,
 )
-from ...indexer.git_context import branch_moved_since
+from ...indexer.git_context import branch_moved_since, head_moved, read_head, stored_head
 from ...llm.ollama import check_setup
 from ...utils import HEADER_EXTENSIONS, resolve_project_root
-from ..background import _is_bg_reindex_running, read_reindex_progress
+from ...indexer.autobuild import AutobuildState, build_advice, build_missing_reason
+from ...indexer.db import (
+    CURRENT_ROW_FORMAT,
+    CURRENT_SCHEMA_VERSION,
+    DatabaseCorruptionError,
+    WriteLockTimeout,
+    compute_analysis_coverage,
+    count_refs,
+    error_shows_damage,
+    get_active_config,
+    get_all_projects,
+    get_db_schema_version,
+    get_entry_point,
+    get_memory_regions,
+    make_analysis_summary,
+    open_db,
+    row_format_effect,
+    row_format_is_newer,
+    row_format_is_older,
+    symbols_without_embedding,
+    transaction,
+)
+from ..background import read_reindex_progress, read_reindex_state
+from ..shared.stale import (
+    _check_header_staleness,
+    _count_modified_files,
+    build_label,
+    find_unindexed_sources,
+    latest_builds,
+    outdated_index_fact,
+    outdated_index_reason,
+    stored_row_format,
+)
 from ..shared.context import (
     _db_path,
     _detect_build_system,
@@ -3755,6 +3793,36 @@ _INTERNAL_HEALTH_KEYS = frozenset({
 })
 
 
+@dataclass(frozen=True)
+class _IndexTarget:
+    """The index of one project, as the two status tools find it."""
+
+    root: Path
+    cfg: Config
+    project_id: str
+    db_path: Path
+    # "reindexing" for an index run of the daemon or of the operator, and
+    # for a `reindex_file` or a `reset_index` that holds `write.lock`.
+    # "pending" for work of the daemon that is not complete.  See
+    # `read_reindex_state`.
+    # Read once for each call: a run is a fact of the project, and not of a
+    # build.
+    reindex_state: str | None
+
+    @property
+    def bg_running(self) -> bool:
+        """Return True when an index run is active or the daemon has work that comes.
+
+        WHY "pending" counts: the daemon starts its run, and the run holds
+        the index only after the interpreter started and the config loaded.
+        For a PlatformIO project, the build system also lists the variants
+        before the run holds the index.  That can take some seconds.  A
+        status that said "no run" in that time sent the caller to start a
+        second index run of the same work.
+        """
+        return self.reindex_state is not None
+
+
 def _index_target(project_root: str | None) -> _IndexTarget | dict:
     """Find the index of the project, or give the answer for a project without one.
 
@@ -5205,7 +5273,7 @@ def _project_facts(conn, target: _IndexTarget) -> _ProjectFacts:
     new_sources = find_unindexed_sources(conn, checked["config_hash"], target.root, cc_path)
     return _ProjectFacts(
         new_sources=new_sources,
-        auto_state=_autobuild_state(target.root, target.cfg, new_sources),
+        auto_state=_autobuild_state(target.root, target.cfg, target.db_path, new_sources),
         build_problem=problem.text if problem is not None else "",
         marker_build_missing=problem is not None and problem.build_missing,
         live_head=read_head(target.root),
@@ -5291,3 +5359,36 @@ def _with_config_warnings(result: dict, cfg: Config) -> dict:
 
 
 _EMBEDDING_PLAIN_ACTION = ": run `fw-context index`"
+
+
+_PRE_INIT_CHECKS = frozenset({"pysqlite3", "sqlite-vec", "libclang-python", "libclang-so", "watchfiles", "tomli-w"})
+
+
+@dataclass(frozen=True)
+class _ProjectFacts:
+    """The facts of the project that the health of each build reads, computed one time for a call."""
+
+    # Source files that no build covers, and what happens to them.
+    new_sources: list[str]
+    auto_state: AutobuildState
+    # The text of the marker of the last index run that stopped without an
+    # index, after the check below; "" without one.
+    build_problem: str
+    # True when that marker says that the build is missing: a missing
+    # database of a build is then the same fact, and the marker names it
+    # with the command of the run.
+    marker_build_missing: bool
+    # The text of the file HEAD of the tree (`git_context.read_head`): a
+    # branch, or the commit of a detached HEAD; "" without git.
+    live_head: str
+
+
+def _not_built_error(target: Path) -> dict:
+    """Return the error for *target* when no build of the project compiles it.
+
+    The whole path, not target.name.  The basename made the refusal name
+    something the caller never wrote: "../../../../etc/passwd" came back as
+    "passwd not found in compile_commands.json", which reads as a fact about
+    a file of the project and says nothing about the path that was refused.
+    """
+    return {"error": f"{target} is not built by this project — it has no entry in compile_commands.json, and no indexed translation unit includes it."}
