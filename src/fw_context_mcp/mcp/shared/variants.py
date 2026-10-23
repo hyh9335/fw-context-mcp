@@ -465,6 +465,18 @@ def resolve_scopes(
     build_cfg = cfg.build
     multi = bool(build_cfg.variants)
 
+    # An index that an older version wrote gets the fact of the old schema
+    # as its refusal — the same gate resolve_build performs ("each query
+    # tool selects a build here, thus one check covers them"); the A25
+    # fan-out moved the resolution here and must keep the gate.
+    from ...mcp.shared.stale import outdated_index_fact
+
+    outdated = outdated_index_fact(conn)
+    if outdated:
+        # resolve_build's wording: the refusal names the status tool and no
+        # command (this function does not know the state of an index run).
+        return [], multi, f"{outdated}. To see the action, call {STATUS_TOOL}()."
+
     if not multi:
         row = get_active_config(conn, project_id)
         scopes = (

@@ -264,9 +264,10 @@ class TestCallOllamaAutoPull:
 
 
 class TestCallOllamaEmbedAutoPull:
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
+    @patch("fw_context_mcp.llm.ollama.http_client")
     @patch("fw_context_mcp.llm.ollama._pull_model")
-    def test_auto_pull_false_404_raises_model_not_found(self, mock_pull, mock_post):
+    def test_auto_pull_false_404_raises_model_not_found(self, mock_pull, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = httpx.Response(
             status_code=404,
             json={"error": "not found"},
@@ -278,9 +279,10 @@ class TestCallOllamaEmbedAutoPull:
             call_ollama_embed(["text"], cfg)
         mock_pull.assert_not_called()
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
+    @patch("fw_context_mcp.llm.ollama.http_client")
     @patch("fw_context_mcp.llm.ollama._pull_model")
-    def test_auto_pull_true_404_pulls_and_retries(self, mock_pull, mock_post):
+    def test_auto_pull_true_404_pulls_and_retries(self, mock_pull, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.side_effect = [
             httpx.Response(
                 status_code=404,
@@ -295,9 +297,10 @@ class TestCallOllamaEmbedAutoPull:
         assert len(result) == 1
         mock_pull.assert_called_once()
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
+    @patch("fw_context_mcp.llm.ollama.http_client")
     @patch("fw_context_mcp.llm.ollama._pull_model")
-    def test_auto_pull_true_pull_fails_raises(self, mock_pull, mock_post):
+    def test_auto_pull_true_pull_fails_raises(self, mock_pull, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = httpx.Response(
             status_code=404,
             json={"error": "not found"},
@@ -309,23 +312,26 @@ class TestCallOllamaEmbedAutoPull:
         with pytest.raises(OllamaError, match="pull failed"):
             call_ollama_embed(["text"], cfg)
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
-    def test_successful_embed_returns_vectors(self, mock_post):
+    @patch("fw_context_mcp.llm.ollama.http_client")
+    def test_successful_embed_returns_vectors(self, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = _mock_embed_response([[0.1, 0.2], [0.3, 0.4]])
         cfg = _cfg(chat_api_base=None)
         result = call_ollama_embed(["a", "b"], cfg)
         assert result == [[0.1, 0.2], [0.3, 0.4]]
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
-    def test_embed_uses_timeout_doubled(self, mock_post):
+    @patch("fw_context_mcp.llm.ollama.http_client")
+    def test_embed_uses_timeout_doubled(self, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = _mock_embed_response()
         cfg = _cfg(chat_api_base=None, timeout=42.0)
         call_ollama_embed(["text"], cfg)
         _, kwargs = mock_post.call_args
         assert kwargs["timeout"] == 84.0
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
-    def test_embed_query_prompt_prepended(self, mock_post):
+    @patch("fw_context_mcp.llm.ollama.http_client")
+    def test_embed_query_prompt_prepended(self, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = _mock_embed_response()
         cfg = _cfg(chat_api_base=None)
         cfg.embed_query_prompt = "QUERY: "
@@ -333,8 +339,9 @@ class TestCallOllamaEmbedAutoPull:
         _, kwargs = mock_post.call_args
         assert kwargs["json"]["input"] == ["QUERY: hello"]
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
-    def test_embed_doc_prompt_prepended(self, mock_post):
+    @patch("fw_context_mcp.llm.ollama.http_client")
+    def test_embed_doc_prompt_prepended(self, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = _mock_embed_response()
         cfg = _cfg(chat_api_base=None)
         cfg.embed_doc_prompt = "DOC: "
@@ -342,8 +349,9 @@ class TestCallOllamaEmbedAutoPull:
         _, kwargs = mock_post.call_args
         assert kwargs["json"]["input"] == ["DOC: hello"]
 
-    @patch("fw_context_mcp.llm.ollama.httpx.post")
-    def test_embed_no_prompt_when_empty(self, mock_post):
+    @patch("fw_context_mcp.llm.ollama.http_client")
+    def test_embed_no_prompt_when_empty(self, mock_hc):
+        mock_post = mock_hc.return_value.__enter__.return_value.post
         mock_post.return_value = _mock_embed_response()
         cfg = _cfg(chat_api_base=None)
         cfg.embed_query_prompt = ""

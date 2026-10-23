@@ -2484,8 +2484,16 @@ def _header_coverage_warning(
                 f"Header re-indexed: refreshed {refreshed} of {total} includer "
                 "contexts — run 'fw-context index' for full accuracy."
             )
-        if total:
+        if total and not (
+            via_header or (len(matching) == 1 and target.suffix in HEADER_EXTENSIONS)
+        ):
+            # A complete re-parse of a target that compile_commands.json
+            # lists as its own TU: nothing is stale, no warning.
             return None
+        # Complete per THIS manifest — but the manifest of one build cannot
+        # see another build's contexts of the same header, and the header
+        # fallback re-parses an arbitrary subset anyway: the wave warning
+        # still applies.
     if not (via_header or (len(matching) == 1 and target.suffix in HEADER_EXTENSIONS)):
         return None
     return (
