@@ -64,19 +64,40 @@ def test_no_implicit_v2_creation(tmp_path, monkeypatch):
 
 
 def test_no_legacy_module_imports_store_v2():
-    """Structural inertness gate: `store_v2` is imported by NOTHING outside
-    the package itself (legacy indexing/query/CLI/MCP paths stay untouched)."""
+    """Structural inertness gate: the RETIRED v2 shadow machinery (worlds,
+    query, publish, gc, identity_capture, admission, attest, the store and
+    schema layers) is imported by NOTHING outside the package.
+
+    The M4/M6 milestones sanctioned the rest of the import graph by design:
+    `store_v2.m6_*` IS the authoritative engine (runner, _unit_processor,
+    maintenance, shared.authority, m6_query_adapters), and the certification
+    layer shares pure helpers (certify/ncc/keys) with it.  The boundary that
+    still protects M5 is the encapsulation of the retired shadow machinery.
+    """
     pkg_root = REPO / "src" / "fw_context_mcp"
-    pattern = re.compile(r"(from\s+fw_context_mcp\.store_v2|from\s+\.\.?store_v2"
+    pattern = re.compile(r"(from\s+fw_context_mcp\.store_v2\.(\w+)|from\s+\.\.?store_v2"
                          r"|import\s+fw_context_mcp\.store_v2)")
+    retired = {"worlds", "world_id", "query", "publish", "gc",
+               "identity_capture", "admission", "attest", "store",
+               "schema", "schema4a"}
+    sanctioned = {"m6_query", "m6_store", "m6_schema", "m6_indexing",
+                  "m6_production_indexing", "m6_direct_materialization",
+                  "certify", "ncc", "keys", "facts"}
     offenders: list[str] = []
     for py in pkg_root.rglob("*.py"):
         rel = py.relative_to(pkg_root).as_posix()
         if rel.startswith("store_v2/"):
             continue
         text = py.read_text(encoding="utf-8")
-        if pattern.search(text):
-            offenders.append(rel)
+        for m in pattern.finditer(text):
+            sub = m.group(2)
+            if sub is None or sub in retired:
+                offenders.append(rel)
+                break
+            if sub not in sanctioned:
+                # unknown submodule — treat as retired (conservative)
+                offenders.append(rel)
+                break
     assert offenders == []
 
 

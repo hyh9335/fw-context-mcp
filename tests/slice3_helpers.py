@@ -249,7 +249,13 @@ def store_row_snapshot(conn) -> dict:
     tables = [r["name"] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' "
         "AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+    def _jsonsafe(v):
+        # file_blobs.content is the cold payload's raw bytes (a blob is a
+        # legitimate stored value; the snapshot only needs comparability)
+        return v.decode("utf-8", "replace") if isinstance(v, (bytes, memoryview)) else v
+
     for t in tables:
         rows = conn.execute(f"SELECT * FROM {t}").fetchall()  # noqa: S608
-        snap[t] = sorted(json.dumps([r[k] for k in r.keys()]) for r in rows)
+        snap[t] = sorted(json.dumps([_jsonsafe(r[k]) for k in r.keys()])
+                         for r in rows)
     return snap

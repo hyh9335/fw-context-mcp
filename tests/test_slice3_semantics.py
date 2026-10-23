@@ -117,8 +117,15 @@ def test_s3_t15_rename_presentation_remap(tmp_path):
     from fw_context_mcp.indexer import _unit_processor as _UP
     from fw_context_mcp.store_v2 import certify as C
     old = os.environ.get("FW_CONTEXT_SHADOW_V2")
+    old_auth = os.environ.get("FW_CONTEXT_V2_WRITE_AUTHORITY")
+    old_m6 = os.environ.get("FW_CONTEXT_M6_WRITE_AUTHORITY")
     os.environ["FW_CONTEXT_SHADOW_V2"] = "1"
+    # Authority island: the rename scenario queries BOTH runner-produced
+    # worlds; the runner finalizes them only when v2 write authority is on.
+    os.environ["FW_CONTEXT_V2_WRITE_AUTHORITY"] = "1"
+    os.environ["FW_CONTEXT_M6_WRITE_AUTHORITY"] = "0"
     _UP._reset_v2_flag_cache()
+    _UP._reset_v2_write_authority_cache()
     C.reset_flag_cache()
     try:
         data = make_git_project(tmp_path)
@@ -139,7 +146,16 @@ def test_s3_t15_rename_presentation_remap(tmp_path):
             os.environ.pop("FW_CONTEXT_SHADOW_V2", None)
         else:
             os.environ["FW_CONTEXT_SHADOW_V2"] = old
+        if old_auth is None:
+            os.environ.pop("FW_CONTEXT_V2_WRITE_AUTHORITY", None)
+        else:
+            os.environ["FW_CONTEXT_V2_WRITE_AUTHORITY"] = old_auth
+        if old_m6 is None:
+            os.environ.pop("FW_CONTEXT_M6_WRITE_AUTHORITY", None)
+        else:
+            os.environ["FW_CONTEXT_M6_WRITE_AUTHORITY"] = old_m6
         _UP._reset_v2_flag_cache()
+        _UP._reset_v2_write_authority_cache()
         C.reset_flag_cache()
     conn = open_q(v2)
     try:
@@ -309,11 +325,22 @@ def test_s3_q4_conditions_and_closure_composition(env):
         "semantic_condition_index WHERE state_id=? ORDER BY region_ordinal",
         (st.state.state_id,)).fetchall()
     assert len(conds) == len(db_conds)
+    # Tier-B: the BINDING's own branch states (per-world, never shared) —
+    # the query surface must answer exactly the rows the store holds.
+    db_branches: dict[int, list[dict]] = {}
+    for r in store._conn.execute(
+            "SELECT region_ordinal, branch_ordinal, taken FROM "
+            "tu_branch_states WHERE binding_id=? "
+            "ORDER BY region_ordinal, branch_ordinal",
+            (st.binding.binding_id,)).fetchall():
+        db_branches.setdefault(int(r["region_ordinal"]), []).append(
+            {"branch_ordinal": int(r["branch_ordinal"]),
+             "taken": int(r["taken"])})
     for hit, row in zip(conds, db_conds):
         assert hit.region_ordinal == row["region_ordinal"]
         assert hit.directive == row["directive"]
         assert hit.condition == row["condition"]
-        assert hit.branch_states == []   # Slice-2 does not populate Tier-B
+        assert hit.branch_states == db_branches.get(hit.region_ordinal, [])
     pres = query.tu_closure_presentation(conn, view, selector=MAIN)
     assert pres.state.state_id == st.state.state_id
     assert pres.binding.canon_source_path == "src/main.c"

@@ -81,7 +81,9 @@ def _v2_flags():
 def test_s2_t15_flag_on_keeps_full_parsing(tmp_path, monkeypatch):
     """The v2 path is a pure SHADOW: all TUs are parsed and legacy rows are
     complete; the v2 store additionally holds the world + bindings."""
+    from slice2_helpers import set_v2_authority_island
     monkeypatch.setenv("FW_CONTEXT_SHADOW_V2", "1")
+    set_v2_authority_island(monkeypatch)   # the run must finalize 'active'
     data = make_project(tmp_path)
     proj: Path = data["proj"]
     _init_project_id(proj)
@@ -127,6 +129,8 @@ def test_s2_central_two_version_scenario(tmp_path, monkeypatch):
     Both worlds coexist in ONE v2 store; the KB-C-equal closure-shared
     state of untouched TUs is reused; each world finalized 'active'."""
     monkeypatch.setenv("FW_CONTEXT_SHADOW_V2", "1")
+    from slice2_helpers import set_v2_authority_island
+    set_v2_authority_island(monkeypatch)   # both worlds finalize 'active'
     data = make_git_project(tmp_path)
     proj: Path = data["proj"]
     _init_project_id(proj)
@@ -188,6 +192,8 @@ def test_s2_central_two_version_scenario(tmp_path, monkeypatch):
 def test_s2_central_scenario_metrics_recorded(tmp_path, monkeypatch):
     """§40 counters land in slice2_run_metrics for each shadow run."""
     monkeypatch.setenv("FW_CONTEXT_SHADOW_V2", "1")
+    from slice2_helpers import set_v2_authority_island
+    set_v2_authority_island(monkeypatch)   # metrics live in the finalize block
     data = make_project(tmp_path)
     proj: Path = data["proj"]
     _init_project_id(proj)

@@ -126,3 +126,24 @@ def counts(v2_path: Path) -> dict:
         "bindings": len(binding_table(v2_path)),
         "states": len(state_table(v2_path)),
     }
+
+
+def set_v2_authority_island(monkeypatch) -> None:
+    """Restore the v2 write-authority contract the runner-level oracles pin.
+
+    M5 retired v2 from normal operation (session defaults: v2 write
+    authority 0, M6 write authority 1), so the runner no longer finalizes
+    the run's world and writes no §40 metrics.  The slice-2/3/4A runner
+    oracles pin finalize-to-active and the metrics, so they run inside an
+    explicit island: v2 write authority ON, M6 write authority OFF.
+    monkeypatch restores both at teardown; the flag caches reset because
+    the fixture that yielded may already have filled them.
+    """
+    monkeypatch.setenv("FW_CONTEXT_V2_WRITE_AUTHORITY", "1")
+    monkeypatch.setenv("FW_CONTEXT_M6_WRITE_AUTHORITY", "0")
+    from fw_context_mcp.indexer import _unit_processor as _UP
+    from fw_context_mcp.store_v2 import certify as C
+
+    _UP._reset_v2_flag_cache()
+    _UP._reset_v2_write_authority_cache()
+    C.reset_flag_cache()

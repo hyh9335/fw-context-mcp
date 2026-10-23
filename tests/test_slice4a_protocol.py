@@ -531,7 +531,9 @@ def test_t17_a6_libclang_change(proj_env, parse_count, monkeypatch, _v2_flags):
 
 # ── T20: idempotent replay — consecutive hits stay bound_existing ─────────────
 
-def test_t20_idempotent_replay(proj_env, parse_count, _v2_flags):
+def test_t20_idempotent_replay(proj_env, parse_count, _v2_flags, monkeypatch):
+    from slice2_helpers import set_v2_authority_island
+    set_v2_authority_island(monkeypatch)   # §40 metrics live in the finalize block
     from slice2_helpers import binding_table, counts, metric_rows
     proj, db_path, v2 = proj_env["proj"], proj_env["db_path"], proj_env["v2"]
     _run(proj, proj_env["pid"], db_path)
@@ -599,7 +601,9 @@ def test_t21_mixed_run(proj_env, parse_count, _v2_flags):
 
 # ── T22: QueryView unaffected by fast-path binds ──────────────────────────────
 
-def test_t22_query_view_after_hits(proj_env, parse_count, _v2_flags):
+def test_t22_query_view_after_hits(proj_env, parse_count, _v2_flags, monkeypatch):
+    from slice2_helpers import set_v2_authority_island
+    set_v2_authority_island(monkeypatch)   # the queried world must be 'active'
     from fw_context_mcp.store_v2.query import (diagnose_world,
                                                open_query_connection,
                                                resolve_query_view)

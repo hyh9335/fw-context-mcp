@@ -109,6 +109,8 @@ def _metric_row(v2: Path, run_id: str) -> dict:
 
 
 def test_central_benchmark_100tu(tmp_path, monkeypatch, _v2_flags):
+    from slice2_helpers import set_v2_authority_island
+    set_v2_authority_island(monkeypatch)   # fast_hits metrics need the finalize block
     calls = {"n": 0}
     real = _symbols.extract_all
 

@@ -56,8 +56,16 @@ def central(tmp_path_factory):
     from fw_context_mcp.indexer import _unit_processor as _UP
     from fw_context_mcp.store_v2 import certify as C
     old = os.environ.get("FW_CONTEXT_SHADOW_V2")
+    old_auth = os.environ.get("FW_CONTEXT_V2_WRITE_AUTHORITY")
+    old_m6 = os.environ.get("FW_CONTEXT_M6_WRITE_AUTHORITY")
     os.environ["FW_CONTEXT_SHADOW_V2"] = "1"
+    # Authority island: the runner-level oracles pin finalize-to-active and
+    # the §40 metrics, which the runner writes only when v2 write authority
+    # is on (M5 retired v2 from normal operation — M6 is authoritative).
+    os.environ["FW_CONTEXT_V2_WRITE_AUTHORITY"] = "1"
+    os.environ["FW_CONTEXT_M6_WRITE_AUTHORITY"] = "0"
     _UP._reset_v2_flag_cache()
+    _UP._reset_v2_write_authority_cache()
     C.reset_flag_cache()
     try:
         data = make_multi_tu_git_project(tmp)
@@ -80,7 +88,16 @@ def central(tmp_path_factory):
             os.environ.pop("FW_CONTEXT_SHADOW_V2", None)
         else:
             os.environ["FW_CONTEXT_SHADOW_V2"] = old
+        if old_auth is None:
+            os.environ.pop("FW_CONTEXT_V2_WRITE_AUTHORITY", None)
+        else:
+            os.environ["FW_CONTEXT_V2_WRITE_AUTHORITY"] = old_auth
+        if old_m6 is None:
+            os.environ.pop("FW_CONTEXT_M6_WRITE_AUTHORITY", None)
+        else:
+            os.environ["FW_CONTEXT_M6_WRITE_AUTHORITY"] = old_m6
         _UP._reset_v2_flag_cache()
+        _UP._reset_v2_write_authority_cache()
         C.reset_flag_cache()
     conn = open_q(v2)
     rows = conn.execute(
