@@ -81,6 +81,7 @@ limits:
   `get_source` gives the current text from the DISK, which holds every
   branch. It sets `source_origin: "disk"` and a `stale_warning`. Read both
   before you cite such a body.
+  get_source and get_symbol_context set a stale_warning.
 - An empty result can mean "the pattern is only in a dead branch". That is
   an answer, not a failure — the code does not compile.
 - A file can come back with every line blank. `read_file` marks it with
@@ -124,7 +125,9 @@ manual exploration before calling the skill.
 Your project has TWO kinds of code:
   • Application code: `src/`, `lib/` — YOUR team's code.
   • Vendor SDK: `mbed-os/`, `.pio/`, `zephyr/` — framework code.
-Set `project_only=True` for questions about YOUR code.
+Set `project_only=True` for questions about YOUR code. The parameter is on
+`search_code`, `search_bodies`, `search_content`, `find_dead_code` and
+`find_hotspots`.
 Leave `project_only=False` (default) when vendor code is relevant.
 
 ### A question about a DIFFERENT project
@@ -137,6 +140,8 @@ operator asked about.
    `root_path` of each indexed project.
 2. Give `project="<name>"` (or `project_root="<root_path>"`) to EVERY
    call that follows, `get_active_build` included.
+   A name that several projects share gives an error that lists each one
+   with its project_id. Repeat the call with that project_id.
 
 Do not invent other parameter names. An unknown argument causes an error
 that names it.
@@ -229,11 +234,14 @@ The schema of each tool is in the tool list — read it there. Three names
 cover almost every tool:
 
 - `name` — the symbol. NOT `symbol`, NOT `symbol_name`.
+  Exceptions: `find_call_path` (from_name, to_name), `trace_data_flow`
+  (type_name, to_symbol), `find_wrapper_callers` and the inheritance
+  tools (class_name, method_name, template_name).
 - `file_path` — the file (`read_file`, `get_file_map`).
 - `query` — the search terms (every search tool).
 
 No tool takes a filler argument. `get_active_build` accepts only
-`project_root` and `fast`. When a call fails on an argument, drop that
+`project`, `project_root` and `fast`. When a call fails on an argument, drop that
 argument and REPEAT the call — never continue without the answer, and
 never skip `get_active_build`.
 
@@ -415,7 +423,10 @@ find_dead_code, find_wrapper_callers, trace_data_flow, get_vector_table,
 find_indirect_call_sites, find_indirect_targets.
 Inheritance: get_inheritance_chain, get_class_members,
 get_template_instances, get_method_overrides.
-Maintenance: get_active_build, get_project_status, get_build_info, check_dependencies,
+Conditional compilation: explain_condition, list_conditional_regions.
+Variants: compare_variants, group_equivalent_variants.
+Maintenance: get_active_build, get_environment_status, get_project_status, get_build_info,
+get_build_health, check_dependencies, list_variants,
 list_projects, get_project_info, check_ollama, configure_llm, reindex_file, reset_index.
 
 Individual tool descriptions are in the MCP tool listings —

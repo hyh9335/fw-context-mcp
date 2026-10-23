@@ -47,16 +47,25 @@ def _registered_tools() -> list[tuple[str, str]]:
             and inner.func.attr == "tool"
         ):
             continue
-        target = node.args[0]
-        # Remove each wrapper call until the handler stays.  A loop, not one
-        # test: the wrappers are nested, and a single step would silently
-        # drop every tool as soon as a second wrapper is added.
-        while isinstance(target, ast.Call) and target.args:
-            target = target.args[0]
-        if isinstance(target, ast.Call):
+        # Remove each wrapper call until a handler reference stays.  The
+        # wrappers are nested; since the M6 authority routing a route call
+        # takes the tool NAME first and the handler in a LATER argument
+        # (``m6_authority_route("name", v2_authority_route("name", mod.fn,
+        # shadow), m6_fn)``), every argument of every wrapper level is a
+        # candidate — breadth-first over the call tree, first reference wins.
+        frontier = [node.args[0]]
+        handler = None
+        while frontier and handler is None:
+            cur = frontier.pop(0)
+            if (isinstance(cur, ast.Attribute)
+                    and isinstance(cur.value, ast.Name)):
+                handler = cur
+            elif isinstance(cur, ast.Call):
+                frontier.extend(cur.args)
+                frontier.extend(kw.value for kw in cur.keywords)
+        if handler is None:
             continue
-        if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
-            found.append((target.value.id, target.attr))
+        found.append((handler.value.id, handler.attr))
     return sorted(set(found))
 
 

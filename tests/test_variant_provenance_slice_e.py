@@ -50,6 +50,8 @@ touched.
 
 from __future__ import annotations
 
+import os
+
 import json
 import shutil
 import sqlite3
@@ -161,9 +163,25 @@ def three_build(tmp_path_factory) -> dict:
     root = tmp_path_factory.mktemp("f04_root")
     index_dir = tmp_path_factory.mktemp("f04_index")
     _write_fixture(root, index_dir)
-    hashes = {}
-    for label, args in (("A", []), ("B", ["-DIMPL_B=1"]), ("C", ["-DUNRELATED=123"])):
-        hashes[label] = _run_build(root, _cc_for_variant(root, args), index_dir, label)
+    # M5 v2-only mode writes no legacy index.db; this fixture's assertions
+    # read through the legacy handlers, so run the writer in the explicit
+    # default-OFF compatibility island (§41) for these three builds.
+    from fw_context_mcp.indexer._unit_processor import (
+        _reset_legacy_compat_cache,
+    )
+    old_compat = os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE")
+    os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = "1"
+    _reset_legacy_compat_cache()
+    try:
+        hashes = {}
+        for label, args in (("A", []), ("B", ["-DIMPL_B=1"]), ("C", ["-DUNRELATED=123"])):
+            hashes[label] = _run_build(root, _cc_for_variant(root, args), index_dir, label)
+    finally:
+        if old_compat is None:
+            os.environ.pop("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE", None)
+        else:
+            os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = old_compat
+        _reset_legacy_compat_cache()
     return {
         "root": root,
         "index_dir": index_dir,

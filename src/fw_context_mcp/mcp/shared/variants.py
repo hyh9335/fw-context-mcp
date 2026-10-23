@@ -406,12 +406,13 @@ def run_scoped_query(
     variant: str = "",
     image: str = "",
 ) -> list[dict]:
-    """Resolve ``(variant, image)`` and run ``query_fn(conn, config_hash)``.
+    """Resolve ``(variant, image)`` and run ``query_fn(conn, config_hash)`` per scope.
 
-    ``resolve_build`` answers with one build, thus the result is the output
-    of that one build with no annotation.  Fail-closed: a resolution error is
-    returned as a single ``{"error": …}`` dict, which names what the caller
-    must choose.  A project with no indexed build gives an empty list.
+    Single-scope results are bit-identical to today's single-build output
+    (no annotation).  Multi-scope results merge per-build outputs, annotating
+    each record with its resolved ``variant``/``image``.  Fail-closed: a
+    resolution error is returned as a single ``{"error": …}`` dict.
+    ``variant="*"`` fans out to every completed build (``resolve_scopes``).
     """
     from ...config import derive_project_id
     from ...config import load as load_config
@@ -422,14 +423,28 @@ def run_scoped_query(
     cfg = load_config(root)
     conn = _quick_open_readonly(db_path)
     try:
-        config_hash, err = resolve_build(conn, project_id, cfg, variant or "", image or "")
+        scopes, _multi, err = resolve_scopes(conn, project_id, cfg, variant or "", image or "")
     finally:
         conn.close()
     if err:
         return [{"error": err}]
-    if config_hash is None:
-        return []
-    return _with_stale_recovery(root, db_path, query_fn, config_hash=config_hash)
+    if len(scopes) == 1:
+        return _with_stale_recovery(root, db_path, query_fn, config_hash=scopes[0]["config_hash"])
+
+    merged: list[dict] = []
+    for scope in scopes:
+        part = _with_stale_recovery(root, db_path, query_fn, config_hash=scope["config_hash"])
+        for r in part:
+            if isinstance(r, dict) and "error" not in r and "warning" not in r:
+                r = dict(r)
+                r["variant"] = scope["variant"]
+                r["image"] = scope["image"]
+                # Which BUILD produced the record — with same-second
+                # created_at ties the variant label alone is ambiguous
+                # (T04 probe evidence), the hash is not.
+                r["config_hash"] = scope["config_hash"]
+            merged.append(r)
+    return merged
 
 
 def resolve_scopes(

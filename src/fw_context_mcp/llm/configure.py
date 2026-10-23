@@ -77,6 +77,26 @@ def configure_llm_core(
             "API proxy."
         )
 
+    # Snapshot local.toml BEFORE the first write: a read-back failure then
+    # restores it — an unusable model must not stay in local.toml for the
+    # next call to test against.
+    local_toml = project_root / ".fw-context" / "local.toml"
+    previous = local_toml.read_bytes() if local_toml.is_file() else None
+
+    def _roll_back() -> str:
+        """Put the previous settings back.  Gives a note for the message."""
+        try:
+            if previous is None:
+                local_toml.unlink(missing_ok=True)
+            else:
+                local_toml.write_bytes(previous)
+        except OSError as exc:
+            return (
+                f" The previous settings could NOT be restored ({exc}) — "
+                f"read {local_toml} before the next call."
+            )
+        return " The previous settings are back; nothing was changed."
+
     try:
         _update_local_toml(project_root, updates, clear_keys=clear_keys)
     except Exception as e:

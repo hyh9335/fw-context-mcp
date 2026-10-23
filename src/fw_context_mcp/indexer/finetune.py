@@ -190,6 +190,13 @@ def mine_disagreements(
     t0 = time.monotonic()
     result = MiningResult()
 
+    if not db_path.is_file():
+        # sqlite3.connect would CREATE an empty db here and the first
+        # schema query would then die on the missing table; mining on a
+        # project that was never indexed is simply an empty result.
+        log.warning("Database %s does not exist — skipping mining", db_path)
+        return result
+
     try:
         import sqlite_vec
         conn = sqlite3.connect(str(db_path))
@@ -289,6 +296,11 @@ def mine_disagreements(
             "Mined %d triples from %d queries (skipped %d) in %.1fs",
             result.disagreements_found, len(queries), skipped, result.elapsed_s,
         )
+        return result
+    except sqlite3.OperationalError as e:
+        # A half-initialized or foreign db must not crash mining — the
+        # caller reads an empty MiningResult as "nothing to train on".
+        log.error("Mining query failed on %s: %s", db_path, e)
         return result
     finally:
         conn.close()

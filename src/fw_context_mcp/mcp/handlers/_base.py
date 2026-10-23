@@ -107,8 +107,13 @@ class DbContext:
             )
             if isinstance(part, list):
                 for r in part:
-                    if isinstance(r, dict) and set(r) == {"warning"}:
-                        notices.append(r["warning"])
+                    if (isinstance(r, dict) and "warning" in r
+                            and set(r) <= {"warning", "stale", "unindexed_sources"}):
+                        # A leading notice of annotate_stale (its shape is
+                        # {"warning", "stale"[, "unindexed_sources"]}) —
+                        # collect the text; identical notices across scopes
+                        # collapse below.
+                        notices.append((r["warning"], "stale" in r))
                         continue
                     if isinstance(r, dict) and "error" not in r and "warning" not in r:
                         r = dict(r)
@@ -128,7 +133,10 @@ class DbContext:
             else:
                 merged.append(part)
         if notices:
-            merged[:0] = [{"warning": w} for w in dict.fromkeys(notices)]
+            merged[:0] = [
+                {"warning": w, **({"stale": True} if s else {})}
+                for (w, s) in dict.fromkeys(notices)
+            ]
         return merged
 
     def fan_out_records(self, impl, **kwargs) -> list:

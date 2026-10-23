@@ -69,6 +69,10 @@ def test_the_check_of_the_embedding_model_names_the_server(monkeypatch, linux):
     from fw_context_mcp.deps._checks import check_ollama_embed_model
 
     monkeypatch.setattr(httpx, "get", lambda url, timeout: _Tags([]))
+    # check_ollama_embed_model probes through the platform factory
+    # (_diag.check_setup, NEW-W1-1): patch that seam too.
+    monkeypatch.setattr("fw_context_mcp.platform.http_get",
+                        lambda url, **kwargs: _Tags([]))
 
     result = check_ollama_embed_model(_cfg())
 
@@ -97,6 +101,8 @@ def test_a_stalled_pull_names_the_server(monkeypatch):
         raise httpx.ReadTimeout("no bytes")
 
     monkeypatch.setattr(httpx, "stream", _stalls)
+    # _pull_via_api streams through the platform factory (NEW-W1-1).
+    monkeypatch.setattr("fw_context_mcp.platform.http_stream", _stalls)
 
     ok, message = _fixes._pull_via_api("emb:1", REMOTE)
 

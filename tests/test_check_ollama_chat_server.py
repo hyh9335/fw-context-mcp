@@ -55,6 +55,9 @@ def servers(monkeypatch):
         return _Tags(known[server])
 
     monkeypatch.setattr(httpx, "get", _get)
+    # _diag.check_setup probes through the platform factory (NEW-W1-1):
+    # patch that seam too, or the _diag checks reach the real network.
+    monkeypatch.setattr("fw_context_mcp.platform.http_get", _get)
     monkeypatch.setattr(sys, "platform", "linux")
     return known
 

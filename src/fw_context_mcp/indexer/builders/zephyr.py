@@ -750,7 +750,8 @@ class ZephyrBuildSystem:
             if not path.is_file():
                 return
             # Same marker resolve_real_binary() uses — pyenv and asdf share it.
-            is_shim = "/shims/" in literal
+            # as_posix() so the marker fires on Windows backslash paths too.
+            is_shim = "/shims/" in Path(literal).as_posix()
             # A non-shim candidate is deduplicated by its REAL path.
             # /usr/bin/nrfutil and /bin/nrfutil are one binary behind a
             # symlink, and keyed by the literal string they passed as two —

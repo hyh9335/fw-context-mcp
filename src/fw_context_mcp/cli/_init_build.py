@@ -159,6 +159,17 @@ def _auto_build_if_possible(
         print(f"  [ok] compile_commands.json already exists ({_count_cc_entries(cc)} entries)")
         return True, cc, None
 
+    # A user/CI database that the config names must not be replaced by a
+    # build: a build of fw-context writes another file, so init would
+    # create a database the index does not read.  Same rule as
+    # `fw-context index` (cli/_index.py) — one decision, user_database().
+    from ..indexer.build import user_database
+    if user_database(project_root, cfg) is not None:
+        return False, None, (
+            f"{cc} not found — [index] compile_commands names it. "
+            "Make the file, or remove the key to index the build of fw-context."
+        )
+
     print("  [build] Generating compile_commands.json...")
     try:
         result_path = generate_compile_commands(project_root, cfg.build)

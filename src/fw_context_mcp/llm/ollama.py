@@ -475,6 +475,9 @@ def call_ollama(
         raise OllamaError(str(e)) from e
 
 
+from ..platform import http_client
+
+
 def _call_ollama_embed_impl(
     inputs: list[str], cfg: LLMConfig, *, query: bool = True, embedder: OllamaEmbedder | None = None
 ) -> list[list[float]]:
@@ -522,8 +525,8 @@ def _call_ollama_embed_impl(
     }
     t0 = time.monotonic()
     try:
-        with ollama_guard():
-            resp = httpx.post(url, json=payload, timeout=cfg.timeout * 2)
+        with ollama_guard(), http_client() as client:
+            resp = client.post(url, json=payload, timeout=cfg.timeout * 2)
         resp.raise_for_status()
         embeddings = resp.json()["embeddings"]
         if embedder is not None:
@@ -546,8 +549,8 @@ def _call_ollama_embed_impl(
                 log.info("Embedding model '%s' not found, pulling...", cfg.embed_model)
                 _pull_model(cfg.embed_model, cfg.ollama_url)
                 try:
-                    with ollama_guard():
-                        resp = httpx.post(url, json=payload, timeout=cfg.timeout * 2)
+                    with ollama_guard(), http_client() as client:
+                        resp = client.post(url, json=payload, timeout=cfg.timeout * 2)
                     resp.raise_for_status()
                     embeddings = resp.json()["embeddings"]
                     if embedder is not None:
@@ -579,7 +582,8 @@ def _call_ollama_embed_impl(
         ) from e
     except httpx.TimeoutException:
         raise OllamaError("Ollama embed request timed out") from None
-    except (httpx.HTTPError, OSError, KeyError, json.JSONDecodeError, ValueError) as e:
+    except (httpx.HTTPError, httpx.InvalidURL, OSError, KeyError,
+            json.JSONDecodeError, ValueError) as e:
         raise OllamaError(str(e)) from e
 
 

@@ -83,10 +83,29 @@ class TestEmbedRetryConnectError:
             timeout=0.5,
         )
 
-    def test_connect_error_raises_ollama_error(self, dead_cfg):
-        """ConnectionRefusedError during embed must be wrapped in OllamaError."""
+    def test_connect_error_raises_ollama_error(self, dead_cfg, monkeypatch):
+        """ConnectionRefusedError during embed must be wrapped in OllamaError.
+
+        The transport is faked (a context-manager client whose ``post``
+        refuses) — a real dead port made the message host-dependent and
+        this host's :19999 answers with a reset instead of a refusal.
+        """
+        from fw_context_mcp.llm import ollama as ollama_mod
         from fw_context_mcp.llm.ollama import OllamaEmbedder, OllamaError
 
+        class _RefusingClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def post(self, *a, **kw):
+                raise ConnectionRefusedError(10061, "No connection could be made")
+
+        monkeypatch.setattr(
+            ollama_mod, "http_client", lambda **kw: _RefusingClient()
+        )
         embedder = OllamaEmbedder(dead_cfg)
         with pytest.raises(OllamaError, match="(?:connect|Ollama)"):
             embedder.embed_documents(["test document text"])

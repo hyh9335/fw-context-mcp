@@ -68,6 +68,8 @@ def lookup_symbol(
         project_root: Project directory. Auto-detected if omitted.
         exact: True = exact name match, False = prefix LIKE match (default).
         limit: Maximum results (default 50).
+        offset: Skip this many results. Reads the next page of a name
+            with many matches; the page notice names the offset to use.
         variant: Build variant (multi-project). Omit for the default
             variant, ``"*"`` for all.
         image: Sysbuild image in the variant. Omit for all images.

@@ -14,6 +14,7 @@ The run now gives up and the work is retried from a fresh snapshot.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,12 +32,35 @@ class TestSupersededGuard:
         raise_if_superseded(tmp_path)
 
     def test_a_live_foreign_marker_aborts_the_run(self, tmp_path: Path):
-        """PID 1 is always alive and is never us."""
-        (tmp_path / "reindex.pause").write_text("1", encoding="utf-8")
+        """A LIVE foreign process's marker aborts the run.
 
-        with pytest.raises(IndexSuperseded) as exc:
-            raise_if_superseded(tmp_path)
-        assert "pid 1" in str(exc.value)
+        The pid must be alive on THIS platform: POSIX pid 1 (init) is not a
+        process on Windows, so a real sleeping interpreter stands in for
+        the foreign owner.
+        """
+        import subprocess
+        import time
+
+        from fw_context_mcp.mcp.shared.pid_file import PidFile
+
+        foreign = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            deadline = time.monotonic() + 5
+            while not PidFile._pid_exists(foreign.pid):
+                assert time.monotonic() < deadline, "foreign pid never came alive"
+                time.sleep(0.05)
+            (tmp_path / "reindex.pause").write_text(
+                str(foreign.pid), encoding="utf-8")
+
+            with pytest.raises(IndexSuperseded) as exc:
+                raise_if_superseded(tmp_path)
+            assert f"pid {foreign.pid}" in str(exc.value)
+        finally:
+            foreign.terminate()
+            foreign.wait(timeout=10)
 
     def test_our_own_marker_is_ignored(self, tmp_path: Path):
         """A foreground index writes the marker to stop the daemon, not itself."""

@@ -1,6 +1,8 @@
 """Tests for build artifact validator."""
 
 import json
+import os
+import time
 from pathlib import Path
 
 from fw_context_mcp.indexer.validator import is_compile_commands_stale, validate_and_fix
@@ -50,9 +52,12 @@ class TestIsCompileCommandsStale:
                 ]
             )
         )
-        # Make platformio.ini newer than compile_commands.json
+        # Make platformio.ini STRICTLY newer than compile_commands.json:
+        # backdate cc first — two writes inside one mtime tick compare
+        # equal and the strict > staleness check never fires.
+        old = time.time() - 3600
+        os.utime(cc, (old, old))
         pio_ini.write_text("[env:uno]\n")
-        # Touch pio_ini after cc
         pio_ini.touch()
         stale, reasons = is_compile_commands_stale(cc, tmp_path)
         assert stale is True

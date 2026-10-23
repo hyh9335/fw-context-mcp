@@ -3195,7 +3195,10 @@ def _with_project(command: str, root: Path) -> str:
     if not command.startswith("fw-context doctor"):
         return command
     if sys.platform == "win32":
-        quoted = "'" + str(root).replace("'", "''") + "'"
+        # Operator-facing command: forward slashes (the adjudicated form —
+        # a PowerShell single-quoted string keeps them, and every other
+        # generated command uses them too).
+        quoted = "'" + root.as_posix().replace("'", "''") + "'"
     else:
         quoted = shlex.quote(str(root))
     return f"{command} --project {quoted}"

@@ -29,7 +29,7 @@ def test_the_doctor_command_names_the_project(tmp_path, monkeypatch):
     rows = {row["name"]: row for row in check_dependencies(project_root=str(root))}
 
     assert rows["config"]["action"]["command"] == (
-        f"fw-context doctor --fix --only config --project {shlex.quote(str(root))}"
+        f"fw-context doctor --fix --only config --project {shlex.quote(root.as_posix())}"
     )
 
 

@@ -269,6 +269,10 @@ def search_code(
         project_root: Project root directory. Auto-detected from CWD if omitted.
         kind: Optional filter to return only symbols of this kind.
         limit: Maximum results of one page (default 20, max 100).
+        mode: Which text the results come from: ``active`` (the lines the
+            active build compiles — default), ``directives`` (the
+            preprocessor lines: ``#define``/``#include``/``#if``) or
+            ``raw`` (every line of the file on disk, no ifdef filter).
         offset: Skip this many results. Reads the next page of a topic
             that many symbols carry; the page notice names the offset to
             use.  One relaxation step owns the whole answer, thus a walk
@@ -1476,6 +1480,10 @@ def search_content(
             E.g. ``'InterruptIn'``, ``'extern C'``, ``'#define'``.
         project_root: Project root. Auto-detected if omitted.
         limit: Maximum results of one page (default 20, max 100).
+        mode: Which text the results come from: ``active`` (the lines the
+            active build compiles — default), ``directives`` (the
+            preprocessor lines: ``#define``/``#include``/``#if``) or
+            ``raw`` (every line of the file on disk, no ifdef filter).
         offset: Skip this many results. Reads the next page of a topic
             that many files touch; the page notice names the offset to use.
         project_only: When True, filter to project code only (files with is_project = 1).

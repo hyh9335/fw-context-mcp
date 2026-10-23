@@ -32,6 +32,10 @@ def _answer(monkeypatch, response: httpx.Response) -> None:
         return response
 
     monkeypatch.setattr(httpx, "get", fake_get)
+    # _diag.check_setup probes through the platform factory (NEW-W1-1):
+    # patch that seam too, or the _diag parametrizations reach the real
+    # network and answer "Ollama is not running".
+    monkeypatch.setattr("fw_context_mcp.platform.http_get", fake_get)
 
 
 @pytest.mark.parametrize("answer", sorted(ANSWERS))

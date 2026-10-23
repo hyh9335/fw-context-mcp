@@ -21,6 +21,21 @@ _HEAD_PATHS: dict[str, tuple[Path | None, float]] = {}
 _REBASE_DIRS = ("rebase-merge", "rebase-apply")
 _NO_GIT_RECHECK_S = 60.0
 
+
+def _has_git_tree(project_root: Path) -> bool:
+    """True when *project_root* or an ancestor holds ``.git``.
+
+    A pure-Python check that spawns nothing: a project outside any git
+    tree can have no HEAD, so the git queries below return without
+    starting a subprocess at all.  ``git rev-parse`` remains the authority
+    when a ``.git`` exists (worktrees, submodules, ``.git`` files).
+    """
+    root = project_root.resolve()
+    for candidate in (root, *root.parents):
+        if (candidate / ".git").exists():
+            return True
+    return False
+
 # Hard-coded UTF-8 — git outputs UTF-8 on all modern platforms regardless of
 # locale, and branch/tag names can contain Unicode characters.
 _GIT_ENCODING = "utf-8"
@@ -211,6 +226,13 @@ def head_path(project_root: Path) -> Path | None:
             return path
         if path is None and now - when < _NO_GIT_RECHECK_S:
             return None
+    if not _has_git_tree(root):
+        # No `.git` on any ancestor: no HEAD can exist.  Record the negative
+        # answer in the same cache as a failed `git rev-parse` — a later
+        # `git init` inside the recheck window still reads the cached one,
+        # and past the window the walk runs again and sees the tree.
+        _HEAD_PATHS[key] = (None, now)
+        return None
     try:
         out = subprocess.check_output(
             ["git", "rev-parse", "--git-path", "HEAD"],

@@ -426,7 +426,7 @@ def test_wire_indirect_targets_preserves_db_note(mv_fixture, monkeypatch):
     must reach the WIRE verbatim (not only the direct handler call that
     SLICE-H already proved)."""
     result = wire_call("find_indirect_targets", {
-        "name": "slot", "project_root": str(mv_fixture)})
+        "name": "slot", "variant": "*", "project_root": str(mv_fixture)})
     assert result.isError is not True, (
         f"find_indirect_targets failed: {result.content[0].text[:300]}")
     body = wire_body(result)

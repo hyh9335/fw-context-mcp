@@ -72,6 +72,8 @@ def servers(monkeypatch):
         return answer if isinstance(answer, _Html) else _Tags(answer)
 
     monkeypatch.setattr(httpx, "get", _get)
+    # _diag.check_setup probes through the platform factory (NEW-W1-1).
+    monkeypatch.setattr("fw_context_mcp.platform.http_get", _get)
     return known
 
 

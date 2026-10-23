@@ -77,6 +77,12 @@ def _health(conn, root: Path, tmp_path: Path, image: str, run_state: str | None 
 def test_latest_builds_gives_one_row_for_each_pair(tmp_path):
     conn, _ = _index(tmp_path)
     with transaction(conn):
+        # created_at has second granularity and the tie-break is the
+        # deterministic config_hash (the wave removed the rowid-dependent
+        # one), so "newest" must come from the clock, not from insertion
+        # order: backdate the predecessor before adding the new build.
+        conn.execute("UPDATE build_configs SET created_at = datetime('now', '-1 hour') "
+                     "WHERE config_hash = 'h-app'")
         upsert_build_config(conn, "h-app-2", "pid", "/x.json", variant="v", image="app")
     rows = latest_builds(conn, "pid")
 
