@@ -1,5 +1,6 @@
 """Tests for fw_context_mcp.indexer.config_hash."""
 
+import os
 from pathlib import Path
 
 from fw_context_mcp.indexer.config_hash import _normalize_entry
@@ -88,6 +89,19 @@ def _cfg_hash(units: list[_FakeUnit]) -> str:
     return compute_config_hash(units, _ROOT, "projid", None)
 
 
+def _outside(path: str) -> str:
+    """Anchor a POSIX-style toolchain path to a drive when the platform needs one.
+
+    '/opt/...' has no drive on Windows, and an include path that is not
+    absolute is filed as per-unit state and dropped — the toolchain tests
+    would compare two empty intersection sets.  The intent is 'outside the
+    project tree', so make the path absolute ON THIS PLATFORM.
+    """
+    if os.name == "nt" and not Path(path).is_absolute():
+        return "C:" + path
+    return path
+
+
 class TestConfigHashIdentity:
     """config_hash identifies the compilation DIALECT, not the file set.
 
@@ -172,8 +186,8 @@ class TestConfigHashIdentity:
         Two toolchains must map to two config_hash values.  Rows parsed
         against different system headers cannot share one build.
         """
-        base = [_FakeUnit("/tmp/proj/src/main.c", ["-DFOO=1", "-I/opt/gcc-9/include"])]
-        moved = [_FakeUnit("/tmp/proj/src/main.c", ["-DFOO=1", "-I/opt/gcc-13/include"])]
+        base = [_FakeUnit("/tmp/proj/src/main.c", ["-DFOO=1", "-I" + _outside("/opt/gcc-9/include")])]
+        moved = [_FakeUnit("/tmp/proj/src/main.c", ["-DFOO=1", "-I" + _outside("/opt/gcc-13/include")])]
         assert _cfg_hash(moved) != _cfg_hash(base)
 
     def test_a_separated_sysroot_is_kept(self):
@@ -217,8 +231,8 @@ class TestConfigHashIdentity:
             _FakeUnit("/tmp/proj/src/b.c", ["-DFOO=1"]),
         ]
         with_sdk = [
-            _FakeUnit("/tmp/proj/src/a.c", ["-DFOO=1", "-I/opt/sdk/include"]),
-            _FakeUnit("/tmp/proj/src/b.c", ["-DFOO=1", "-I/opt/sdk/include"]),
+            _FakeUnit("/tmp/proj/src/a.c", ["-DFOO=1", "-I" + _outside("/opt/sdk/include")]),
+            _FakeUnit("/tmp/proj/src/b.c", ["-DFOO=1", "-I" + _outside("/opt/sdk/include")]),
         ]
         assert _cfg_hash(with_sdk) != _cfg_hash(without)
 

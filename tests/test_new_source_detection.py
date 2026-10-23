@@ -387,7 +387,11 @@ def _git_project(tmp_path: Path, *, gitignore: str = "") -> tuple[Path, Path]:
     cc = root / "compile_commands.json"
     cc.write_text("[]", encoding="utf-8")
 
-    for cmd in (["init", "-q"], ["add", "-A"]):
+    # -c gc.auto=0 -c maintenance.auto=false: `git add` may fork a detached
+    # `git maintenance run --auto` on Windows; the background process keeps
+    # loose objects open and rmtree(.git) then fails with WinError 5 for as
+    # long as it runs.
+    for cmd in (["init", "-q"], ["-c", "gc.auto=0", "-c", "maintenance.auto=false", "add", "-A"]):
         subprocess.run(["git", "-C", str(root), *cmd], check=True,
                        capture_output=True, timeout=30)
 
@@ -500,7 +504,16 @@ class TestGitCandidates:
         from fw_context_mcp.mcp.shared.stale import find_unindexed_sources
 
         root, cc = _git_project(tmp_path)
-        shutil.rmtree(root / ".git")
+        # The loose objects `git add` writes are mode 444, and os.unlink of
+        # a read-only file fails with WinError 5 — clear the bit and retry
+        # (the standard Windows git cleanup).
+        import stat
+
+        def _force_remove(func, path, _exc):
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+
+        shutil.rmtree(root / ".git", onerror=_force_remove)
         (root / "src" / "new.c").write_text("void n(void){}\n", encoding="utf-8")
 
         conn = open_db(tmp_path / "index.db")
@@ -669,7 +682,7 @@ class TestEveryUncoveredFileIsRecorded:
         # A project id the config resolver can find, pointing at our database.
         (root / ".fw-context").mkdir(exist_ok=True)
         (root / ".fw-context" / "config.toml").write_text(
-            f'[project]\nid = "pid"\n\n[build]\n\n[index]\ndb_dir = "{db_path.parent}"\n',
+            f'[project]\nid = "pid"\n\n[build]\n\n[index]\ndb_dir = "{db_path.parent.as_posix()}"\n',
             encoding="utf-8",
         )
         target = db_path.parent / "pid" / "index.db"

@@ -16,6 +16,7 @@ fail while a ``--force`` comparison still passes.
 """
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -49,13 +50,93 @@ def _index(proj: Path, *extra: str):
     )
 
 
+def _stop_watcher(db_dir: Path) -> None:
+    """Terminate the watcher daemon that the last index run spawned.
+
+    The daemon holds ``daemon.log`` open; without this the rmtree below
+    fails with WinError 32.  The pid marker is the JSON the daemon wrote
+    (``write_pid_marker``); a legacy bare-int pid is tolerated too.
+    """
+    import json
+    import signal
+    import subprocess
+
+    pid_file = db_dir / "watcher.pid"
+    if not pid_file.exists():
+        return
+    try:
+        text = pid_file.read_text(encoding="utf-8").strip()
+        payload = json.loads(text) if text.startswith("{") else {"pid": int(text)}
+        pid = int(payload["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                       capture_output=True, timeout=30)
+    else:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    _kill_daemons_for(db_dir)
+
+
+def _kill_daemons_for(proj: Path) -> None:
+    """Terminate the watcher daemon(s) spawned for *proj*.
+
+    The daemon's command line carries the project root
+    (``-m fw_context_mcp.mcp.daemon <root>``); on this host it holds
+    ``daemon.log`` open for its whole lifetime and its pid marker does not
+    land, so the command line is the reliable identity.  ``/T`` also stops
+    the daemon's ``index --background`` child.
+    """
+    import subprocess
+
+    if os.name != "nt":
+        return
+    listing = subprocess.run(
+        ["wmic", "process", "where", "name='python.exe'", "get", "ProcessId,CommandLine"],
+        capture_output=True, text=True, timeout=30,
+    )
+    for line in listing.stdout.splitlines():
+        if "fw_context_mcp.mcp.daemon" in line and str(proj) in line:
+            pid = line.strip().rsplit(" ", 1)[-1]
+            if pid.isdigit():
+                subprocess.run(["taskkill", "/F", "/T", "/PID", pid],
+                               capture_output=True, timeout=30)
+
+
 def _rebuild_from_scratch(proj: Path) -> Path:
     """Drop the database, index again, and return the new database path.
 
     An empty database cannot carry a stale row forward, which is what makes
     this side the reference the incremental result is measured against.
     """
-    shutil.rmtree(_db_path_for_project(proj).parent)
+    import time
+
+    db_dir = _db_path_for_project(proj).parent
+    _stop_watcher(db_dir)
+    for _attempt in range(5):
+        try:
+            shutil.rmtree(db_dir)
+            break
+        except PermissionError:
+            _kill_daemons_for(proj)
+            time.sleep(0.3 * (_attempt + 1))
+    else:
+        # The daemon's `index --background` child can hold the inherited
+        # log handle for minutes.  The log is not index state — drop every
+        # state file and tolerate a still-locked daemon.log.
+        try:
+            shutil.rmtree(db_dir)
+        except PermissionError:
+            for entry in db_dir.iterdir():
+                if entry.name == "daemon.log":
+                    continue
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
     result = _index(proj)
     assert result.returncode == 0, result.stderr
     db_path = _db_path_for_project(proj)

@@ -181,14 +181,15 @@ class TestEmbeddingPhaseDegrades:
         result: dict = {}
         try:
             # RED pre-fix: the same escape as the analysis phase.
-            _reindex_embeddings(conn, ch, cfg, db_path.parent, target, root, result)
+            _reindex_embeddings(conn, ch, cfg, db_path.parent, target, root, result,
+                             missing_before=frozenset())
         finally:
             conn.close()
         assert "embedding_warning" in result, (
             "an unreachable embedding backend must degrade the phase to "
             f"embedding_warning, got {result}"
         )
-        assert "Embedding regeneration skipped" in result["embedding_warning"]
+        assert "Embeddings not complete" in result["embedding_warning"]
 
 
 class TestDisabledLlmShortCircuits:
@@ -219,7 +220,8 @@ class TestDisabledLlmShortCircuits:
                                   project_root=root)
             r2: dict = {}
             _reindex_embeddings(conn, ch, cfg, db_path.parent,
-                                root / "c.c", root, r2)
+                                root / "c.c", root, r2,
+                                missing_before=frozenset())
         finally:
             conn.close()
         assert "analysis_warning" not in r1 and "analysis_updated" not in r1

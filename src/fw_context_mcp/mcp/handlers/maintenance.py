@@ -1860,6 +1860,8 @@ def _reindex_parse_and_store(
     ``symbols_updated``, ``elapsed_s``, and optionally ``skipped_tus``.
     """
     from ...indexer.compile_commands import CompilationUnit as TU
+    from ...indexer.context_identity import unit_identity_fields
+    from ...indexer.db import get_file_hashes_by_context
     from ...indexer.db import write_lock as db_write_lock
     from ...indexer.ops import store_symbols_for_unit
     from ...indexer.symbols import (
@@ -1869,6 +1871,14 @@ def _reindex_parse_and_store(
     from ..background import bg_reindex_pause
 
     config_hash = cfg_data["config_hash"]
+
+    # Staleness records per (path, context_id) — the same split the full
+    # index run uses.  The path-keyed view would let the first context's
+    # record falsely skip a second context's never-indexed command of the
+    # same file.
+    existing_by_context: dict[str, dict] = {}
+    for (path, ctx), rec in get_file_hashes_by_context(conn, config_hash).items():
+        existing_by_context.setdefault(ctx, {})[path] = rec
 
     # Phase 1: parse all matching TUs before acquiring the write lock.
     # Parsing is CPU-bound and does not touch the database — doing it
@@ -1909,6 +1919,13 @@ def _reindex_parse_and_store(
                 # their hashes are the ones of the text that the parse read.
                 unit_headers: list[list[dict] | None] = []
                 for unit, parsed in parsed_units:
+                    # ADR-001 identity of THIS compile action.  Without it
+                    # the rows land under the canonical context_id='',
+                    # a phantom that overwrites per-context rows and lets
+                    # the other context's stale rows survive.
+                    ctx_id = unit_identity_fields(
+                        unit, config_hash, root, entry_index=0
+                    )["context_id"]
                     with transaction(conn):
                         syms_added, _, headers = store_symbols_for_unit(
                             conn, unit, config_hash, root,
@@ -1916,6 +1933,8 @@ def _reindex_parse_and_store(
                             project_patterns=project_patterns_list,
                             index_refs=cfg_refs,
                             pre_parsed=parsed,
+                            existing_files=existing_by_context.get(ctx_id),
+                            context_id=ctx_id,
                         )
                         total_symbols += syms_added
                     unit_headers.append(headers)
@@ -2235,8 +2254,16 @@ def _reindex_pagerank(
         return
     try:
         from ...indexer.runner import _build_hotspot_cache, _build_pagerank
-        _build_pagerank(conn, config_hash, write_lock_held=False)
-        _build_hotspot_cache(conn, config_hash)
+        # force=True: the re-parse re-inserted its symbols with
+        # PageRank 0 while the other files' rows kept their scores —
+        # the "skip when scores exist" check would keep every
+        # changed function at 0.
+        _build_pagerank(conn, config_hash, write_lock_held=False, force=True)
+        # force=True: the re-parse deleted the symbols of its unit and
+        # headers, and ON DELETE CASCADE removed their cache rows while the
+        # other files' rows stayed — a "skip when rows exist" check left
+        # the functions of each changed file out of find_hotspots.
+        _build_hotspot_cache(conn, config_hash, force=True)
         conn.commit()
     except (sqlite3.Error, RuntimeError) as exc:
         result["pagerank_warning"] = f"PageRank/hotspot recompute skipped: {exc}"
@@ -2395,7 +2422,12 @@ def _reindex_graph_phases(
 
 
 def _header_coverage_warning(
-    target: Path, matching: list, via_header: bool
+    target: Path,
+    matching: list,
+    via_header: bool,
+    manifest: dict | None = None,
+    project_root: Path | None = None,
+    config_hash: str = "",
 ) -> str | None:
     """Say that a header was re-parsed through one compilation context.
 
@@ -2411,6 +2443,49 @@ def _header_coverage_warning(
     extension-less headers just as well, and the fallback resolves those
     too.
     """
+    if manifest is not None and project_root is not None and config_hash:
+        from ...indexer.context_identity import unit_identity_fields
+
+        root = project_root.resolve()
+        target_str = str(target)
+        reprinted: set[tuple[str, str]] = set()
+        for unit in matching:
+            try:
+                tu_rel = Path(unit.file).resolve().relative_to(root).as_posix()
+            except ValueError:
+                tu_rel = Path(unit.file).resolve().as_posix()
+            ctx = unit_identity_fields(unit, config_hash, root, entry_index=0)[
+                "context_id"
+            ]
+            reprinted.add((tu_rel, ctx))
+        # Count coverage at (file, context) granularity; legacy entries
+        # without a context id fall back to file-level matching.
+        total = 0
+        refreshed = 0
+        for entry in manifest.get("entries") or ():
+            if not entry.get("file"):
+                continue
+            includes_target = any(
+                (header if Path(header).is_absolute() else str(root / header)) == target_str
+                for header in entry.get("headers") or ()
+            )
+            if not includes_target:
+                continue
+            total += 1
+            entry_ctx = entry.get("context_id")
+            if entry_ctx is not None and (entry.get("file"), entry_ctx) in reprinted:
+                refreshed += 1
+            elif entry_ctx is None and entry.get("file") in {
+                rel for rel, _ in reprinted
+            }:
+                refreshed += 1
+        if total and refreshed < total:
+            return (
+                f"Header re-indexed: refreshed {refreshed} of {total} includer "
+                "contexts — run 'fw-context index' for full accuracy."
+            )
+        if total:
+            return None
     if not (via_header or (len(matching) == 1 and target.suffix in HEADER_EXTENSIONS)):
         return None
     return (
@@ -2788,7 +2863,10 @@ def _reindex_one_build(
     # Set before the with_analysis gate: the warning describes how much
     # of the header the re-parse covered, which does not depend on
     # whether the enrichment phases run.
-    coverage_warning = _header_coverage_warning(target, matching, via_header)
+    coverage_warning = _header_coverage_warning(
+        target, matching, via_header,
+        manifest=build_manifest, project_root=root, config_hash=config_hash,
+    )
     if coverage_warning:
         result["warning"] = coverage_warning
 
@@ -2997,14 +3075,17 @@ def _reindex_match_tus(
     if matching:
         return matching, False, None
 
-    tu_path = _tu_for_header(target, manifest, project_root or target.parent)
-    if tu_path is not None:
+    tu_paths = _tus_for_header(target, manifest, project_root or target.parent)
+    if tu_paths:
         # The manifest can name a unit that a later build dropped from
-        # compile_commands.json.  An empty result here falls through to
-        # the error below, which is the same answer as before.
-        via = [u for u in units if Path(u.file).resolve() == tu_path]
+        # compile_commands.json.  Those dropped files contribute nothing
+        # here — their contexts stay untouched in the index, and the
+        # coverage warning tells the caller how much was actually
+        # refreshed.
+        wanted = {str(p) for p in tu_paths}
+        via = [u for u in units if str(Path(u.file).resolve()) in wanted]
         if via:
-            return via[:1], True, None
+            return via, True, None
     return [], False, None
 
 

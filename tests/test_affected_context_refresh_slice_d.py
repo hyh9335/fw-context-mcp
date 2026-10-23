@@ -343,9 +343,9 @@ class TestSliceDRed:
         assert len(extra_rows) == 2, "the new function must land in both contexts"
 
         # Reindex half: the same file through reindex_file_impl.
-        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file
 
-        result = reindex_file_impl("src/same.c", str(root), with_analysis=False)
+        result = reindex_file("src/same.c", str(root), with_analysis=False)
         assert result.get("translation_units", 0) == 2, (
             "both compile actions of the file must be re-parsed"
         )
@@ -395,9 +395,9 @@ class TestSliceDRed:
         )
         _advance_mtime(hdr)
 
-        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file
 
-        result = reindex_file_impl("src/common.hpp", str(root), with_analysis=False)
+        result = reindex_file("src/common.hpp", str(root), with_analysis=False)
         assert result.get("translation_units", 0) == 2, (
             "both TUs that include the header must be re-parsed"
         )
@@ -481,9 +481,9 @@ class TestSliceDRed:
         )
         _advance_mtime(same)
 
-        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file
 
-        reindex_file_impl("src/same.c", str(root), with_analysis=False)
+        reindex_file("src/same.c", str(root), with_analysis=False)
 
         entries = _entries_for(_manifest_entries(db_path, ch), "src/same.c")
         assert len(entries) == 2
@@ -644,9 +644,9 @@ class TestSliceDGreen:
         )
         _advance_mtime(hdr)
 
-        from fw_context_mcp.mcp.handlers.maintenance import reindex_file_impl
+        from fw_context_mcp.mcp.handlers.maintenance import reindex_file
 
-        result = reindex_file_impl("src/common.hpp", str(root), with_analysis=False)
+        result = reindex_file("src/common.hpp", str(root), with_analysis=False)
 
         warning = result.get("warning") or ""
         assert "1 of 2" in warning, (

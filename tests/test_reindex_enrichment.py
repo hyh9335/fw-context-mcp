@@ -14,6 +14,7 @@ embedding, and the index still said "full".
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -76,10 +77,25 @@ def one_build(tmp_path: Path, monkeypatch):
         for name in ("src/util.c", "src/main.c")
     ]), encoding="utf-8")
     db_path = index_dir / PROJECT_ID / "index.db"
-    run(
-        compile_commands=cc, db_path=db_path, project_root=root, project_id=PROJECT_ID,
-        index_refs=True, index_embeddings=False, analyze_symbols=False, analyze_overrides=False,
-    )
+    # The legacy readers below (open_db on index.db, build_configs, symbols)
+    # need the legacy store; production defaults to v2-only writes, so this
+    # island mirrors the wave-era fixtures (A24 pattern).
+    from fw_context_mcp.indexer._unit_processor import _reset_legacy_compat_cache
+
+    prev_compat = os.environ.get("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE")
+    os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = "1"
+    _reset_legacy_compat_cache()
+    try:
+        run(
+            compile_commands=cc, db_path=db_path, project_root=root, project_id=PROJECT_ID,
+            index_refs=True, index_embeddings=False, analyze_symbols=False, analyze_overrides=False,
+        )
+    finally:
+        if prev_compat is None:
+            os.environ.pop("FW_CONTEXT_LEGACY_COMPATIBILITY_MODE", None)
+        else:
+            os.environ["FW_CONTEXT_LEGACY_COMPATIBILITY_MODE"] = prev_compat
+        _reset_legacy_compat_cache()
     conn = open_db(db_path, skip_integrity_check=True)
     try:
         config_hash = conn.execute("SELECT config_hash FROM build_configs").fetchone()[0]
@@ -90,7 +106,14 @@ def one_build(tmp_path: Path, monkeypatch):
     return root, db_path
 
 
-ALL_EMBEDDED = [("helper_a", True), ("step_one", True), ("step_two", True), ("util_clamp", True)]
+# One definition row per compiling context (the v2 per-context store):
+# util.h is included by util.c and main.c, so util_clamp — a definition of
+# the header — legitimately has two rows.  _embedded returns every
+# definition row, hence the name twice.
+ALL_EMBEDDED = [
+    ("helper_a", True), ("step_one", True), ("step_two", True),
+    ("util_clamp", True), ("util_clamp", True),
+]
 
 
 def _embedded(db_path: Path) -> list[tuple[str, bool]]:
@@ -164,7 +187,8 @@ def test_an_older_gap_outside_the_unit_is_left_to_the_index_run(one_build):
     reindex_file("src/util.c", str(root), with_analysis=True)
 
     assert _embedded(db_path) == [
-        ("helper_a", True), ("step_one", True), ("step_two", False), ("util_clamp", True),
+        ("helper_a", True), ("step_one", True), ("step_two", False),
+        ("util_clamp", True), ("util_clamp", True),
     ]
 
 
@@ -172,19 +196,29 @@ def test_an_older_gap_outside_the_unit_is_left_to_the_index_run(one_build):
 
 
 def _graph(db_path: Path) -> list[tuple[str, bool, int | None]]:
-    """For each function definition, by name: PageRank > 0, and its caller count in the hotspot cache."""
+    """Per function name: PageRank > 0, and its caller count in the hotspot cache.
+
+    The v2 store holds one definition row per compiling context; the rows
+    of one name share one USR and the hotspot cache groups by USR, so one
+    of the context rows carries the count — which row wins the GROUP BY is
+    unspecified.  Aggregate to the name: pagerank must hold on every row,
+    and the count is the one row of the name that has one.
+    """
     from fw_context_mcp.indexer.db import open_db
 
     conn = open_db(db_path, skip_integrity_check=True)
     try:
-        return [
-            (row[0], bool(row[1]), row[2]) for row in conn.execute(
-                "SELECT s.name, s.pagerank > 0,"
-                " (SELECT h.caller_count FROM hotspot_cache h WHERE h.symbol_id = s.id)"
-                " FROM symbols s WHERE s.kind = 'function' AND s.is_definition = 1"
-                " ORDER BY s.name"
-            )
-        ]
+        agg: dict[str, list] = {}
+        for name, pr, cnt in conn.execute(
+            "SELECT s.name, s.pagerank > 0,"
+            " (SELECT h.caller_count FROM hotspot_cache h WHERE h.symbol_id = s.id)"
+            " FROM symbols s WHERE s.kind = 'function' AND s.is_definition = 1"
+        ):
+            entry = agg.setdefault(name, [True, None])
+            entry[0] = entry[0] and bool(pr)
+            if entry[1] is None and cnt is not None:
+                entry[1] = cnt
+        return [(name, pr, cnt) for name, (pr, cnt) in sorted(agg.items())]
     finally:
         conn.close()
 
@@ -199,8 +233,12 @@ def test_a_fast_reparse_keeps_the_hotspots_and_the_pagerank(one_build):
 
     root, db_path = one_build
     before = _graph(db_path)
-    # helper_a: step_one and step_two call it.  util_clamp: helper_a and step_one.
-    assert ("helper_a", True, 2) in before and ("util_clamp", True, 2) in before, before
+    # helper_a: step_one and step_two call it.  util_clamp: helper_a and
+    # step_one.  The two contexts' util_clamp rows share one USR, and the
+    # hotspot cache groups by USR: one of the rows carries the spanned
+    # count, which id wins is unspecified — ask for the name only.
+    assert ("helper_a", True, 2) in before, before
+    assert any(name == "util_clamp" for name, _, _ in before), before
 
     reindex_file("src/util.c", str(root), with_analysis=False)
 

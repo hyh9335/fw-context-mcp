@@ -118,7 +118,11 @@ class TestSearchContentFts5GracefulFallback:
                     )
         assert isinstance(result, list)
         assert result, "search_content should return at least one matching file"
-        assert result[0]["file"].endswith("a.cpp")
+        # The page notice (total/offset/shown/more) leads the answer; the
+        # file rows follow it.
+        hits = [row for row in result if isinstance(row, dict) and "file" in row]
+        assert hits, f"no file row behind the page notice: {result[:2]}"
+        assert hits[0]["file"].endswith("a.cpp")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
